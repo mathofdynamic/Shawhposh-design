@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ShoppingBag, Shirt, Sparkles, Menu, X, Sliders, Info, Sun, Moon, User, LogOut } from 'lucide-react';
+import { ShoppingBag, Shirt, Sparkles, Menu, X, Sliders, Info, Sun, Moon, User, LogOut, Shield } from 'lucide-react';
 import { CartItem, User as UserType } from '../types';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -13,6 +13,7 @@ interface NavbarProps {
   user: UserType | null;
   onLoginClick: () => void;
   onLogout: () => void;
+  onAdminClick?: () => void;
 }
 
 export default function Navbar({ 
@@ -24,7 +25,8 @@ export default function Navbar({
   onToggleTheme,
   user,
   onLoginClick,
-  onLogout
+  onLogout,
+  onAdminClick
 }: NavbarProps) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
@@ -116,6 +118,22 @@ export default function Navbar({
         {/* Cart & Utility Area */}
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-1">
+            {/* Admin Desk Link Button */}
+            {onAdminClick && (
+              <button
+                onClick={onAdminClick}
+                className={`p-2.5 rounded-xl transition-all duration-300 flex items-center justify-center relative cursor-pointer active:scale-90 ${
+                  isDark 
+                    ? 'hover:bg-white/5 text-gray-400 hover:text-[#eed29d]' 
+                    : 'hover:bg-black/5 text-slate-600 hover:text-[#ba8d3d]'
+                }`}
+                title="ورود به پنل مدیریت کارگاه شاه‌پوش"
+                aria-label="میز مدیریت کارگاه"
+              >
+                <Shield size={17} className="stroke-1.5" />
+              </button>
+            )}
+
             {/* Theme Toggle Button */}
             <button
               onClick={onToggleTheme}
@@ -377,6 +395,19 @@ export default function Navbar({
               >
                 کارگاه طراحی شخصی تیشرت
               </button>
+
+              {onAdminClick && (
+                <button
+                  onClick={() => {
+                    onAdminClick();
+                    setMobileMenuOpen(false);
+                  }}
+                  className="w-full py-3.5 rounded-2xl text-center text-xs font-bold border border-white/10 flex items-center justify-center gap-2 cursor-pointer text-stone-400 hover:text-white bg-white/5"
+                >
+                  <Shield size={14} className="text-[#ba8d3d]" />
+                  <span>ورود به میز مدیریت کارگاه (Admin)</span>
+                </button>
+              )}
             </motion.div>
           </motion.div>
         )}

@@ -15,11 +15,37 @@ import { Product, CartItem, User as UserType } from './types';
 import Login from './components/Login';
 import Signup from './components/Signup';
 import { motion, AnimatePresence } from 'motion/react';
+import { AdminRouterProvider } from './admin/router';
+import { AdminLayout } from './admin/AdminLayout';
+import { ToastProvider } from './admin/components/ui';
 
 export default function App() {
   // Navigation Screen State
-  const [activeTab, setActiveTab] = useState<string>('home');
+  const [activeTab, setActiveTab] = useState<string>(() => {
+    if (typeof window !== 'undefined' && (window.location.hash.startsWith('#admin') || window.location.pathname.startsWith('/admin'))) {
+      return 'admin';
+    }
+    return 'home';
+  });
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
+
+  // History & Hash listener for direct /admin/* and /#admin deep linking
+  useEffect(() => {
+    const handleUrlChange = () => {
+      const isNowAdmin = window.location.hash.startsWith('#admin') || window.location.pathname.startsWith('/admin');
+      if (isNowAdmin && activeTab !== 'admin') {
+        setActiveTab('admin');
+      } else if (!isNowAdmin && activeTab === 'admin') {
+        setActiveTab('home');
+      }
+    };
+    window.addEventListener('hashchange', handleUrlChange);
+    window.addEventListener('popstate', handleUrlChange);
+    return () => {
+      window.removeEventListener('hashchange', handleUrlChange);
+      window.removeEventListener('popstate', handleUrlChange);
+    };
+  }, [activeTab]);
 
   // Theme State with localStorage integration
   const [theme, setTheme] = useState<'dark' | 'light'>(() => {
@@ -138,6 +164,24 @@ export default function App() {
     return 0; // default
   });
 
+  // Isolated Admin Environment Gate
+  if (activeTab === 'admin' || (typeof window !== 'undefined' && (window.location.pathname.startsWith('/admin') || window.location.hash.startsWith('#admin')))) {
+    return (
+      <ToastProvider>
+        <AdminRouterProvider
+          onBackToStore={() => {
+            setActiveTab('home');
+            window.history.pushState({}, '', '/');
+            window.location.hash = '';
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+          }}
+        >
+          <AdminLayout />
+        </AdminRouterProvider>
+      </ToastProvider>
+    );
+  }
+
   return (
     <main className={`min-h-screen flex flex-col antialiased overflow-x-hidden w-full max-w-full transition-colors duration-300 ${
       theme === 'dark' ? 'bg-[#0e0d0c] text-[#f5f2eb]' : 'bg-[#fafafa] text-[#1a1917]'
@@ -157,6 +201,11 @@ export default function App() {
         user={user}
         onLoginClick={() => setAuthPage('login')}
         onLogout={handleLogout}
+        onAdminClick={() => {
+          setActiveTab('admin');
+          window.history.pushState({}, '', '/admin/overview/dashboard');
+          window.scrollTo({ top: 0, behavior: 'smooth' });
+        }}
       />
 
       {/* Primary Page views */}
@@ -747,7 +796,20 @@ export default function App() {
           isDark ? 'border-white/[0.05] text-gray-500' : 'border-slate-200 text-slate-500'
         }`}>
           <span>کپی‌رایت © تمام حقوق مادی و معنوی محصولات، تصاویر و الگوهای طراحی شده برای پلتفرم شهپوش محفوظ است.</span>
-          <span className="tracking-wide">توسعه با عشق و افتخار در قطب فرهنگ و هنر پارس - ۱۴۰۵ خورشیدی</span>
+          <div className="flex items-center gap-4">
+            <span className="tracking-wide">توسعه با عشق و افتخار در قطب فرهنگ و هنر پارس - ۱۴۰۵ خورشیدی</span>
+            <button
+              onClick={() => {
+                setActiveTab('admin');
+                window.history.pushState({}, '', '/admin/overview/dashboard');
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+              }}
+              className="hover:text-[#ba8d3d] transition-colors cursor-pointer inline-flex items-center gap-1.5 font-mono text-[10px] text-gray-400 bg-white/5 hover:bg-white/10 px-2.5 py-1 rounded-lg border border-white/5"
+            >
+              <span>میز عملیات کارگاه</span>
+              <span className="bg-[#ba8d3d]/20 text-[#eed29d] px-1 rounded text-[8px] font-bold">ADMIN</span>
+            </button>
+          </div>
         </div>
       </footer>
 
