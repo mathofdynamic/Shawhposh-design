@@ -1,0 +1,6 @@
+{
+  "name": "شهپوش",
+  "description": "پلتفرم فروشگاهی آنلاین و کارگاه طراحی شخصی‌سازی شده تیشرت‌های سوپرپنبه با نقوش سنتی و کالیگرافی اصیل ایرانی",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
