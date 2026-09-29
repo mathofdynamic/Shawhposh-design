@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { FolderTree, Plus, Edit2, Trash2, Sparkles, AlertCircle, Shirt } from 'lucide-react';
 import { AdminPageHeader } from '../../components/shell/AdminPageHeader';
-import { Table, ColumnDef, Badge, Button, SearchInput } from '../../components/ui';
+import { Table, ColumnDef, Badge, Button, SearchInput, useToast } from '../../components/ui';
 import { useAdminRepository } from '../../domain/useAdminRepository';
 import { AdminCategory } from '../../domain/types';
 import { toFaDigits } from '../../utils/formatters';
@@ -14,6 +14,7 @@ export const CategoriesPage: React.FC = () => {
     updateCategory,
     deleteCategory,
   } = useAdminRepository();
+  const { addToast } = useToast();
 
   const categories = getCategories();
   const [search, setSearch] = useState('');
@@ -81,7 +82,17 @@ export const CategoriesPage: React.FC = () => {
 
     const res = deleteCategory(id);
     if (!res.success) {
-      alert(res.error || 'خطا در حذف دسته‌بندی.');
+      addToast({
+        title: 'عدم امکان حذف دسته‌بندی',
+        description: res.error || 'خطا در حذف دسته‌بندی.',
+        type: 'error',
+      });
+    } else {
+      addToast({
+        title: 'دسته‌بندی حذف شد',
+        description: `دسته‌بندی «${name}» با موفقیت حذف گردید.`,
+        type: 'success',
+      });
     }
   };
 

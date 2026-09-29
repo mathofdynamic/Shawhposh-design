@@ -22,7 +22,7 @@ import {
 import { AdminProduct, ProductVariant } from '../../domain/types';
 import { useAdminRepository } from '../../domain/useAdminRepository';
 import { useAdminRouter } from '../../router';
-import { Button, Badge, MoneyDisplay } from '../../components/ui';
+import { Button, Badge, MoneyDisplay, useToast } from '../../components/ui';
 import { toFaDigits } from '../../utils/formatters';
 
 interface ProductEditorProps {
@@ -34,6 +34,7 @@ type EditorTab = 'basic' | 'fabric' | 'pricing' | 'media' | 'variants' | 'seo' |
 
 export const ProductEditor: React.FC<ProductEditorProps> = ({ productId, onBack }) => {
   const { navigate } = useAdminRouter();
+  const { addToast } = useToast();
   const {
     state,
     getProductById,
@@ -302,7 +303,11 @@ export const ProductEditor: React.FC<ProductEditorProps> = ({ productId, onBack 
     if (!res.success) {
       setErrorMessage(res.error || 'امکان حذف این محصول وجود ندارد.');
     } else {
-      alert('محصول با موفقیت حذف شد.');
+      addToast({
+        title: 'محصول حذف شد',
+        description: 'محصول با موفقیت از کاتالوگ فروشگاه حذف گردید.',
+        type: 'success',
+      });
       if (onBack) onBack();
       else navigate('/admin/catalog/products');
     }

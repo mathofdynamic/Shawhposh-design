@@ -14,8 +14,12 @@ import { WorkReportPage } from './overview/WorkReportPage';
 
 // Sales
 import { OrdersPage } from './sales/OrdersPage';
+import { OrderDetailPage } from './sales/OrderDetailPage';
 import { PaymentsPage } from './sales/PaymentsPage';
+import { PaymentDetailPage } from './sales/PaymentDetailPage';
+import { RefundsPage } from './sales/RefundsPage';
 import { ShippingPage } from './sales/ShippingPage';
+import { ShipmentDetailPage } from './sales/ShipmentDetailPage';
 import { ReturnsPage } from './sales/ReturnsPage';
 import { SalesAnalyticsPage } from './sales/SalesAnalyticsPage';
 
@@ -37,6 +41,9 @@ import { ApprovalPage } from './custom-studio/ApprovalPage';
 import { ArtworkPage } from './custom-studio/ArtworkPage';
 import { ProductionPage } from './custom-studio/ProductionPage';
 import { QcPage } from './custom-studio/QcPage';
+import { DesignReviewPage } from './custom-studio/DesignReviewPage';
+import { PrintingRulesPage } from './custom-studio/PrintingRulesPage';
+import { JobDetailPage } from './custom-studio/JobDetailPage';
 
 // Customers
 import { CustomerDirectoryPage } from './customers/CustomerDirectoryPage';
@@ -51,6 +58,15 @@ import { AcquisitionPage } from './analytics/AcquisitionPage';
 import { ConversionPage } from './analytics/ConversionPage';
 import { CampaignsPage } from './analytics/CampaignsPage';
 
+// Marketing & CMS (Prompt 16)
+import { DiscountsPage } from './marketing/DiscountsPage';
+import { CampaignsPage as MarketingCampaignsPage } from './marketing/CampaignsPage';
+import { FunnelsPage } from './marketing/FunnelsPage';
+import { HomepageCmsPage } from './content/HomepageCmsPage';
+import { BannersPage } from './content/BannersPage';
+import { PagesCmsPage } from './content/PagesCmsPage';
+import { SeoManagementPage } from './content/SeoManagementPage';
+
 // Team
 import { TasksPage } from './team/TasksPage';
 import { ReportsPage } from './team/ReportsPage';
@@ -63,7 +79,10 @@ import { CmsPage } from './system/CmsPage';
 import { SettingsPage } from './system/SettingsPage';
 import { IntegrationsPage } from './system/IntegrationsPage';
 import { HealthPage } from './system/HealthPage';
+import { LogsPage } from './system/LogsPage';
 import { DataExplorerPage } from './system/DataExplorerPage';
+import { SecurityPage } from './system/SecurityPage';
+import { NotificationsPage } from './system/NotificationsPage';
 
 export const AdminPageDispatcher: React.FC = () => {
   const { currentPath, navigate } = useAdminRouter();
@@ -81,6 +100,90 @@ export const AdminPageDispatcher: React.FC = () => {
     return <ProductEditor productId={pId} />;
   }
 
+  // Dynamic order details routes (/admin/sales/orders/:id and /orders/:id)
+  if (currentPath.startsWith('/admin/sales/orders/') && currentPath !== '/admin/sales/orders') {
+    const oId = currentPath.replace('/admin/sales/orders/', '');
+    return <OrderDetailPage orderIdProp={oId} />;
+  }
+  if (currentPath.startsWith('/orders/') && currentPath !== '/orders') {
+    const oId = currentPath.replace('/orders/', '');
+    return <OrderDetailPage orderIdProp={oId} />;
+  }
+
+  // Dynamic payment details routes (/admin/sales/payments/:id and /payments/:id)
+  if (currentPath.startsWith('/admin/sales/payments/') && currentPath !== '/admin/sales/payments') {
+    const pId = currentPath.replace('/admin/sales/payments/', '');
+    return <PaymentDetailPage paymentIdProp={pId} />;
+  }
+  if (currentPath.startsWith('/payments/') && currentPath !== '/payments') {
+    const pId = currentPath.replace('/payments/', '');
+    return <PaymentDetailPage paymentIdProp={pId} />;
+  }
+
+  // Dynamic design review routes (/designs/:id, /admin/studio/designs/:id, /admin/custom-studio/designs/:id)
+  if (currentPath.startsWith('/designs/') && currentPath !== '/designs') {
+    const dId = currentPath.replace('/designs/', '');
+    return <DesignReviewPage designIdProp={dId} />;
+  }
+  if (currentPath.startsWith('/admin/studio/designs/') && currentPath !== '/admin/studio/designs') {
+    const dId = currentPath.replace('/admin/studio/designs/', '');
+    return <DesignReviewPage designIdProp={dId} />;
+  }
+  if (currentPath.startsWith('/admin/custom-studio/designs/') && currentPath !== '/admin/custom-studio/designs') {
+    const dId = currentPath.replace('/admin/custom-studio/designs/', '');
+    return <DesignReviewPage designIdProp={dId} />;
+  }
+
+  // Dynamic job details routes (/jobs/:id, /admin/studio/jobs/:id, /admin/custom-studio/jobs/:id)
+  if (currentPath.startsWith('/jobs/') && currentPath !== '/jobs') {
+    const jId = currentPath.replace('/jobs/', '');
+    return <JobDetailPage jobIdProp={jId} />;
+  }
+  if (currentPath.startsWith('/admin/studio/jobs/') && currentPath !== '/admin/studio/jobs') {
+    const jId = currentPath.replace('/admin/studio/jobs/', '');
+    return <JobDetailPage jobIdProp={jId} />;
+  }
+  if (currentPath.startsWith('/admin/custom-studio/jobs/') && currentPath !== '/admin/custom-studio/jobs') {
+    const jId = currentPath.replace('/admin/custom-studio/jobs/', '');
+    return <JobDetailPage jobIdProp={jId} />;
+  }
+
+  // Dynamic customer profile routes (/customers/:id, /admin/customers/profiles/:id, /admin/customers/:id)
+  if (currentPath.startsWith('/customers/') && currentPath !== '/customers') {
+    const cId = currentPath.replace('/customers/', '');
+    return <CustomerProfilesPage customerIdProp={cId} />;
+  }
+  if (currentPath.startsWith('/admin/customers/profiles/') && currentPath !== '/admin/customers/profiles') {
+    const cId = currentPath.replace('/admin/customers/profiles/', '');
+    return <CustomerProfilesPage customerIdProp={cId} />;
+  }
+  if (
+    currentPath.startsWith('/admin/customers/') &&
+    currentPath !== '/admin/customers/directory' &&
+    currentPath !== '/admin/customers/profiles' &&
+    currentPath !== '/admin/customers/support' &&
+    currentPath !== '/admin/customers/reviews' &&
+    currentPath !== '/admin/customers/segments' &&
+    currentPath !== '/admin/customers'
+  ) {
+    const cId = currentPath.replace('/admin/customers/', '');
+    return <CustomerProfilesPage customerIdProp={cId} />;
+  }
+
+  // Dynamic shipment routes (/shipments/:id, /shipping/:id, /admin/sales/shipping/:id)
+  if (currentPath.startsWith('/shipments/') && currentPath !== '/shipments') {
+    const sId = currentPath.replace('/shipments/', '');
+    return <ShipmentDetailPage shipmentIdProp={sId} />;
+  }
+  if (currentPath.startsWith('/shipping/') && currentPath !== '/shipping') {
+    const sId = currentPath.replace('/shipping/', '');
+    return <ShipmentDetailPage shipmentIdProp={sId} />;
+  }
+  if (currentPath.startsWith('/admin/sales/shipping/') && currentPath !== '/admin/sales/shipping') {
+    const sId = currentPath.replace('/admin/sales/shipping/', '');
+    return <ShipmentDetailPage shipmentIdProp={sId} />;
+  }
+
   switch (currentPath) {
     // 1. Overview
     case '/admin':
@@ -94,12 +197,21 @@ export const AdminPageDispatcher: React.FC = () => {
 
     // 2. Sales
     case '/admin/sales/orders':
+    case '/orders':
       return <OrdersPage />;
     case '/admin/sales/payments':
+    case '/payments':
       return <PaymentsPage />;
+    case '/admin/sales/refunds':
+    case '/refunds':
+      return <RefundsPage />;
     case '/admin/sales/shipping':
+    case '/shipping':
+    case '/shipments':
       return <ShippingPage />;
     case '/admin/sales/returns':
+    case '/returns':
+    case '/admin/returns':
       return <ReturnsPage />;
     case '/admin/sales/analytics':
       return <SalesAnalyticsPage />;
@@ -135,27 +247,53 @@ export const AdminPageDispatcher: React.FC = () => {
 
     // 4. Custom Studio
     case '/admin/custom-studio/submissions':
+    case '/admin/studio/designs':
+    case '/designs':
       return <SubmissionsPage />;
     case '/admin/custom-studio/approval':
+    case '/approval':
+    case '/admin/studio/approval':
       return <ApprovalPage />;
     case '/admin/custom-studio/artwork':
+    case '/artwork':
+    case '/admin/studio/artwork':
       return <ArtworkPage />;
+    case '/admin/custom-studio/printing-rules':
+    case '/printing-rules':
+    case '/admin/studio/printing-rules':
+      return <PrintingRulesPage />;
     case '/admin/custom-studio/production':
+    case '/admin/studio/production':
+    case '/production':
+    case '/admin/studio/rework':
+    case '/rework':
       return <ProductionPage />;
     case '/admin/custom-studio/qc':
+    case '/quality-control':
+    case '/admin/studio/quality-control':
+    case '/qc':
       return <QcPage />;
 
     // 5. Customers
+    case '/admin/customers':
+    case '/customers':
     case '/admin/customers/directory':
+    case '/admin/customers/segments':
       return <CustomerDirectoryPage />;
     case '/admin/customers/profiles':
       return <CustomerProfilesPage />;
     case '/admin/customers/support':
+    case '/support':
+    case '/support/tickets':
+    case '/admin/support':
+    case '/admin/support/tickets':
       return <CustomerSupportPage />;
     case '/admin/customers/reviews':
+    case '/reviews':
+    case '/admin/reviews':
       return <CustomerReviewsPage />;
 
-    // 6. Analytics
+    // 6. Analytics & Marketing
     case '/admin/analytics/sales':
       return <SalesAnalyticsPage />;
     case '/admin/analytics/traffic':
@@ -165,9 +303,46 @@ export const AdminPageDispatcher: React.FC = () => {
     case '/admin/analytics/acquisition':
       return <AcquisitionPage />;
     case '/admin/analytics/conversion':
-      return <ConversionPage />;
+    case '/admin/marketing/funnels':
+    case '/funnels':
+    case '/admin/funnels':
+      return <FunnelsPage />;
     case '/admin/analytics/campaigns':
-      return <CampaignsPage />;
+    case '/admin/marketing/campaigns':
+    case '/campaigns':
+    case '/admin/campaigns':
+      return <MarketingCampaignsPage />;
+
+    // Marketing & Discounts (Prompt 16)
+    case '/admin/marketing/discounts':
+    case '/discounts':
+    case '/admin/discounts':
+      return <DiscountsPage />;
+
+    // Storefront CMS, Banners, Pages & SEO (Prompt 16)
+    case '/admin/content/homepage':
+    case '/content/homepage':
+    case '/homepage':
+    case '/admin/homepage':
+    case '/admin/system/cms':
+      return <HomepageCmsPage />;
+    case '/admin/content/banners':
+    case '/banners':
+    case '/admin/banners':
+      return <BannersPage />;
+    case '/admin/content/pages':
+    case '/pages':
+    case '/admin/pages':
+      return <PagesCmsPage />;
+    case '/admin/content/seo':
+    case '/seo':
+    case '/admin/seo':
+    case '/admin/marketing/seo':
+      return <SeoManagementPage />;
+    case '/admin/catalog/media':
+    case '/media':
+    case '/admin/media':
+      return <MediaAssetsPage />;
 
     // 7. Team
     case '/admin/team/tasks':
@@ -181,17 +356,38 @@ export const AdminPageDispatcher: React.FC = () => {
     case '/admin/team/audit':
       return <AuditPage />;
 
-    // 8. System
+    // 8. System (Prompt 18: health, logs, data, settings, integrations, security)
     case '/admin/system/cms':
       return <CmsPage />;
+    case '/settings':
+    case '/admin/settings':
     case '/admin/system/settings':
       return <SettingsPage />;
+    case '/integrations':
+    case '/admin/integrations':
     case '/admin/system/integrations':
       return <IntegrationsPage />;
+    case '/health':
+    case '/admin/health':
     case '/admin/system/health':
       return <HealthPage />;
+    case '/logs':
+    case '/admin/logs':
+    case '/admin/system/logs':
+      return <LogsPage />;
+    case '/data':
+    case '/admin/data':
+    case '/admin/system/data':
     case '/admin/system/data-explorer':
       return <DataExplorerPage />;
+    case '/security':
+    case '/admin/security':
+    case '/admin/system/security':
+      return <SecurityPage />;
+    case '/admin/system/notifications':
+    case '/notifications':
+    case '/admin/notifications':
+      return <NotificationsPage />;
     case '/admin/system/style-gallery':
       return (
         <React.Suspense fallback={<div className="p-8 text-center text-xs text-stone-400">در حال بارگذاری گالری...</div>}>

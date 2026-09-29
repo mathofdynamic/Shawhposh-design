@@ -30,8 +30,23 @@ import {
   Supplier,
   PurchaseOrder,
   WorkshopMaterial,
+  DesignRevisionSnapshot,
 } from './types';
 import { PRODUCTS } from '../../data';
+import {
+  DEFAULT_ARTWORK_ASSETS,
+  DEFAULT_PRINT_RULE_ZONES,
+  calculateReviewSla,
+} from './customStudio';
+import { DEFAULT_RETURN_REQUESTS } from './shippingReturnsNotifications';
+import {
+  DEFAULT_DISCOUNTS,
+  DEFAULT_MARKETING_CAMPAIGNS,
+  DEFAULT_HOMEPAGE_CONFIG,
+  DEFAULT_STORE_BANNERS,
+  DEFAULT_CMS_PAGES,
+  DEFAULT_SEO_RECORDS,
+} from './marketingCms';
 
 export const SCHEMA_VERSION = 1;
 export const DEMO_CLOCK_ISO = '2026-09-23T12:00:00.000Z'; // Anchor time: 2 Mehr 1405
@@ -217,9 +232,48 @@ export function generateSyntheticDatabase(): AdminDatabaseState {
       totalOrdersCount: 0, // calculated from orders later
       totalSpentTomans: 0, // calculated from orders later
       tag,
+      status: i === 41 ? 'deactivated' : i > 37 ? 'inactive' : 'active',
+      marketingConsent: i % 3 !== 0,
       createdAt: daysAgoIso(regDaysAgo, rng.range(10, 500)),
       lastActiveAt: daysAgoIso(rng.range(0, 14), rng.range(5, 700)),
       notes: tag === 'vip' ? 'مشتری طلایی با اولویت ویژه در تحویل اکسپرس' : undefined,
+      addresses: [
+        {
+          id: `ADDR-${1000 + i}-1`,
+          title: 'نشانی اصلی (منزل)',
+          recipientName: `${fName} ${lName}`,
+          phone,
+          province: loc.province,
+          city: loc.city,
+          fullAddress: `${loc.city}، ${street}، پلاک ${rng.range(2, 140)}، واحد ${rng.range(1, 12)}`,
+          postalCode: `19${rng.range(10000000, 99999999)}`.slice(0, 10),
+          isDefault: true,
+        },
+        ...(i % 3 === 0
+          ? [
+              {
+                id: `ADDR-${1000 + i}-2`,
+                title: 'محل کار / دفتر مرکزی',
+                recipientName: `${fName} ${lName}`,
+                phone,
+                province: loc.province,
+                city: loc.city,
+                fullAddress: `${loc.city}، بلوار میرداماد، مجتمع تجاری پایتخت، طبقه ${rng.range(2, 6)}`,
+                postalCode: `15${rng.range(10000000, 99999999)}`.slice(0, 10),
+                isDefault: false,
+              },
+            ]
+          : []),
+      ],
+      auditTrail: [
+        {
+          id: `AUD-CUST-${i}-1`,
+          timestamp: daysAgoIso(regDaysAgo, rng.range(10, 500)),
+          actorName: 'سیستم ثبت‌نام آنلاین',
+          action: 'افتتاح حساب کاربری',
+          note: 'احراز هویت پیامکی از طریق درگاه شاهکار',
+        },
+      ],
     });
   }
 
@@ -663,6 +717,7 @@ export function generateSyntheticDatabase(): AdminDatabaseState {
         const dId = `DSG-${9000 + designSeq}`;
         designSeq++;
         const dTitle = rng.choice(DESIGN_TITLES);
+        const lineItemId = `ITEM-${orderId}-${lIdx + 1}`;
         const reviewStatus: CustomDesign['status'] =
           i <= 2
             ? 'under_review'
@@ -672,10 +727,74 @@ export function generateSyntheticDatabase(): AdminDatabaseState {
             ? 'revision_requested'
             : 'approved';
 
+        const graphicChoices = [
+          { id: 'heeche', name: 'کالیگرافی نستعلیق «هیچ»' },
+          { id: 'eshgh', name: 'کالیگرافی خط ثلث «عشق»' },
+          { id: 'tehran_vintage', name: 'ایلوستراسیون دروازه تهران' },
+          { id: 'damavand_minimal', name: 'خطوط نمادین قله دماوند' },
+          { id: 'hafez_collage', name: 'کلاژ ابیات دیوان حافظ' },
+          { id: 'persian_lion', name: 'مهر اساطیری شیر و خورشید' },
+        ];
+        const gChoice = rng.choice(graphicChoices);
+        const designType: 'graphic' | 'text' | 'mixed' = (i % 3 === 0) ? 'graphic' : (i % 3 === 1) ? 'text' : 'mixed';
+        const customTextSample = designType === 'text' ? 'هیچ مگو' : designType === 'mixed' ? 'شهپوش استایل تهران' : undefined;
+
+        const currentSettings = {
+          designMode: designType,
+          selectedGraphicId: designType !== 'text' ? gChoice.id : undefined,
+          graphicName: designType !== 'text' ? gChoice.name : undefined,
+          customText: customTextSample,
+          fontName: 'ایران نستعلیق',
+          textColorHex: rng.choice(['#eed29d', '#ffffff', '#0e0d0c', '#E61919']),
+          designScale: rng.choice([80, 100, 110, 120]),
+          designPosX: rng.choice([0, 5, -5]),
+          designPosY: rng.choice([0, 10, -5]),
+          tshirtColorName: v.colorName,
+          tshirtColorHex: v.colorHex,
+        };
+
+        const revisions: DesignRevisionSnapshot[] = reviewStatus === 'revision_requested' ? [
+          {
+            revisionNumber: 1,
+            submittedAt: daysAgoIso(daysAgo + 1, -120),
+            previewUrl: `https://picsum.photos/seed/design_${dId}_rev1/800/800`,
+            settings: {
+              ...currentSettings,
+              designScale: 90,
+              designPosY: -10,
+            },
+            changeSummaryFa: 'نسخه اولیه ثبت‌شده توسط مشتری در طراح آنلاین',
+            customerNote: 'طرح در بالای سینه باشد.',
+          },
+          {
+            revisionNumber: 2,
+            submittedAt: orderTimeIso,
+            previewUrl: `https://picsum.photos/seed/design_${dId}/800/800`,
+            settings: currentSettings,
+            changeSummaryFa: 'اصلاح موقعیت و افزایش مقیاس به درخواست کارشناس آتلیه',
+            customerNote: 'موقعیت طرح به مرکز سینه منتقل شد.',
+          },
+        ] : [
+          {
+            revisionNumber: 1,
+            submittedAt: orderTimeIso,
+            previewUrl: `https://picsum.photos/seed/design_${dId}/800/800`,
+            settings: currentSettings,
+            changeSummaryFa: 'طرح اولیه ثبت‌شده توسط مشتری در طراح آنلاین',
+            customerNote: 'طرح با وسواس در وسط سینه تنظیم شده، لطفاً چاپ تمیز و بدون حاشیه سفید باشد.',
+          },
+        ];
+
+        const sla = calculateReviewSla(orderTimeIso, DEMO_CLOCK_ISO, reviewStatus);
+        const slaDueAt = daysAgoIso(daysAgo, -24);
+
         const customDesign: CustomDesign = {
           id: dId,
           orderId,
+          lineItemId,
           customerId: customer.id,
+          customerName: customer.fullName,
+          customerPhone: customer.phone,
           title: dTitle,
           previewUrl: `https://picsum.photos/seed/design_${dId}/800/800`,
           format: rng.choice(['SVG', 'PNG', 'PDF']),
@@ -684,6 +803,11 @@ export function generateSyntheticDatabase(): AdminDatabaseState {
           dimensionsMm: '۲۸۰ × ۳۸۰ میلی‌متر',
           printZone: rng.choice(['front_chest', 'back_full']),
           status: reviewStatus,
+          designType,
+          blankSku: v.sku,
+          blankProductName: prod.name,
+          blankColorName: v.colorName,
+          blankSize: v.size,
           reviewerNotes:
             reviewStatus === 'approved'
               ? 'رزولوشن ۳۰۰ DPI و بستر رنگی CMYK توسط آتلیه تایید شد.'
@@ -693,9 +817,45 @@ export function generateSyntheticDatabase(): AdminDatabaseState {
               ? 'لطفاً پس‌زمینه سفید فایل PNG حذف و نسخه ترنسپرنت ارسال شود.'
               : 'در نوبت بررسی کارشناس گرافیک آتلیه',
           assignedStaffId: 'STF-02',
+          reviewerName: 'استاد امین کریمی',
           submittedAt: orderTimeIso,
           reviewedAt: reviewStatus !== 'under_review' ? daysAgoIso(daysAgo, -30) : undefined,
+          slaDueAt,
+          slaStatus: sla.status === 'completed' ? 'on_track' : sla.status,
           revisionCount: reviewStatus === 'revision_requested' ? 2 : 1,
+          settings: currentSettings,
+          revisions,
+          customerNote: 'طرح با وسواس در وسط سینه تنظیم شده، لطفاً چاپ تمیز و بدون حاشیه سفید باشد.',
+          auditTrail: [
+            {
+              id: `AUD-${dId}-1`,
+              timestamp: orderTimeIso,
+              actorId: customer.id,
+              actorName: customer.fullName,
+              action: 'submitted',
+              notes: 'ثبت طرح از طریق طراح آنلاین پوشاک',
+              newStatus: 'submitted',
+            },
+            {
+              id: `AUD-${dId}-2`,
+              timestamp: daysAgoIso(daysAgo, -15),
+              actorId: 'STF-02',
+              actorName: 'استاد امین کریمی',
+              action: reviewStatus === 'approved' ? 'approved' : reviewStatus === 'rejected' ? 'rejected' : reviewStatus === 'revision_requested' ? 'revision_requested' : 'assigned',
+              notes: reviewStatus === 'approved' ? 'تایید فنی جهت چاپ مستقیم DTG' : reviewStatus === 'rejected' ? 'رد به دلیل رزولوشن پایین' : 'بررسی کارشناسی آتلیه',
+              previousStatus: 'submitted',
+              newStatus: reviewStatus,
+            },
+          ],
+          staffNotes: [
+            {
+              id: `NOTE-${dId}-1`,
+              timestamp: orderTimeIso,
+              authorId: 'STF-02',
+              authorName: 'استاد امین کریمی',
+              text: 'طرح بررسی شد. کادربندی روی پارچه سوپرپنبه ۲۴۰ گرم بدون مشکل است.',
+            },
+          ],
         };
         customDesigns.push(customDesign);
         customDesignId = dId;
@@ -823,12 +983,39 @@ export function generateSyntheticDatabase(): AdminDatabaseState {
       status === 'delivered'
     ) {
       items.forEach((item) => {
-        const stage: ProductionStage =
-          status === 'delivered' || status === 'shipped' || status === 'ready_to_ship'
+        let stage: ProductionStage =
+          status === 'delivered' || status === 'shipped'
             ? 'completed'
+            : status === 'ready_to_ship'
+            ? 'ready_for_fulfillment'
             : status === 'quality_check'
             ? 'qc_inspection'
-            : rng.choice(['printing_dtg', 'pretreatment', 'curing_heatpress']);
+            : rng.choice(['printing_dtg', 'pretreatment', 'curing_heatpress', 'queued']);
+
+        // Introduce hold or rework for specific demo fixture variety
+        let holdReason: string | undefined;
+        let reworkReason: string | undefined;
+        let defectReason: string | undefined;
+        let wastedGarmentCount: number | undefined;
+
+        if (jobSeq === 3) {
+          stage = 'reprint_needed';
+          reworkReason = 'انحراف ۱.۵ سانتی‌متری در تراز شاقولی طرح سینه هنگام حرارت پرس کانوایر';
+          defectReason = 'انحراف کادر چاپ (Placement Misalignment)';
+          wastedGarmentCount = 1;
+        } else if (jobSeq === 5) {
+          stage = 'on_hold';
+          holdReason = 'استعلام رنگ نخ و دوخت سرشانه از طراح ارشد آتلیه';
+        }
+
+        const operatorId = rng.choice(['STF-04', 'STF-05']);
+        const operatorName =
+          operatorId === 'STF-04'
+            ? 'سهراب زارع (اپراتور ارشد پرینتر)'
+            : 'فرشید اسدی (تکنسین چاپ و کنترل کیفی)';
+
+        const isCompleted = stage === 'completed' || stage === 'ready_for_fulfillment';
+        const hasPassedQc = isCompleted;
 
         const job: ProductionJob = {
           id: `JOB-${300 + jobSeq}`,
@@ -836,12 +1023,98 @@ export function generateSyntheticDatabase(): AdminDatabaseState {
           lineItemId: item.id,
           variantSku: item.variantSku,
           customDesignId: item.customDesignId,
-          operatorId: rng.choice(['STF-04', 'STF-05']),
+          operatorId,
+          assignedStaffName: operatorName,
+          vendorPartner: rng.choice([undefined, undefined, 'کارگاه تکمیلی چاپ سیلک بهار']),
           stage,
           priority: order.isRushOrder ? 'rush' : 'normal',
-          qcStatus: stage === 'completed' ? 'passed' : status === 'quality_check' ? 'pending' : 'pending',
-          qcNotes: stage === 'completed' ? 'آزمون ماندگاری چاپ و شستشو در دمای ۴۰ درجه با موفقیت انجام شد.' : undefined,
-          reprintCount: 0,
+          quantity: item.quantity || 1,
+          printingTechnique: item.isCustomPod
+            ? 'چاپ دیجیتال مستقیم نساجی (DTG صنعتی Brother GTX Pro)'
+            : 'سیلک اسکرین پریمیوم استاندارد',
+          printPlacement: 'سینه مرکزی (A3+ Front Chest)',
+          dueDate: daysAgoIso(Math.max(-3, daysAgo - 4)),
+          qcStatus: stage === 'reprint_needed' ? 'failed' : hasPassedQc ? 'passed' : 'pending',
+          qcNotes:
+            stage === 'reprint_needed'
+              ? 'تست کشش و تراز شاقولی رد شد. نیازمند تنظیم مجدد قالب تیشرت در دستگاه.'
+              : hasPassedQc
+              ? 'آزمون ماندگاری چاپ و شستشو در دمای ۴۰ درجه با موفقیت انجام شد.'
+              : undefined,
+          reprintCount: stage === 'reprint_needed' ? 1 : 0,
+          holdReason,
+          reworkReason,
+          defectReason,
+          wastedGarmentCount,
+          checklist: [
+            {
+              id: 'c1',
+              title: 'بررسی عدم ترک‌خوردگی پیگمنت در کشش تار و پود',
+              checked: isCompleted,
+            },
+            {
+              id: 'c2',
+              title: 'یکنواختی زیرلایه سفید (Pretreatment) و عدم لکه زرد',
+              checked: isCompleted,
+            },
+            {
+              id: 'c3',
+              title: 'دوخت یقه ضدحساسیت و لیبل ساتن شاه‌پوش',
+              checked: isCompleted,
+            },
+            {
+              id: 'c4',
+              title: 'کارت اصالت شماره‌دار و مهر طلاکوب آتلیه',
+              checked: isCompleted,
+            },
+            {
+              id: 'c5',
+              title: 'بسته‌بندی در کاغذ پوستی عطری و هاردباکس مشکی',
+              checked: stage === 'completed',
+            },
+          ],
+          materialRequirements: [
+            {
+              name: 'پارچه خام تیشرت پنبه ارگانیک سوپر',
+              quantityNeeded: `${item.quantity || 1} عدد`,
+              available: true,
+              consumed: stage !== 'queued',
+            },
+            {
+              name: 'جوهر سفید نساجی Brother GTX Pure White',
+              quantityNeeded: `${(item.quantity || 1) * 12} میلی‌لیتر`,
+              available: true,
+              consumed: stage === 'printing_dtg' || isCompleted || stage === 'qc_inspection',
+            },
+            {
+              name: 'کارتریج رنگی CMYK اختصاصی نساجی',
+              quantityNeeded: `${(item.quantity || 1) * 8} میلی‌لیتر`,
+              available: true,
+              consumed: stage === 'printing_dtg' || isCompleted || stage === 'qc_inspection',
+            },
+            {
+              name: 'مایع آماده‌سازی پارچه (Pretreatment Solution)',
+              quantityNeeded: `${(item.quantity || 1) * 25} میلی‌لیتر`,
+              available: true,
+              consumed: stage !== 'queued',
+            },
+          ],
+          auditTrail: [
+            {
+              id: `ADT-${jobSeq}-1`,
+              timestamp: daysAgoIso(daysAgo, -60),
+              actorName: 'سیستم سفارشات',
+              action: 'ایجاد دستور کار تولید',
+              note: `سفارش تایید شد و مقدار ${item.quantity || 1} عدد ثبت گردید`,
+            },
+            {
+              id: `ADT-${jobSeq}-2`,
+              timestamp: daysAgoIso(daysAgo, -30),
+              actorName: operatorName,
+              action: 'تخصیص اپراتور',
+              note: 'دستگاه Brother GTXpro برای اجرای دستور کار مشخص شد',
+            },
+          ],
           startedAt: daysAgoIso(daysAgo, -60),
           finishedAt: stage === 'completed' ? daysAgoIso(Math.max(0, daysAgo - 2)) : undefined,
         };
@@ -850,36 +1123,236 @@ export function generateSyntheticDatabase(): AdminDatabaseState {
       });
     }
 
-    // Shipments for dispatched/delivered orders
-    if (status === 'shipped' || status === 'delivered') {
-      const carrier: CarrierName = rng.choice(['tipax', 'post_pishtaz', 'chapar']);
-      const trackingCode = `${carrier === 'tipax' ? 'TPX' : 'PST'}-${rng.range(100000000, 999999999)}`;
+    // Shipments for ready, dispatched, in_transit, delivered, and exception orders
+    if (status === 'shipped' || status === 'delivered' || status === 'ready_to_ship') {
+      const carrier: CarrierName = rng.choice(['tipax', 'post_pishtaz', 'chapar', 'courier_tehran']);
+      const trackingCode = `${carrier === 'tipax' ? 'TPX' : carrier === 'courier_tehran' ? 'TEH' : 'PST'}-${rng.range(100000000, 999999999)}`;
+
+      const shipmentStatus: Shipment['status'] =
+        status === 'delivered'
+          ? 'delivered'
+          : status === 'shipped'
+          ? (shipSeq % 7 === 0 ? 'exception' : shipSeq % 3 === 0 ? 'dispatched' : 'in_transit')
+          : (shipSeq % 2 === 0 ? 'packed' : 'ready');
+
+      const shipmentItems = items.map((it) => {
+        const d = customDesigns.find((des) => des.orderId === orderId && des.lineItemId === it.id);
+        return {
+          sku: it.variantSku,
+          productName: it.productName,
+          quantity: it.quantity,
+          isCustomPod: it.isCustomPod,
+          designId: d?.id,
+          designTitle: d?.title,
+        };
+      });
+
+      const timeline = [
+        {
+          timestamp: daysAgoIso(daysAgo, -30),
+          stage: 'order_confirmed',
+          titleFa: 'تایید نهایی سفارش و تخصیص انبار',
+          descriptionFa: 'سفارش در سیستم شاه‌پوش ثبت و قطعی گردید.',
+          isCompleted: true,
+        },
+        {
+          timestamp: daysAgoIso(daysAgo, -60),
+          stage: 'packed',
+          titleFa: 'بسته‌بندی در جعبه مشکی لوکس شاه‌پوش',
+          descriptionFa: 'کالاها در کاور مشکی مات همراه با شناسنامه اصالت و روبان زرکوب بسته‌بندی شد.',
+          isCompleted: shipmentStatus !== 'ready',
+        },
+        {
+          timestamp: daysAgoIso(daysAgo, -120),
+          stage: 'label_created',
+          titleFa: 'تولید بارنامه و بارکد رهگیری پستی',
+          descriptionFa: `بارنامه الکترونیک ${carrier} با شناسه رهگیری ${trackingCode} صادر شد.`,
+          isCompleted: ['label_created', 'dispatched', 'in_transit', 'delivered', 'exception'].includes(shipmentStatus),
+        },
+        {
+          timestamp: daysAgoIso(daysAgo, -180),
+          stage: 'dispatched',
+          titleFa: 'خروج از مرکز توزیع کارگاه و تحویل به ناوگان',
+          descriptionFa: 'بسته توسط نماینده جمع‌آوری تحویل گرفته شد و به هاب پستی منتقل گردید.',
+          location: 'مرکز مبادلات پستی تهران',
+          isCompleted: ['dispatched', 'in_transit', 'delivered', 'exception'].includes(shipmentStatus),
+        },
+        {
+          timestamp: daysAgoIso(Math.max(0, daysAgo - 1), -60),
+          stage: 'in_transit',
+          titleFa: 'در مسیر به سمت مقصد',
+          descriptionFa: `مرسوله در خط مبادلاتی به سمت استان ${customer.province}، شهر ${customer.city} است.`,
+          location: `هاب منطقه‌ای ${customer.province}`,
+          isCompleted: ['in_transit', 'delivered'].includes(shipmentStatus),
+        },
+        {
+          timestamp: daysAgoIso(Math.max(0, daysAgo - 2)),
+          stage: 'delivered',
+          titleFa: 'تحویل نهایی به گیرنده',
+          descriptionFa: `مرسوله با امضای دیجیتال گیرنده (${customer.fullName}) تحویل گردید.`,
+          isCompleted: shipmentStatus === 'delivered',
+        },
+      ];
 
       const shipment: Shipment = {
         id: `SHP-PKG-${2000 + shipSeq}`,
         orderId,
         customerId: customer.id,
+        customerName: customer.fullName,
+        recipientName: customer.fullName,
+        recipientPhone: customer.phone,
+        shippingAddress: customer.address,
         carrier,
         trackingCode,
-        status: status === 'delivered' ? 'delivered' : 'in_transit',
+        status: shipmentStatus,
         destinationCity: customer.city,
         shippingFeeTomans: shippingFee,
-        dispatchedAt: daysAgoIso(daysAgo, -180),
-        deliveredAt: status === 'delivered' ? daysAgoIso(Math.max(0, daysAgo - 3)) : undefined,
+        dispatchedAt: ['dispatched', 'in_transit', 'delivered', 'exception'].includes(shipmentStatus)
+          ? daysAgoIso(daysAgo, -180)
+          : undefined,
+        deliveredAt: shipmentStatus === 'delivered' ? daysAgoIso(Math.max(0, daysAgo - 3)) : undefined,
         estimatedDeliveryDate: daysAgoIso(Math.max(0, daysAgo - 4)),
+        items: shipmentItems,
+        timeline,
+        exceptionReason: shipmentStatus === 'exception' ? 'عدم حضور گیرنده در نشانی ثبت‌شده پستی' : undefined,
+        isMockLabel: true,
+        packedAt: daysAgoIso(daysAgo, -60),
+        packedByStaffId: 'STF-04',
+        packedByStaffName: 'کیان دارابی',
       };
       shipments.push(shipment);
       shipSeq++;
     }
   }
 
-  // Update customer summary metrics
-  customers.forEach((c) => {
+  // Update customer summary metrics and link customer-centric demo records
+  customers.forEach((c, cIdx) => {
     const custOrders = orders.filter((o) => o.customerId === c.id);
+    const custDesigns = customDesigns.filter((d) => d.customerId === c.id || custOrders.some((o) => o.id === d.orderId));
     c.totalOrdersCount = custOrders.length;
-    c.totalSpentTomans = custOrders
+    
+    // Exact formula: Verified Paid Spend minus Processed Refunds
+    const verifiedPaidTotal = custOrders
       .filter((o) => o.paymentStatus === 'verified_paid')
       .reduce((sum, o) => sum + o.totalTomans, 0);
+    const refundedTotal = custOrders
+      .filter((o) => o.paymentStatus === 'refunded')
+      .reduce((sum, o) => sum + o.totalTomans, 0);
+    c.totalSpentTomans = Math.max(0, verifiedPaidTotal - refundedTotal);
+
+    // Initialize support tickets linked to real fixture orders and designs
+    c.supportTickets = [];
+    if (custOrders.length > 0 && cIdx % 2 === 0) {
+      const targetOrder = custOrders[0];
+      const targetDesign = custDesigns[0];
+      c.supportTickets.push({
+        id: `TCK-${800 + cIdx}`,
+        subject: targetDesign 
+          ? `استعلام تطبیق رنگ چاپ کالیگرافی برای سفارش ${targetOrder.id}` 
+          : `پیگیری زمان ارسال و تحویل سفارش ${targetOrder.id}`,
+        status: targetOrder.status === 'delivered' ? 'resolved' : 'in_progress',
+        priority: targetOrder.isRushOrder ? 'high' : 'normal',
+        category: targetDesign ? 'بررسی طرح اختصاصی' : 'پیگیری مرسوله',
+        createdAt: targetOrder.createdAt,
+        linkedOrderId: targetOrder.id,
+        linkedDesignId: targetDesign?.id,
+        lastMessage: targetDesign
+          ? 'پاسخ کارشناس آتلیه: فایل وکتور CMYK بازبینی شده و آماده ارسال به چاپ مستقیم DTG است.'
+          : 'پاسخ واحد پشتیبانی: مرسوله شما در حال بسته‌بندی در کارگاه است و بارنامه پستی به زودی ثبت می‌گردد.',
+      });
+    }
+
+    // Initialize reviews for delivered orders
+    c.reviews = [];
+    const deliveredOrder = custOrders.find((o) => o.status === 'delivered');
+    if (deliveredOrder && deliveredOrder.items.length > 0) {
+      const reviewedItem = deliveredOrder.items[0];
+      c.reviews.push({
+        id: `REV-${900 + cIdx}`,
+        productId: reviewedItem.productId,
+        productName: reviewedItem.productName,
+        rating: cIdx % 5 === 0 ? 4 : 5,
+        comment: cIdx % 2 === 0
+          ? 'کیفیت بافت پنبه سنگین فوق‌العاده‌ست. چاپ روی سینه بعد از چند بار شستشو هیچ ترکی برنداشته و ماندگاره.'
+          : 'تن‌خور اورسایز دقیقاً مطابق جدول سایز بود و بسته‌بندی پرچم‌دار کارگاه با سلیقه تمام انجام شده بود.',
+        status: 'approved',
+        createdAt: deliveredOrder.updatedAt,
+      });
+    }
+
+    // Initialize permitted staff notes with deep links
+    c.staffNotes = [
+      {
+        id: `NOTE-${c.id}-1`,
+        timestamp: c.createdAt,
+        authorId: 'STF-01',
+        authorName: 'سهراب سپهری',
+        text: 'افتتاح حساب کاربری در سامانه شاه‌پوش با احراز هویت پیامکی موفق.',
+      },
+    ];
+    if (c.tag === 'vip') {
+      c.staffNotes.push({
+        id: `NOTE-${c.id}-2`,
+        timestamp: c.lastActiveAt,
+        authorId: 'STF-02',
+        authorName: 'کیان دارابی',
+        text: 'مشتری رده طلایی (VIP)؛ اولویت بالا در صف پرینتر صنعتی DTG و بسته‌بندی اختصاصی با روبان زرکوب.',
+        linkedOrderId: custOrders[0]?.id,
+        linkedDesignId: custDesigns[0]?.id,
+      });
+    }
+
+    // Saved Favorites (dataset contains them for specific customers only)
+    if (cIdx % 3 === 0) {
+      const prodSample = products[cIdx % products.length];
+      c.savedFavorites = [
+        {
+          productId: prodSample.id,
+          productName: prodSample.name,
+          addedAt: c.lastActiveAt,
+        },
+      ];
+    } else {
+      c.savedFavorites = [];
+    }
+
+    // Saved Cart Items (only where underlying dataset contains them)
+    if (cIdx % 5 === 0 && allVariants.length > 0) {
+      const variantSample = allVariants[cIdx % allVariants.length];
+      const prodParent = products.find((p) => p.id === variantSample.productId);
+      c.cartItems = [
+        {
+          productId: variantSample.productId,
+          productName: prodParent ? prodParent.name : 'محصول پایه شاه‌پوش',
+          variantSku: variantSample.sku,
+          quantity: 1,
+        },
+      ];
+    } else {
+      c.cartItems = [];
+    }
+
+    // Browsing Activity Events (demo anonymous session events with lawful basis notice)
+    c.browsingEvents = [
+      {
+        id: `EVT-${c.id}-1`,
+        timestamp: c.lastActiveAt,
+        eventType: 'view_product',
+        pageTitle: 'مشاهده تیشرت اورسایز پنبه سوپر',
+        url: '/catalog/sp-101',
+        device: 'موبایل (iOS / Safari)',
+        durationSeconds: 145,
+      },
+      {
+        id: `EVT-${c.id}-2`,
+        timestamp: c.lastActiveAt,
+        eventType: 'studio_session',
+        pageTitle: 'آتلیه طراحی سه‌بعدی و ماک‌آپ سفارشی',
+        url: '/studio',
+        device: 'موبایل (iOS / Safari)',
+        durationSeconds: 320,
+      },
+    ];
   });
 
   // 6. Staff Tasks
@@ -1836,5 +2309,14 @@ export function generateSyntheticDatabase(): AdminDatabaseState {
     suppliers,
     purchaseOrders,
     workshopMaterials,
+    artworks: [...DEFAULT_ARTWORK_ASSETS],
+    printRuleZones: [...DEFAULT_PRINT_RULE_ZONES],
+    returnRequests: [...DEFAULT_RETURN_REQUESTS],
+    discounts: [...DEFAULT_DISCOUNTS],
+    marketingCampaigns: [...DEFAULT_MARKETING_CAMPAIGNS],
+    homepageConfig: { ...DEFAULT_HOMEPAGE_CONFIG },
+    storeBanners: [...DEFAULT_STORE_BANNERS],
+    cmsPages: [...DEFAULT_CMS_PAGES],
+    seoRecords: [...DEFAULT_SEO_RECORDS],
   };
 }

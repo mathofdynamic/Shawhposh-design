@@ -13,7 +13,7 @@ import {
   Eye,
 } from 'lucide-react';
 import { AdminPageHeader } from '../../components/shell/AdminPageHeader';
-import { Table, ColumnDef, Badge, Button, SearchInput, Pagination, MoneyDisplay } from '../../components/ui';
+import { Table, ColumnDef, Badge, Button, SearchInput, Pagination, MoneyDisplay, useToast } from '../../components/ui';
 import { useAdminRepository } from '../../domain/useAdminRepository';
 import { ProductVariant } from '../../domain/types';
 import { toFaDigits } from '../../utils/formatters';
@@ -27,6 +27,7 @@ export const VariantsPage: React.FC = () => {
     createVariant,
     updateVariantStock,
   } = useAdminRepository();
+  const { addToast } = useToast();
 
   const [search, setSearch] = useState('');
   const [sizeFilter, setSizeFilter] = useState<string>('all');
@@ -155,7 +156,17 @@ export const VariantsPage: React.FC = () => {
 
     const res = deleteVariant(sku);
     if (!res.success) {
-      alert(res.error || 'امکان حذف این کد تنوع وجود ندارد.');
+      addToast({
+        title: 'عدم امکان حذف تنوع',
+        description: res.error || 'امکان حذف این کد تنوع وجود ندارد.',
+        type: 'error',
+      });
+    } else {
+      addToast({
+        title: 'تنوع حذف شد',
+        description: `کد تنوع کالایی ${sku} با موفقیت حذف گردید.`,
+        type: 'success',
+      });
     }
   };
 

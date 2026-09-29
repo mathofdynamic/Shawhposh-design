@@ -104,7 +104,7 @@ export const ActionCenterPage: React.FC = () => {
 
   const handleRejectDesign = (designId: string) => {
     if (!rejectReason.trim()) {
-      alert('لطفاً دلیل عدم تایید را وارد کنید.');
+      showToast('لطفاً دلیل عدم تایید را وارد کنید.');
       return;
     }
     const currentStaff = state.staff[0];

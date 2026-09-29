@@ -7,6 +7,8 @@ import {
   AdminDatabaseState,
   DateRangePreset,
   OrderStatus,
+  Order,
+  OrderLineItem,
   CustomDesign,
   ActivityLog,
   PaymentAttempt,
@@ -31,9 +33,69 @@ import {
   PurchaseOrder,
   WorkshopMaterial,
   StockMovementType,
+  RefundRecord,
+  SettlementBatchItem,
+  DesignSettings,
+  ArtworkAsset,
+  PrintRuleZone,
+  ProductionStage,
+  Customer,
+  CustomerDetailData,
+  Shipment,
+  ReturnRequest,
+  ReturnReason,
+  ReturnStatus,
+  InspectionOutcome,
+  ReturnResolution,
+  ReturnRequestItem,
+  CustomerSupportTicket,
+  CustomerProductReview,
+  CarrierName,
+  ShipmentStatus,
+  NotificationTemplate,
+  SimulatedNotificationLog,
+  DiscountRule,
+  MarketingCampaign,
+  HomepageLayoutConfig,
+  StoreBanner,
+  CmsCustomPage,
+  SeoMetadataRecord,
+  FunnelAnalysis,
 } from './types';
 import { generateSyntheticDatabase, SCHEMA_VERSION, DEMO_CLOCK_ISO } from './generator';
 import { runInvariantVerification, InvariantSuiteReport } from './invariants';
+import {
+  canTransitionOrderStatus,
+  detectOrderExceptions,
+  OrderException,
+  getOrderType,
+} from './orderStateMachine';
+import {
+  calculateLedgerSummary,
+  validateRefundEligibility,
+  generateSettlementBatches,
+  FinancialLedgerSummary,
+} from './paymentLedger';
+import {
+  DEFAULT_ARTWORK_ASSETS,
+  DEFAULT_PRINT_RULE_ZONES,
+} from './customStudio';
+import {
+  CARRIER_CONFIG,
+  DEFAULT_NOTIFICATION_TEMPLATES,
+  DEFAULT_RETURN_REQUESTS,
+  renderNotificationTemplate,
+} from './shippingReturnsNotifications';
+import {
+  DEFAULT_DISCOUNTS,
+  DEFAULT_MARKETING_CAMPAIGNS,
+  DEFAULT_HOMEPAGE_CONFIG,
+  DEFAULT_STORE_BANNERS,
+  DEFAULT_CMS_PAGES,
+  DEFAULT_SEO_RECORDS,
+  calculateDiscountPreview,
+  validateDiscountConflicts,
+} from './marketingCms';
 
 const STORAGE_KEY = `SHAHPOOSH_ADMIN_DB_V${SCHEMA_VERSION}`;
 const DATA_CHANGE_EVENT = 'shahpoosh:admin_data_mutated';
@@ -406,7 +468,7 @@ class AdminRepository {
           linkedEntityType: 'job',
           linkedEntityId: j.id,
           primaryActionLabel: 'بررسی در میز تولید',
-          targetRoute: '/admin/production/jobs',
+          targetRoute: `/admin/custom-studio/jobs/${j.id}`,
           canDirectResolve: false,
         });
       });
@@ -1639,6 +1701,254 @@ class AdminRepository {
     return list;
   }
 
+  /**
+   * Complete Customer Dossier / Detail Selector
+   * Calculates LTV = Verified Paid Spend - Processed Refunds, and returns isolated customer-specific data
+   */
+  public getCustomerDetails(customerId: string): CustomerDetailData | null {
+    const customer = this.state.customers.find((c) => c.id === customerId);
+    if (!customer) return null;
+
+    const orders = this.state.orders
+      .filter((o) => o.customerId === customerId)
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
+    const payments = this.state.payments
+      .filter((p) => p.customerId === customerId || orders.some((o) => o.id === p.orderId))
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
+    const customDesigns = this.state.customDesigns
+      .filter((d) => d.customerId === customerId || orders.some((o) => o.id === d.orderId));
+
+    const shipments = (this.state.shipments || [])
+      .filter((s) => s.customerId === customerId || orders.some((o) => o.id === s.orderId));
+
+    const supportTickets = customer.supportTickets || [];
+    const reviews = customer.reviews || [];
+    const staffNotes = customer.staffNotes || [];
+    const auditTrail = customer.auditTrail || [];
+    const addresses = customer.addresses || [];
+    const savedFavorites = customer.savedFavorites || [];
+    const cartItems = customer.cartItems || [];
+    const browsingEvents = customer.browsingEvents || [];
+
+    // Verified Paid Orders & Spend
+    const verifiedPaidOrders = orders.filter((o) => o.paymentStatus === 'verified_paid');
+    const verifiedPaidSpendTomans = verifiedPaidOrders.reduce((sum, o) => sum + o.totalTomans, 0);
+
+    // Processed Refunds: deduct refunds on customer's orders
+    const processedRefundsTomans = orders.reduce((sum, o) => {
+      const pay = payments.find((p) => p.orderId === o.id);
+      const refAmt = pay?.refundedAmountTomans ?? (o.paymentStatus === 'refunded' ? o.totalTomans : 0);
+      return sum + refAmt;
+    }, 0);
+
+    const netLtvSpendTomans = Math.max(0, verifiedPaidSpendTomans - processedRefundsTomans);
+    const averageOrderValueTomans = verifiedPaidOrders.length > 0
+      ? Math.round(netLtvSpendTomans / verifiedPaidOrders.length)
+      : 0;
+
+    const dates = orders.map((o) => new Date(o.createdAt).getTime()).filter((t) => !isNaN(t));
+    const firstOrderDate = dates.length > 0 ? new Date(Math.min(...dates)).toISOString() : undefined;
+    const lastOrderDate = dates.length > 0 ? new Date(Math.max(...dates)).toISOString() : undefined;
+    const hasCustomOrders = orders.some((o) => o.hasCustomLineItem) || customDesigns.length > 0;
+
+    return {
+      customer,
+      orders,
+      payments,
+      customDesigns,
+      shipments,
+      supportTickets,
+      reviews,
+      staffNotes,
+      auditTrail,
+      addresses,
+      savedFavorites,
+      cartItems,
+      browsingEvents,
+      totalOrdersCount: orders.length,
+      verifiedPaidOrdersCount: verifiedPaidOrders.length,
+      verifiedPaidSpendTomans,
+      processedRefundsTomans,
+      netLtvSpendTomans,
+      averageOrderValueTomans,
+      firstOrderDate,
+      lastOrderDate,
+      hasCustomOrders,
+    };
+  }
+
+  /**
+   * Filtered & Segmented Customers List Selector
+   */
+  public getCustomersList(options?: {
+    search?: string;
+    segment?: 'all' | 'first_time' | 'repeat' | 'recently_active' | 'inactive' | 'custom_design' | 'high_spend';
+    orderType?: 'all' | 'has_custom' | 'standard_only';
+    province?: string;
+    status?: 'all' | 'active' | 'inactive' | 'deactivated';
+    sortBy?: 'ltv_desc' | 'ltv_asc' | 'orders_desc' | 'recent_active' | 'date_desc' | 'name';
+  }) {
+    const now = new Date(this.state.demoClockIso || DEMO_CLOCK_ISO).getTime();
+    const HIGH_SPEND_THRESHOLD_TOMANS = 2_000_000;
+
+    let items = [...this.state.customers];
+
+    // Compute live per-customer metrics for filtering and sorting
+    const customerMetrics = new Map<string, {
+      totalOrders: number;
+      paidSpend: number;
+      refunds: number;
+      netLtv: number;
+      hasCustom: boolean;
+      daysSinceActive: number;
+    }>();
+
+    for (const c of this.state.customers) {
+      const custOrders = this.state.orders.filter((o) => o.customerId === c.id);
+      const paidOrders = custOrders.filter((o) => o.paymentStatus === 'verified_paid');
+      const paidSpend = paidOrders.reduce((sum, o) => sum + o.totalTomans, 0);
+      const refunds = custOrders
+        .filter((o) => o.paymentStatus === 'refunded')
+        .reduce((sum, o) => sum + o.totalTomans, 0);
+      const netLtv = Math.max(0, paidSpend - refunds);
+      const hasCustom = custOrders.some((o) => o.hasCustomLineItem) ||
+        this.state.customDesigns.some((d) => d.customerId === c.id);
+      const activeMs = new Date(c.lastActiveAt).getTime();
+      const daysSinceActive = isNaN(activeMs) ? 999 : Math.max(0, Math.floor((now - activeMs) / (1000 * 60 * 60 * 24)));
+
+      customerMetrics.set(c.id, {
+        totalOrders: custOrders.length,
+        paidSpend,
+        refunds,
+        netLtv,
+        hasCustom,
+        daysSinceActive,
+      });
+    }
+
+    // Segments count across all fixture customers
+    const segmentsCount = {
+      all: this.state.customers.length,
+      first_time: 0,
+      repeat: 0,
+      recently_active: 0,
+      inactive: 0,
+      custom_design: 0,
+      high_spend: 0,
+    };
+
+    for (const c of this.state.customers) {
+      const m = customerMetrics.get(c.id)!;
+      if (m.totalOrders === 1) segmentsCount.first_time++;
+      if (m.totalOrders >= 2) segmentsCount.repeat++;
+      if (m.daysSinceActive <= 30) segmentsCount.recently_active++;
+      if (m.daysSinceActive > 30) segmentsCount.inactive++;
+      if (m.hasCustom) segmentsCount.custom_design++;
+      if (m.netLtv >= HIGH_SPEND_THRESHOLD_TOMANS) segmentsCount.high_spend++;
+    }
+
+    // Filter by search (name, phone, email, id, city, province)
+    if (options?.search) {
+      const q = options.search.trim().toLowerCase();
+      items = items.filter((c) => {
+        return (
+          c.fullName.toLowerCase().includes(q) ||
+          c.phone.includes(q) ||
+          c.email.toLowerCase().includes(q) ||
+          c.id.toLowerCase().includes(q) ||
+          c.city.toLowerCase().includes(q) ||
+          c.province.toLowerCase().includes(q)
+        );
+      });
+    }
+
+    // Filter by segment
+    if (options?.segment && options.segment !== 'all') {
+      items = items.filter((c) => {
+        const m = customerMetrics.get(c.id)!;
+        switch (options.segment) {
+          case 'first_time':
+            return m.totalOrders === 1;
+          case 'repeat':
+            return m.totalOrders >= 2;
+          case 'recently_active':
+            return m.daysSinceActive <= 30;
+          case 'inactive':
+            return m.daysSinceActive > 30;
+          case 'custom_design':
+            return m.hasCustom;
+          case 'high_spend':
+            return m.netLtv >= HIGH_SPEND_THRESHOLD_TOMANS;
+          default:
+            return true;
+        }
+      });
+    }
+
+    // Filter by orderType
+    if (options?.orderType && options.orderType !== 'all') {
+      items = items.filter((c) => {
+        const m = customerMetrics.get(c.id)!;
+        if (options.orderType === 'has_custom') return m.hasCustom;
+        if (options.orderType === 'standard_only') return !m.hasCustom && m.totalOrders > 0;
+        return true;
+      });
+    }
+
+    // Filter by province
+    if (options?.province && options.province !== 'all') {
+      items = items.filter((c) => c.province === options.province);
+    }
+
+    // Filter by status
+    if (options?.status && options.status !== 'all') {
+      items = items.filter((c) => c.status === options.status);
+    }
+
+    // Sorting
+    const sort = options?.sortBy || 'ltv_desc';
+    items.sort((a, b) => {
+      const mA = customerMetrics.get(a.id)!;
+      const mB = customerMetrics.get(b.id)!;
+      switch (sort) {
+        case 'ltv_desc':
+          return mB.netLtv - mA.netLtv;
+        case 'ltv_asc':
+          return mA.netLtv - mB.netLtv;
+        case 'orders_desc':
+          return mB.totalOrders - mA.totalOrders;
+        case 'recent_active':
+          return new Date(b.lastActiveAt).getTime() - new Date(a.lastActiveAt).getTime();
+        case 'date_desc':
+          return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+        case 'name':
+          return a.fullName.localeCompare(b.fullName, 'fa');
+        default:
+          return mB.netLtv - mA.netLtv;
+      }
+    });
+
+    const activeCount = this.state.customers.filter((c) => c.status !== 'deactivated').length;
+    const totalVerifiedLtv = Array.from(customerMetrics.values()).reduce((s, m) => s + m.netLtv, 0);
+    const avgLtv = customerMetrics.size > 0 ? Math.round(totalVerifiedLtv / customerMetrics.size) : 0;
+
+    return {
+      items,
+      customerMetrics,
+      summary: {
+        totalCount: this.state.customers.length,
+        activeCount,
+        repeatBuyersCount: segmentsCount.repeat,
+        customBuyersCount: segmentsCount.custom_design,
+        totalVerifiedLtv,
+        avgLtv,
+        segments: segmentsCount,
+      },
+    };
+  }
+
   public getDesigns(filters?: {
     status?: CustomDesign['status'] | 'all';
     search?: string;
@@ -1762,25 +2072,79 @@ class AdminRepository {
     designId: string,
     staffId: string,
     notes = 'طرح با موفقیت تایید و جهت چاپ ارسال گردید.'
-  ): { success: boolean; error?: string } {
+  ): { success: boolean; error?: string; dispatchedToProduction?: boolean; messageFa: string } {
     const design = this.state.customDesigns.find((d) => d.id === designId);
-    if (!design) return { success: false, error: 'طرح یافت نشد.' };
+    if (!design) return { success: false, error: 'طرح یافت نشد.', messageFa: 'طرح یافت نشد.' };
 
+    const order = this.state.orders.find((o) => o.id === design.orderId);
+    const staff = this.state.staff.find((s) => s.id === staffId) || this.state.staff[1];
+
+    const prevStatus = design.status;
     design.status = 'approved';
     design.reviewedAt = new Date().toISOString();
     design.reviewerNotes = notes;
     design.assignedStaffId = staffId;
+    design.reviewerName = staff.fullName;
 
-    // Update associated order designStatus
-    const order = this.state.orders.find((o) => o.id === design.orderId);
+    if (!design.auditTrail) design.auditTrail = [];
+    design.auditTrail.push({
+      id: `AUD-${designId}-${Date.now()}`,
+      timestamp: new Date().toISOString(),
+      actorId: staff.id,
+      actorName: staff.fullName,
+      action: 'approved',
+      notes,
+      previousStatus: prevStatus,
+      newStatus: 'approved',
+    });
+
+    let dispatchedToProduction = false;
+    let messageFa = `طرح ${designId} با موفقیت تایید گردید.`;
+
     if (order) {
       order.designStatus = 'approved';
-      if (order.status === 'paid_processing') {
-        order.status = 'in_production';
+
+      // Acceptance: Approval must enforce verified payment for production dispatch
+      const isPaid = order.paymentStatus === 'verified_paid';
+
+      if (isPaid) {
+        if (order.status === 'paid_processing') {
+          order.status = 'in_production';
+        }
+        order.productionStatus = 'in_progress';
+        dispatchedToProduction = true;
+        messageFa = `طرح ${designId} تایید شد و با توجه به تسویه فاکتور، سفارش به خط چاپ مستقیم صنعتی DTG منتقل گردید.`;
+
+        let job = this.state.productionJobs.find((j) => j.orderId === order.id && j.customDesignId === design.id);
+        if (job) {
+          job.stage = 'printing_dtg';
+          job.startedAt = new Date().toISOString();
+        } else {
+          job = {
+            id: `JOB-${400 + this.state.productionJobs.length + 1}`,
+            orderId: order.id,
+            lineItemId: design.lineItemId || order.items[0]?.id || 'ITEM-1',
+            variantSku: design.blankSku || order.items[0]?.variantSku || 'SP101-OVR-BLK-L',
+            customDesignId: design.id,
+            operatorId: staff.id,
+            stage: 'printing_dtg',
+            priority: order.isRushOrder ? 'rush' : 'normal',
+            qcStatus: 'pending',
+            reprintCount: 0,
+            quantity: order.items[0]?.quantity || 1,
+            printingTechnique: 'چاپ دیجیتال مستقیم نساجی (DTG صنعتی Brother GTX Pro)',
+            printPlacement: 'سینه مرکزی (A3+ Front Chest)',
+            dueDate: new Date(Date.now() + 3 * 24 * 3600 * 1000).toISOString(),
+            startedAt: new Date().toISOString(),
+          };
+          this.state.productionJobs.push(job);
+        }
+      } else {
+        dispatchedToProduction = false;
+        messageFa = `طرح ${designId} تایید شد؛ اما به دلیل عدم تسویه کامل فاکتور (${order.paymentStatus})، به خط چاپ ارسال نشد.`;
       }
     }
 
-    const staff = this.state.staff.find((s) => s.id === staffId) || this.state.staff[1];
     this.addActivityLog({
       actorId: staff.id,
       actorName: staff.fullName,
@@ -1789,11 +2153,11 @@ class AdminRepository {
       description: `طرح اختصاصی ${designId} برای سفارش ${design.orderId} توسط ${staff.fullName} تایید شد.`,
       entityType: 'design',
       entityId: designId,
-      metadata: { notes },
+      metadata: { notes, dispatchedToProduction },
     });
 
     this.saveState({ ...this.state });
-    return { success: true };
+    return { success: true, dispatchedToProduction, messageFa };
   }
 
   public rejectCustomDesign(
@@ -1804,17 +2168,32 @@ class AdminRepository {
     const design = this.state.customDesigns.find((d) => d.id === designId);
     if (!design) return { success: false, error: 'طرح یافت نشد.' };
 
+    const staff = this.state.staff.find((s) => s.id === staffId) || this.state.staff[1];
+    const prevStatus = design.status;
     design.status = 'rejected';
     design.reviewedAt = new Date().toISOString();
     design.reviewerNotes = reason;
     design.assignedStaffId = staffId;
+    design.reviewerName = staff.fullName;
+
+    if (!design.auditTrail) design.auditTrail = [];
+    design.auditTrail.push({
+      id: `AUD-${designId}-${Date.now()}`,
+      timestamp: new Date().toISOString(),
+      actorId: staff.id,
+      actorName: staff.fullName,
+      action: 'rejected',
+      notes: reason,
+      previousStatus: prevStatus,
+      newStatus: 'rejected',
+    });
 
     const order = this.state.orders.find((o) => o.id === design.orderId);
     if (order) {
       order.designStatus = 'rejected';
+      // Invariant: rejected designs do not change payment status!
     }
 
-    const staff = this.state.staff.find((s) => s.id === staffId) || this.state.staff[1];
     this.addActivityLog({
       actorId: staff.id,
       actorName: staff.fullName,
@@ -1830,6 +2209,557 @@ class AdminRepository {
     return { success: true };
   }
 
+  public requestDesignRevision(
+    designId: string,
+    staffId: string,
+    reason: string
+  ): { success: boolean; error?: string } {
+    const design = this.state.customDesigns.find((d) => d.id === designId);
+    if (!design) return { success: false, error: 'طرح یافت نشد.' };
+
+    const staff = this.state.staff.find((s) => s.id === staffId) || this.state.staff[1];
+    const prevStatus = design.status;
+    design.status = 'revision_requested';
+    design.reviewerNotes = reason;
+    design.assignedStaffId = staffId;
+    design.reviewerName = staff.fullName;
+
+    if (!design.auditTrail) design.auditTrail = [];
+    design.auditTrail.push({
+      id: `AUD-${designId}-${Date.now()}`,
+      timestamp: new Date().toISOString(),
+      actorId: staff.id,
+      actorName: staff.fullName,
+      action: 'revision_requested',
+      notes: reason,
+      previousStatus: prevStatus,
+      newStatus: 'revision_requested',
+    });
+
+    const order = this.state.orders.find((o) => o.id === design.orderId);
+    if (order) {
+      order.designStatus = 'pending_review';
+    }
+
+    this.addActivityLog({
+      actorId: staff.id,
+      actorName: staff.fullName,
+      actorRole: staff.role,
+      actionType: 'DESIGN_REVISION_REQUESTED',
+      description: `درخواست اصلاحیه برای طرح ${designId} ثبت شد. توضیحات: ${reason}`,
+      entityType: 'design',
+      entityId: designId,
+      metadata: { reason },
+    });
+
+    this.saveState({ ...this.state });
+    return { success: true };
+  }
+
+  public submitCustomerRevision(
+    designId: string,
+    newSettings: Partial<DesignSettings>,
+    customerNote?: string
+  ): { success: boolean; error?: string } {
+    const design = this.state.customDesigns.find((d) => d.id === designId);
+    if (!design) return { success: false, error: 'طرح یافت نشد.' };
+
+    if (!design.revisions) design.revisions = [];
+    if (design.settings) {
+      design.revisions.push({
+        revisionNumber: design.revisions.length + 1,
+        submittedAt: new Date().toISOString(),
+        previewUrl: design.previewUrl,
+        settings: { ...design.settings },
+        changeSummaryFa: 'اصلاحات اعمال شده توسط کاربر',
+        customerNote: customerNote || design.customerNote,
+      });
+    }
+
+    design.settings = {
+      ...(design.settings || {
+        designMode: 'graphic',
+        designScale: 100,
+        designPosX: 0,
+        designPosY: 0,
+        tshirtColorName: 'مشکی',
+        tshirtColorHex: '#1C1A1A',
+      }),
+      ...newSettings,
+    };
+
+    design.revisionCount = (design.revisionCount || 1) + 1;
+    const prevStatus = design.status;
+    design.status = 'under_review';
+    if (customerNote) design.customerNote = customerNote;
+
+    if (!design.auditTrail) design.auditTrail = [];
+    design.auditTrail.push({
+      id: `AUD-${designId}-${Date.now()}`,
+      timestamp: new Date().toISOString(),
+      actorId: design.customerId,
+      actorName: design.customerName || 'کاربر',
+      action: 'revision_submitted',
+      notes: customerNote || 'ارسال نسخه اصلاحی جدید توسط کاربر',
+      previousStatus: prevStatus,
+      newStatus: 'under_review',
+    });
+
+    this.saveState({ ...this.state });
+    return { success: true };
+  }
+
+  public addDesignStaffNote(
+    designId: string,
+    staffId: string,
+    text: string
+  ): { success: boolean; error?: string } {
+    const design = this.state.customDesigns.find((d) => d.id === designId);
+    if (!design) return { success: false, error: 'طرح یافت نشد.' };
+
+    const staff = this.state.staff.find((s) => s.id === staffId) || this.state.staff[0];
+    if (!design.staffNotes) design.staffNotes = [];
+    design.staffNotes.push({
+      id: `NOTE-${Date.now()}`,
+      timestamp: new Date().toISOString(),
+      authorId: staff.id,
+      authorName: staff.fullName,
+      text,
+    });
+
+    this.saveState({ ...this.state });
+    return { success: true };
+  }
+
+  public getCustomDesignById(id: string) {
+    const design = this.state.customDesigns.find((d) => d.id === id);
+    if (!design) return null;
+
+    const order = this.state.orders.find((o) => o.id === design.orderId);
+    const customer = this.state.customers.find((c) => c.id === design.customerId);
+    const blankVariant = design.blankSku ? this.state.variants.find((v) => v.sku === design.blankSku) : undefined;
+    const blankProduct = blankVariant ? this.state.products.find((p) => p.id === blankVariant.productId) : undefined;
+    const payment = order ? this.state.payments.find((p) => p.orderId === order.id) : undefined;
+    const relatedJob = this.state.productionJobs.find((j) => j.customDesignId === design.id || j.orderId === design.orderId);
+
+    return {
+      design,
+      order,
+      customer,
+      blankVariant,
+      blankProduct,
+      payment,
+      relatedJob,
+    };
+  }
+
+  public getArtworkAssets(): ArtworkAsset[] {
+    return this.state.artworks || DEFAULT_ARTWORK_ASSETS;
+  }
+
+  public getPrintRuleZones(): PrintRuleZone[] {
+    return this.state.printRuleZones || DEFAULT_PRINT_RULE_ZONES;
+  }
+
+  public getProductionJobById(id: string) {
+    const job = this.state.productionJobs.find((j) => j.id === id);
+    if (!job) return null;
+
+    const order = this.state.orders.find((o) => o.id === job.orderId);
+    const lineItem = order?.items.find((i) => i.id === job.lineItemId) || order?.items[0];
+    const design = job.customDesignId
+      ? this.state.customDesigns.find((d) => d.id === job.customDesignId)
+      : undefined;
+    const variant = this.state.variants.find((v) => v.sku === job.variantSku);
+    const product = variant ? this.state.products.find((p) => p.id === variant.productId) : undefined;
+    const customer = order ? this.state.customers.find((c) => c.id === order.customerId) : undefined;
+    const operator = this.state.staff.find((s) => s.id === job.operatorId);
+
+    return {
+      job,
+      order,
+      lineItem,
+      design,
+      variant,
+      product,
+      customer,
+      operator,
+    };
+  }
+
+  public getDailyProductionMetrics() {
+    const jobs = this.state.productionJobs;
+    const nowMs = new Date(this.state.demoClockIso).getTime();
+
+    // Due & Overdue
+    const activeJobs = jobs.filter(
+      (j) => j.stage !== 'completed' && j.stage !== 'ready_for_fulfillment'
+    );
+    const overdueCount = activeJobs.filter((j) => new Date(j.dueDate).getTime() < nowMs).length;
+    const dueTodayCount = activeJobs.filter((j) => {
+      const diffHours = (new Date(j.dueDate).getTime() - nowMs) / (1000 * 3600);
+      return diffHours >= 0 && diffHours <= 24;
+    }).length;
+
+    // Daily Throughput: jobs completed or moved to fulfillment
+    const completedJobs = jobs.filter(
+      (j) => j.stage === 'completed' || j.stage === 'ready_for_fulfillment'
+    );
+    const throughput = completedJobs.length;
+
+    // Average turnaround hours from real startedAt -> finishedAt where real fixture events exist
+    const finishedWithTimes = jobs.filter((j) => j.startedAt && j.finishedAt);
+    let avgTurnaroundHours = 4.5;
+    if (finishedWithTimes.length > 0) {
+      const totalHours = finishedWithTimes.reduce((acc, j) => {
+        const diffMs = new Date(j.finishedAt!).getTime() - new Date(j.startedAt!).getTime();
+        return acc + Math.max(1, diffMs / (1000 * 3600));
+      }, 0);
+      avgTurnaroundHours = Math.round((totalHours / finishedWithTimes.length) * 10) / 10;
+    }
+
+    // Blocked work (on_hold + reprint_needed)
+    const blockedCount = jobs.filter(
+      (j) => j.stage === 'on_hold' || j.stage === 'reprint_needed'
+    ).length;
+
+    // Workshop capacity: Brother GTX rated at 32 garments per shift
+    const dailyCapacityUnits = 32;
+    const activeLoadUnits = activeJobs.reduce((acc, j) => acc + (j.quantity || 1), 0);
+    const availableCapacityUnits = Math.max(0, dailyCapacityUnits - activeLoadUnits);
+    const capacityLoadPercent = Math.min(100, Math.round((activeLoadUnits / dailyCapacityUnits) * 100));
+
+    return {
+      totalJobs: jobs.length,
+      activeJobsCount: activeJobs.length,
+      overdueCount,
+      dueTodayCount,
+      throughput,
+      avgTurnaroundHours,
+      blockedCount,
+      dailyCapacityUnits,
+      activeLoadUnits,
+      availableCapacityUnits,
+      capacityLoadPercent,
+    };
+  }
+
+  public advanceProductionJob(
+    jobId: string,
+    targetStage?: ProductionStage,
+    staffId = 'STF-04',
+    note?: string
+  ): { success: boolean; error?: string; messageFa: string } {
+    const job = this.state.productionJobs.find((j) => j.id === jobId);
+    if (!job) return { success: false, error: 'دستور کار تولید یافت نشد.', messageFa: 'یافت نشد' };
+
+    const order = this.state.orders.find((o) => o.id === job.orderId);
+    if (!order) return { success: false, error: 'سفارش متصل به دستور کار یافت نشد.', messageFa: 'یافت نشد' };
+
+    // Guardrail: no production dispatch from unpaid/unapproved orders
+    if (order.paymentStatus !== 'verified_paid') {
+      return {
+        success: false,
+        error: `دستور کار مربوط به سفارش تسویه نشده است (وضعیت پرداخت: ${order.paymentStatus}). ارسال به خط تولید مسدود است.`,
+        messageFa: 'سفارش پرداخت نشده',
+      };
+    }
+    if (order.hasCustomLineItem && order.designStatus !== 'approved') {
+      return {
+        success: false,
+        error: 'طرح سفارشی این سفارش هنوز توسط آتلیه تایید نشده است. پیشروی خط تولید ممنوع است.',
+        messageFa: 'طرح تایید نشده',
+      };
+    }
+
+    const prevStage = job.stage;
+    let nextStage: ProductionStage = targetStage || 'printing_dtg';
+
+    if (!targetStage) {
+      if (prevStage === 'ready' || prevStage === 'queued') nextStage = 'printing_dtg';
+      else if (prevStage === 'pretreatment') nextStage = 'printing_dtg';
+      else if (prevStage === 'printing_dtg') nextStage = 'curing_heatpress';
+      else if (prevStage === 'curing_heatpress') nextStage = 'qc_inspection';
+      else if (prevStage === 'qc_inspection') nextStage = 'ready_for_fulfillment';
+      else if (prevStage === 'ready_for_fulfillment') nextStage = 'completed';
+      else if (prevStage === 'reprint_needed') nextStage = 'printing_dtg';
+      else if (prevStage === 'on_hold') nextStage = 'queued';
+    }
+
+    job.stage = nextStage;
+    const staff = this.state.staff.find((s) => s.id === staffId) || this.state.staff[0];
+
+    // Audit Trail
+    if (!job.auditTrail) job.auditTrail = [];
+    job.auditTrail.unshift({
+      id: `ADT-${job.id}-${Date.now()}`,
+      timestamp: new Date().toISOString(),
+      actorName: staff.fullName,
+      action: `تغییر مرحله به ${nextStage}`,
+      note: note || `دستور کار به مرحله ${nextStage} منتقل شد`,
+      fromStage: prevStage,
+      toStage: nextStage,
+    });
+
+    // Synchronize Order status
+    if (
+      nextStage === 'printing_dtg' ||
+      nextStage === 'curing_heatpress' ||
+      nextStage === 'pretreatment'
+    ) {
+      if (order.status !== 'in_production') order.status = 'in_production';
+      order.productionStatus = 'in_progress';
+      if (!job.startedAt) job.startedAt = new Date().toISOString();
+    } else if (nextStage === 'qc_inspection') {
+      order.status = 'quality_check';
+      order.productionStatus = 'qc';
+    } else if (nextStage === 'ready_for_fulfillment') {
+      job.qcStatus = 'passed';
+      job.finishedAt = new Date().toISOString();
+      order.status = 'ready_to_ship';
+      order.productionStatus = 'ready';
+    } else if (nextStage === 'completed') {
+      job.qcStatus = 'passed';
+      if (!job.finishedAt) job.finishedAt = new Date().toISOString();
+    }
+
+    this.addActivityLog({
+      actorId: staff.id,
+      actorName: staff.fullName,
+      actorRole: staff.role,
+      actionType: 'JOB_STAGE_ADVANCED',
+      description: `دستور کار ${job.id} برای سفارش ${job.orderId} به مرحله «${nextStage}» منتقل شد.`,
+      entityType: 'production',
+      entityId: job.id,
+      metadata: { fromStage: prevStage, toStage: nextStage, note },
+    });
+
+    this.saveState({ ...this.state });
+    return { success: true, messageFa: `دستور کار با موفقیت به مرحله ${nextStage} منتقل گردید.` };
+  }
+
+  public holdProductionJob(
+    jobId: string,
+    reason: string,
+    staffId = 'STF-04'
+  ): { success: boolean; error?: string } {
+    const job = this.state.productionJobs.find((j) => j.id === jobId);
+    if (!job) return { success: false, error: 'دستور کار یافت نشد.' };
+
+    const staff = this.state.staff.find((s) => s.id === staffId) || this.state.staff[0];
+    const prevStage = job.stage;
+    job.stage = 'on_hold';
+    job.holdReason = reason;
+
+    if (!job.auditTrail) job.auditTrail = [];
+    job.auditTrail.unshift({
+      id: `ADT-${job.id}-${Date.now()}`,
+      timestamp: new Date().toISOString(),
+      actorName: staff.fullName,
+      action: 'توقف کار (Hold)',
+      note: reason,
+      fromStage: prevStage,
+      toStage: 'on_hold',
+    });
+
+    this.addActivityLog({
+      actorId: staff.id,
+      actorName: staff.fullName,
+      actorRole: staff.role,
+      actionType: 'JOB_HELD',
+      description: `دستور کار ${job.id} متوقف شد. دلیل: ${reason}`,
+      entityType: 'production',
+      entityId: job.id,
+      metadata: { reason },
+    });
+
+    this.saveState({ ...this.state });
+    return { success: true };
+  }
+
+  public resumeProductionJob(jobId: string, staffId = 'STF-04'): { success: boolean; error?: string } {
+    const job = this.state.productionJobs.find((j) => j.id === jobId);
+    if (!job) return { success: false, error: 'دستور کار یافت نشد.' };
+
+    const staff = this.state.staff.find((s) => s.id === staffId) || this.state.staff[0];
+    job.stage = 'queued';
+    job.holdReason = undefined;
+
+    if (!job.auditTrail) job.auditTrail = [];
+    job.auditTrail.unshift({
+      id: `ADT-${job.id}-${Date.now()}`,
+      timestamp: new Date().toISOString(),
+      actorName: staff.fullName,
+      action: 'رفع توقف و ازسرگیری (Resume)',
+      note: 'مانع رفع شد و کار به صف چاپ بازگشت',
+      fromStage: 'on_hold',
+      toStage: 'queued',
+    });
+
+    this.saveState({ ...this.state });
+    return { success: true };
+  }
+
+  public submitQcInspection(
+    jobId: string,
+    input: {
+      passed: boolean;
+      defectReason?: string;
+      wastedGarmentCount?: number;
+      reprintReworkAssigned?: boolean;
+      operatorId?: string;
+      notes?: string;
+    }
+  ): { success: boolean; error?: string; messageFa: string } {
+    const job = this.state.productionJobs.find((j) => j.id === jobId);
+    if (!job) return { success: false, error: 'دستور کار یافت نشد.', messageFa: 'یافت نشد' };
+
+    const order = this.state.orders.find((o) => o.id === job.orderId);
+    const staff =
+      this.state.staff.find((s) => s.id === (input.operatorId || 'STF-05')) || this.state.staff[0];
+
+    if (!job.auditTrail) job.auditTrail = [];
+
+    if (input.passed) {
+      job.qcStatus = 'passed';
+      job.stage = 'ready_for_fulfillment';
+      job.qcNotes = input.notes || 'آزمون کنترل کیفی نهایی و ثبات شستشو با موفقیت تایید شد.';
+      job.finishedAt = new Date().toISOString();
+
+      if (order) {
+        order.status = 'ready_to_ship';
+        order.productionStatus = 'ready';
+      }
+
+      job.auditTrail.unshift({
+        id: `ADT-QC-${Date.now()}`,
+        timestamp: new Date().toISOString(),
+        actorName: staff.fullName,
+        action: 'تایید کنترل کیفیت (QC Passed)',
+        note: job.qcNotes,
+      });
+
+      this.addActivityLog({
+        actorId: staff.id,
+        actorName: staff.fullName,
+        actorRole: staff.role,
+        actionType: 'QC_PASSED',
+        description: `محصول دستور کار ${job.id} تایید کیفی شد و به مرحله آماده ارسال رفت.`,
+        entityType: 'production',
+        entityId: job.id,
+      });
+
+      this.saveState({ ...this.state });
+      return {
+        success: true,
+        messageFa: 'آزمون کنترل کیفی با موفقیت تایید و سفارش به واحد بسته‌بندی و ارسال تحویل گردید.',
+      };
+    } else {
+      // QC Failed
+      job.qcStatus = 'failed';
+      job.defectReason = input.defectReason || 'ایراد در ثبات یا کادر چاپ';
+      job.qcNotes = input.notes || job.defectReason;
+      const wastedCount = input.wastedGarmentCount || 1;
+      job.wastedGarmentCount = (job.wastedGarmentCount || 0) + wastedCount;
+
+      // Invariant Guard: A rejected QC item must not automatically become shippable!
+      if (order) {
+        order.productionStatus = 'rework';
+        if (order.status === 'ready_to_ship' || order.status === 'shipped') {
+          order.status = 'quality_check';
+        }
+      }
+
+      // If rework assigned:
+      if (input.reprintReworkAssigned) {
+        job.stage = 'reprint_needed';
+        job.reprintCount = (job.reprintCount || 0) + 1;
+        job.reworkReason = job.defectReason;
+
+        // Consume 1 replacement blank garment without double reducing:
+        const variant = this.state.variants.find((v) => v.sku === job.variantSku);
+        if (variant && variant.onHandStock >= wastedCount) {
+          const prevOnHand = variant.onHandStock;
+          variant.onHandStock -= wastedCount;
+
+          if (!this.state.stockMovements) this.state.stockMovements = [];
+          this.state.stockMovements.unshift({
+            id: `MOV-QC-${Date.now()}`,
+            timestamp: new Date().toISOString(),
+            sku: variant.sku,
+            productId: variant.productId,
+            type: 'production_scrap',
+            quantityChange: -wastedCount,
+            fieldAffected: 'onHand',
+            previousOnHand: prevOnHand,
+            newOnHand: variant.onHandStock,
+            previousReserved: variant.reservedStock,
+            newReserved: variant.reservedStock,
+            reason: `ضایعات چاپ و بازرسی QC در دستور کار ${job.id}: ${job.defectReason}`,
+            actorId: staff.id,
+            actorName: staff.fullName,
+          });
+        }
+      }
+
+      job.auditTrail.unshift({
+        id: `ADT-QC-${Date.now()}`,
+        timestamp: new Date().toISOString(),
+        actorName: staff.fullName,
+        action: 'رد کنترل کیفی (QC Failed)',
+        note: `علت رد: ${job.defectReason} · ثبت ضایعات: ${wastedCount} عدد`,
+      });
+
+      this.addActivityLog({
+        actorId: staff.id,
+        actorName: staff.fullName,
+        actorRole: staff.role,
+        actionType: 'QC_FAILED',
+        description: `کنترل کیفیت دستور کار ${job.id} رد شد. دلیل: ${job.defectReason}`,
+        entityType: 'production',
+        entityId: job.id,
+        metadata: { defectReason: job.defectReason, wastedCount },
+      });
+
+      this.saveState({ ...this.state });
+      return {
+        success: true,
+        messageFa: `طرح به علت «${job.defectReason}» در QC رد شد و به بخش بازچاپ/اصلاح ارجاع گردید. سفارش متوقف شد.`,
+      };
+    }
+  }
+
+  public assignProductionJob(
+    jobId: string,
+    operatorId: string,
+    dueDate?: string,
+    vendorPartner?: string,
+    staffId = 'STF-01'
+  ): { success: boolean; error?: string } {
+    const job = this.state.productionJobs.find((j) => j.id === jobId);
+    if (!job) return { success: false, error: 'دستور کار یافت نشد.' };
+
+    const operator = this.state.staff.find((s) => s.id === operatorId);
+    if (operator) {
+      job.operatorId = operator.id;
+      job.assignedStaffName = operator.fullName;
+    }
+    if (dueDate) job.dueDate = dueDate;
+    if (vendorPartner !== undefined) job.vendorPartner = vendorPartner;
+
+    if (!job.auditTrail) job.auditTrail = [];
+    job.auditTrail.unshift({
+      id: `ADT-ASN-${Date.now()}`,
+      timestamp: new Date().toISOString(),
+      actorName: 'مدیر تولید',
+      action: 'تخصیص مجدد و زمان‌بندی',
+      note: `اپراتور: ${operator?.fullName || operatorId} · مهلت تحویل: ${dueDate || job.dueDate}`,
+    });
+
+    this.saveState({ ...this.state });
+    return { success: true };
+  }
+
   public updateOrderStatus(
     orderId: string,
     newStatus: OrderStatus,
@@ -1839,22 +2769,56 @@ class AdminRepository {
     const order = this.state.orders.find((o) => o.id === orderId);
     if (!order) return { success: false, error: 'سفارش یافت نشد.' };
 
+    const payment = this.state.payments.find((p) => p.orderId === orderId);
+    const designs = this.state.customDesigns.filter((d) => d.orderId === orderId);
+    const jobs = this.state.productionJobs.filter((j) => j.orderId === orderId);
+    const shipment = this.state.shipments.find((s) => s.orderId === orderId);
+
+    // Validate with Transition Guard
+    const guard = canTransitionOrderStatus(newStatus, {
+      order,
+      payment,
+      designs,
+      jobs,
+      shipment,
+      variants: this.state.variants,
+    });
+
+    if (!guard.allowed) {
+      return { success: false, error: guard.reason || 'تغییر وضعیت مجاز نیست.' };
+    }
+
     const oldStatus = order.status;
     order.status = newStatus;
     order.updatedAt = new Date().toISOString();
     if (notes) order.notes = notes;
 
-    // Handle inventory state changes for cancelled/refunded
-    if ((newStatus === 'cancelled' || newStatus === 'refunded') && oldStatus !== 'cancelled' && oldStatus !== 'refunded') {
+    const staff = this.state.staff.find((s) => s.id === staffId) || this.state.staff[0];
+
+    // Status Timeline
+    if (!order.statusTimeline) order.statusTimeline = [];
+    order.statusTimeline.unshift({
+      id: `TL-${Date.now()}`,
+      timestamp: new Date().toISOString(),
+      fromStatus: oldStatus,
+      toStatus: newStatus,
+      actorName: staff.fullName,
+      note: notes,
+    });
+
+    // Handle inventory state changes for cancelled
+    if (newStatus === 'cancelled' && oldStatus !== 'cancelled') {
       order.items.forEach((item) => {
-        const v = this.state.variants.find((variant) => variant.sku === item.variantSku);
-        if (v && v.reservedStock >= item.quantity) {
-          v.reservedStock -= item.quantity;
-        }
+        this.restoreStockFromCancellation(
+          order.id,
+          item.variantSku,
+          item.quantity,
+          notes || 'لغو سفارش از طریق پنل عملیات',
+          oldStatus === 'shipped' || oldStatus === 'delivered'
+        );
       });
     }
 
-    const staff = this.state.staff.find((s) => s.id === staffId) || this.state.staff[0];
     this.addActivityLog({
       actorId: staff.id,
       actorName: staff.fullName,
@@ -1870,55 +2834,519 @@ class AdminRepository {
     return { success: true };
   }
 
-  public issueSimulatedRefund(
+  public assignOrderOwner(
     orderId: string,
-    amountTomans: number,
+    ownerStaffId: string,
+    actingStaffId?: string
+  ): { success: boolean; error?: string } {
+    const order = this.state.orders.find((o) => o.id === orderId);
+    if (!order) return { success: false, error: 'سفارش یافت نشد.' };
+    const owner = this.state.staff.find((s) => s.id === ownerStaffId);
+    if (!owner) return { success: false, error: 'همکار مورد نظر یافت نشد.' };
+
+    order.assignedOwnerId = owner.id;
+    order.assignedOwnerName = owner.fullName;
+    order.updatedAt = new Date().toISOString();
+
+    const actor = this.state.staff.find((s) => s.id === actingStaffId) || this.state.staff[0];
+    this.addActivityLog({
+      actorId: actor.id,
+      actorName: actor.fullName,
+      actorRole: actor.role,
+      actionType: 'ORDER_OWNER_ASSIGNED',
+      description: `مسئولیت پیگیری سفارش ${orderId} به ${owner.fullName} محول شد.`,
+      entityType: 'order',
+      entityId: orderId,
+      metadata: { ownerStaffId, ownerName: owner.fullName },
+    });
+
+    this.saveState({ ...this.state });
+    return { success: true };
+  }
+
+  public updateOrderDeliveryDetails(
+    orderId: string,
+    updates: { shippingAddress: string; city: string; customerPhone: string; reason: string },
+    staffId: string
+  ): { success: boolean; error?: string } {
+    const order = this.state.orders.find((o) => o.id === orderId);
+    if (!order) return { success: false, error: 'سفارش یافت نشد.' };
+
+    if (!updates.shippingAddress.trim() || !updates.city.trim() || !updates.customerPhone.trim()) {
+      return { success: false, error: 'اطلاعات نشانی، شهر و شماره تماس الزامی است.' };
+    }
+    if (!updates.reason.trim()) {
+      return { success: false, error: 'درج دلیل رسمی برای تغییر اطلاعات تحویل مرسوله الزامی است.' };
+    }
+
+    const previousAddress = `${order.city} - ${order.shippingAddress} (تلفن: ${order.customerPhone})`;
+    const newAddress = `${updates.city} - ${updates.shippingAddress} (تلفن: ${updates.customerPhone})`;
+
+    if (!order.deliveryHistory) order.deliveryHistory = [];
+    const staff = this.state.staff.find((s) => s.id === staffId) || this.state.staff[0];
+
+    order.deliveryHistory.unshift({
+      timestamp: new Date().toISOString(),
+      previousAddress,
+      newAddress,
+      actorName: staff.fullName,
+      reason: updates.reason,
+    });
+
+    order.shippingAddress = updates.shippingAddress.trim();
+    order.city = updates.city.trim();
+    order.customerPhone = updates.customerPhone.trim();
+    order.updatedAt = new Date().toISOString();
+
+    this.addActivityLog({
+      actorId: staff.id,
+      actorName: staff.fullName,
+      actorRole: staff.role,
+      actionType: 'ORDER_DELIVERY_UPDATED',
+      description: `نشانی تحویل سفارش ${orderId} اصلاح شد. دلیل: ${updates.reason}`,
+      entityType: 'order',
+      entityId: orderId,
+      metadata: { previousAddress, newAddress, reason: updates.reason },
+    });
+
+    this.saveState({ ...this.state });
+    return { success: true };
+  }
+
+  public cancelOrderWithReason(
+    orderId: string,
     reason: string,
     staffId: string
   ): { success: boolean; error?: string } {
     const order = this.state.orders.find((o) => o.id === orderId);
     if (!order) return { success: false, error: 'سفارش یافت نشد.' };
 
-    const payment = this.state.payments.find((p) => p.orderId === orderId);
-    if (!payment) return { success: false, error: 'تراکنش پرداخت مربوط به این سفارش یافت نشد.' };
-
-    payment.status = 'refunded';
-    payment.refundedAmountTomans = amountTomans;
-    payment.refundReason = reason;
-    payment.refundedAt = new Date().toISOString();
-
-    order.paymentStatus = 'refunded';
-    order.status = 'refunded';
-    order.updatedAt = new Date().toISOString();
-
-    // Release reservations
-    order.items.forEach((item) => {
-      const v = this.state.variants.find((variant) => variant.sku === item.variantSku);
-      if (v && v.reservedStock >= item.quantity) {
-        v.reservedStock -= item.quantity;
-      }
-    });
-
-    // Update customer totalSpent
-    const customer = this.state.customers.find((c) => c.id === order.customerId);
-    if (customer) {
-      customer.totalSpentTomans = Math.max(0, customer.totalSpentTomans - amountTomans);
+    if (!reason.trim()) {
+      return { success: false, error: 'ثبت علت لغو سفارش در سامانه الزامی است.' };
     }
 
-    const staff = this.state.staff.find((s) => s.id === staffId) || this.state.staff[5];
+    const res = this.updateOrderStatus(orderId, 'cancelled', staffId, `لغو سفارش: ${reason}`);
+    if (res.success) {
+      order.cancellationReason = reason;
+      this.saveState({ ...this.state });
+    }
+    return res;
+  }
+
+  public addOrderStaffNote(
+    orderId: string,
+    text: string,
+    staffId: string
+  ): { success: boolean; error?: string } {
+    const order = this.state.orders.find((o) => o.id === orderId);
+    if (!order) return { success: false, error: 'سفارش یافت نشد.' };
+    if (!text.trim()) return { success: false, error: 'متن یادداشت نمی‌تواند خالی باشد.' };
+
+    const staff = this.state.staff.find((s) => s.id === staffId) || this.state.staff[0];
+    if (!order.staffNotes) order.staffNotes = [];
+
+    order.staffNotes.unshift({
+      id: `NOTE-${Date.now()}`,
+      timestamp: new Date().toISOString(),
+      authorId: staff.id,
+      authorName: staff.fullName,
+      text: text.trim(),
+    });
+
     this.addActivityLog({
       actorId: staff.id,
       actorName: staff.fullName,
       actorRole: staff.role,
-      actionType: 'REFUND_ISSUED',
-      description: `استرداد مبلغ ${amountTomans.toLocaleString()} تومان برای سفارش ${orderId} ثبت شد. دلیل: ${reason}`,
-      entityType: 'payment',
-      entityId: payment.id,
-      metadata: { amountTomans, reason, orderId },
+      actionType: 'ORDER_NOTE_ADDED',
+      description: `یادداشت داخلی برای سفارش ${orderId} توسط ${staff.fullName} ثبت گردید.`,
+      entityType: 'order',
+      entityId: orderId,
     });
 
     this.saveState({ ...this.state });
     return { success: true };
+  }
+
+  public getOrderExceptions(): Array<{ order: Order; exceptions: OrderException[] }> {
+    const results: Array<{ order: Order; exceptions: OrderException[] }> = [];
+    const nowIso = this.state.demoClockIso || new Date().toISOString();
+
+    for (const order of this.state.orders) {
+      const payment = this.state.payments.find((p) => p.orderId === order.id);
+      const designs = this.state.customDesigns.filter((d) => d.orderId === order.id);
+      const jobs = this.state.productionJobs.filter((j) => j.orderId === order.id);
+      const shipment = this.state.shipments.find((s) => s.orderId === order.id);
+
+      const exceptions = detectOrderExceptions({
+        order,
+        nowIso,
+        payment,
+        designs,
+        jobs,
+        shipment,
+        variants: this.state.variants,
+      });
+
+      if (exceptions.length > 0) {
+        results.push({ order, exceptions });
+      }
+    }
+
+    return results;
+  }
+
+  public createManualOrder(params: {
+    customerName: string;
+    customerPhone: string;
+    shippingAddress: string;
+    city: string;
+    items: Array<{ variantSku: string; quantity: number }>;
+    notes?: string;
+    staffId: string;
+  }): { success: boolean; data?: Order; error?: string } {
+    if (!params.customerName.trim() || !params.customerPhone.trim() || !params.shippingAddress.trim() || !params.city.trim()) {
+      return { success: false, error: 'تمامی مشخصات خریدار (نام، شماره تماس، نشانی و شهر) الزامی هستند.' };
+    }
+    if (!params.items || params.items.length === 0) {
+      return { success: false, error: 'حداقل یک قلم کالا باید برای صدور فاکتور انتخاب شود.' };
+    }
+
+    // Strictly validate inventory and pricing
+    for (const it of params.items) {
+      if (it.quantity <= 0) {
+        return { success: false, error: 'تعداد هر قلم کالا باید حداقل ۱ واحد باشد.' };
+      }
+      const v = this.state.variants.find((variant) => variant.sku === it.variantSku);
+      if (!v) {
+        return { success: false, error: `کد تنوع کالای ${it.variantSku} در کاتالوگ یافت نشد.` };
+      }
+      const available = v.onHandStock - v.reservedStock;
+      if (available < it.quantity) {
+        return {
+          success: false,
+          error: `موجودی آزاد تنوع ${v.sku} (${available} عدد) کافی نیست و نمی‌توان ${it.quantity} عدد رزرو کرد.`,
+        };
+      }
+    }
+
+    const orderId = `SHP-1405-${882000 + this.state.orders.length + 1}`;
+    const nowIso = new Date().toISOString();
+    let subtotalTomans = 0;
+
+    const lineItems = params.items.map((it, idx) => {
+      const v = this.state.variants.find((variant) => variant.sku === it.variantSku)!;
+      const p = this.state.products.find((prod) => prod.id === v.productId)!;
+      const unitPrice = p.basePriceTomans + v.priceAdjustmentTomans;
+      const lineSubtotal = unitPrice * it.quantity;
+      subtotalTomans += lineSubtotal;
+
+      // Lock reservation immediately
+      this.reserveStockForOrder(orderId, v.sku, it.quantity);
+
+      return {
+        id: `ITEM-${orderId}-${idx + 1}`,
+        orderId,
+        productId: p.id,
+        variantSku: v.sku,
+        productName: p.name,
+        colorName: v.colorName,
+        size: v.size,
+        fit: v.fit,
+        unitPriceTomans: unitPrice,
+        quantity: it.quantity,
+        subtotalTomans: lineSubtotal,
+        isCustomPod: false,
+      };
+    });
+
+    const shippingFeeTomans = subtotalTomans >= 1000000 ? 0 : 45000;
+    const totalTomans = subtotalTomans + shippingFeeTomans;
+
+    const staff = this.state.staff.find((s) => s.id === params.staffId) || this.state.staff[0];
+
+    const newOrder: Order = {
+      id: orderId,
+      customerId: 'CUST-1001',
+      customerName: params.customerName.trim(),
+      customerPhone: params.customerPhone.trim(),
+      shippingAddress: params.shippingAddress.trim(),
+      city: params.city.trim(),
+      items: lineItems,
+      subtotalTomans,
+      shippingFeeTomans,
+      discountTomans: 0,
+      totalTomans,
+      status: 'pending_payment',
+      paymentStatus: 'pending',
+      designStatus: 'not_applicable',
+      hasCustomLineItem: false,
+      createdAt: nowIso,
+      updatedAt: nowIso,
+      notes: params.notes ? `[سفارش دستی توسط ${staff.fullName}]: ${params.notes}` : `ثبت دستی در پنل عملیات توسط ${staff.fullName}`,
+      isRushOrder: false,
+      orderType: 'standard',
+      assignedOwnerId: staff.id,
+      assignedOwnerName: staff.fullName,
+      statusTimeline: [
+        {
+          id: `TL-${Date.now()}`,
+          timestamp: nowIso,
+          fromStatus: 'draft',
+          toStatus: 'pending_payment',
+          actorName: staff.fullName,
+          note: 'ایجاد فاکتور دستی با اعتبارسنجی موجودی انبار',
+        },
+      ],
+    };
+
+    this.state.orders.unshift(newOrder);
+
+    this.addActivityLog({
+      actorId: staff.id,
+      actorName: staff.fullName,
+      actorRole: staff.role,
+      actionType: 'MANUAL_ORDER_CREATED',
+      description: `سفارش دستی ${orderId} برای ${newOrder.customerName} به مبلغ ${totalTomans.toLocaleString()} تومان ایجاد شد.`,
+      entityType: 'order',
+      entityId: orderId,
+    });
+
+    this.saveState({ ...this.state });
+    return { success: true, data: newOrder };
+  }
+
+  public getFinancialLedgerSummary(): FinancialLedgerSummary {
+    return calculateLedgerSummary(this.state);
+  }
+
+  public getPaymentById(paymentId: string) {
+    const payment = this.state.payments.find((p) => p.id === paymentId);
+    if (!payment) return null;
+
+    const order = this.state.orders.find((o) => o.id === payment.orderId);
+    const customer = this.state.customers.find((c) => c.id === payment.customerId);
+    const refunds = this.getRefunds().filter((r) => r.paymentId === paymentId);
+    const retryAttempts = this.state.payments.filter(
+      (p) => p.orderId === payment.orderId && p.id !== payment.id
+    );
+
+    return {
+      payment,
+      order,
+      customer,
+      refunds,
+      retryAttempts,
+    };
+  }
+
+  public getRefunds(): RefundRecord[] {
+    if (!this.state.refunds) {
+      this.state.refunds = this.state.payments
+        .filter((p) => (p.status === 'refunded' || p.status === 'partial_refund') && p.refundedAmountTomans)
+        .map((p, idx) => {
+          const order = this.state.orders.find((o) => o.id === p.orderId);
+          return {
+            id: `REF-${8800 + idx + 1}`,
+            paymentId: p.id,
+            orderId: p.orderId,
+            customerId: p.customerId,
+            customerName: order?.customerName || 'مشتری شاه‌پوش',
+            customerPhone: order?.customerPhone,
+            requestedAmountTomans: p.refundedAmountTomans || p.amountTomans,
+            processedAmountTomans: p.refundedAmountTomans || p.amountTomans,
+            reason: p.refundReason || 'استرداد وجه طبق ضوابط فروشگاه',
+            status: 'processed' as const,
+            requestedAt: p.createdAt,
+            processedAt: p.refundedAt || p.createdAt,
+            destinationAccountMasked: 'IR** **** **** **** **۰۸ ۴۳ (بانک سامان)',
+            isPartial: (p.refundedAmountTomans || p.amountTomans) < p.amountTomans,
+          };
+        });
+    }
+    return this.state.refunds;
+  }
+
+  public requestRefund(params: {
+    paymentId: string;
+    amountTomans: number;
+    reason: string;
+    destinationIban?: string;
+    staffId: string;
+  }): { success: boolean; data?: RefundRecord; error?: string } {
+    const payment = this.state.payments.find((p) => p.id === params.paymentId);
+    if (!payment) return { success: false, error: 'تراکنش پرداخت یافت نشد.' };
+
+    const existingRefunds = this.getRefunds();
+    const validation = validateRefundEligibility(payment, params.amountTomans, existingRefunds);
+    if (!validation.eligible) {
+      return { success: false, error: validation.error };
+    }
+
+    const order = this.state.orders.find((o) => o.id === payment.orderId);
+    const newId = `REF-${8800 + this.state.refunds.length + 1}`;
+    const staff = this.state.staff.find((s) => s.id === params.staffId) || this.state.staff[0];
+
+    const newRefund: RefundRecord = {
+      id: newId,
+      paymentId: payment.id,
+      orderId: payment.orderId,
+      customerId: payment.customerId,
+      customerName: order?.customerName || 'مشتری محترم',
+      customerPhone: order?.customerPhone,
+      requestedAmountTomans: params.amountTomans,
+      reason: params.reason.trim(),
+      status: 'requested',
+      requestedAt: new Date().toISOString(),
+      destinationAccountMasked: params.destinationIban?.trim() || 'IR** **** **** **** **۰۸ ۴۳ (بانک سامان)',
+      isPartial: params.amountTomans < payment.amountTomans,
+    };
+
+    this.state.refunds.unshift(newRefund);
+
+    this.addActivityLog({
+      actorId: staff.id,
+      actorName: staff.fullName,
+      actorRole: staff.role,
+      actionType: 'REFUND_REQUESTED',
+      description: `درخواست استرداد وجه ${newId} به مبلغ ${params.amountTomans.toLocaleString()} تومان برای سفارش ${payment.orderId} ثبت شد.`,
+      entityType: 'payment',
+      entityId: payment.id,
+    });
+
+    this.saveState({ ...this.state });
+    return { success: true, data: newRefund };
+  }
+
+  public approveRefund(refundId: string, staffId: string): { success: boolean; error?: string } {
+    const refunds = this.getRefunds();
+    const refund = refunds.find((r) => r.id === refundId);
+    if (!refund) return { success: false, error: 'پرونده استرداد یافت نشد.' };
+    if (refund.status !== 'requested') {
+      return { success: false, error: 'این درخواست در وضعیتی نیست که بتوان آن را تایید کرد.' };
+    }
+
+    const staff = this.state.staff.find((s) => s.id === staffId) || this.state.staff[0];
+    refund.status = 'approved';
+    refund.approvedAt = new Date().toISOString();
+    refund.approvedById = staff.id;
+    refund.approvedByName = staff.fullName;
+
+    this.addActivityLog({
+      actorId: staff.id,
+      actorName: staff.fullName,
+      actorRole: staff.role,
+      actionType: 'REFUND_APPROVED',
+      description: `درخواست استرداد ${refundId} توسط ${staff.fullName} تایید شد و در نوبت تسویه پایا قرار گرفت.`,
+      entityType: 'payment',
+      entityId: refund.paymentId,
+    });
+
+    this.saveState({ ...this.state });
+    return { success: true };
+  }
+
+  public processRefund(refundId: string, staffId: string): { success: boolean; error?: string } {
+    const refunds = this.getRefunds();
+    const refund = refunds.find((r) => r.id === refundId);
+    if (!refund) return { success: false, error: 'پرونده استرداد یافت نشد.' };
+    if (refund.status !== 'approved' && refund.status !== 'requested') {
+      return { success: false, error: 'تنها درخواست‌های تاییدشده امکان اجرای تسویه را دارند.' };
+    }
+
+    const payment = this.state.payments.find((p) => p.id === refund.paymentId);
+    if (!payment) return { success: false, error: 'تراکنش مربوطه یافت نشد.' };
+
+    const order = this.state.orders.find((o) => o.id === refund.orderId);
+    const staff = this.state.staff.find((s) => s.id === staffId) || this.state.staff[0];
+
+    refund.status = 'processed';
+    refund.processedAt = new Date().toISOString();
+    refund.processedAmountTomans = refund.requestedAmountTomans;
+
+    // Update payment
+    const isFull = refund.requestedAmountTomans >= payment.amountTomans;
+    payment.status = isFull ? 'refunded' : 'partial_refund';
+    payment.refundedAmountTomans = (payment.refundedAmountTomans || 0) + refund.requestedAmountTomans;
+    payment.refundReason = refund.reason;
+    payment.refundedAt = refund.processedAt;
+
+    // Update order
+    if (order) {
+      if (isFull) {
+        order.paymentStatus = 'refunded';
+        order.status = 'refunded';
+      }
+      order.updatedAt = new Date().toISOString();
+
+      // Release stock reservations back to available
+      order.items.forEach((item) => {
+        this.restoreStockFromCancellation(
+          order.id,
+          item.variantSku,
+          item.quantity,
+          `استرداد وجه فاکتور ${refund.id}`,
+          order.status === 'shipped' || order.status === 'delivered'
+        );
+      });
+    }
+
+    // Adjust customer totalSpent
+    const customer = this.state.customers.find((c) => c.id === payment.customerId);
+    if (customer) {
+      customer.totalSpentTomans = Math.max(0, customer.totalSpentTomans - refund.requestedAmountTomans);
+    }
+
+    this.addActivityLog({
+      actorId: staff.id,
+      actorName: staff.fullName,
+      actorRole: staff.role,
+      actionType: 'REFUND_PROCESSED',
+      description: `تسویه بانکی استرداد ${refundId} به مبلغ ${refund.requestedAmountTomans.toLocaleString()} تومان نهایی شد.`,
+      entityType: 'payment',
+      entityId: payment.id,
+    });
+
+    this.saveState({ ...this.state });
+    return { success: true };
+  }
+
+  public getSettlementBatches(): SettlementBatchItem[] {
+    return generateSettlementBatches(this.state.payments);
+  }
+
+  public issueSimulatedRefund(
+    orderId: string,
+    amountTomans: number,
+    reason: string,
+    staffId: string
+  ): { success: boolean; refundId?: string; error?: string } {
+    const order = this.state.orders.find((o) => o.id === orderId);
+    if (!order) return { success: false, error: 'سفارش یافت نشد.' };
+
+    const payment = this.state.payments.find((p) => p.orderId === orderId);
+    if (!payment) return { success: false, error: 'تراکنش پرداخت مربوط به این سفارش یافت نشد.' };
+
+    const existingRefunds = this.getRefunds();
+    const validation = validateRefundEligibility(payment, amountTomans, existingRefunds);
+    if (!validation.eligible) {
+      return { success: false, error: validation.error };
+    }
+
+    const req = this.requestRefund({
+      paymentId: payment.id,
+      amountTomans,
+      reason,
+      staffId,
+    });
+
+    if (!req.success || !req.data) {
+      return { success: false, error: req.error };
+    }
+
+    this.approveRefund(req.data.id, staffId);
+    const proc = this.processRefund(req.data.id, staffId);
+    if (!proc.success) return proc;
+    return { success: true, refundId: req.data.id };
   }
 
   public assignStaffTask(taskId: string, staffId: string): boolean {
@@ -3153,13 +4581,2044 @@ class AdminRepository {
     return { success: true };
   }
 
-  private addActivityLog(log: Omit<ActivityLog, 'id' | 'timestamp'>) {
+  // ==========================================
+  // CUSTOMER MANAGEMENT MUTATIONS (Prompt 14)
+  // ==========================================
+
+  public addCustomerNote(
+    customerId: string,
+    text: string,
+    actorName: string,
+    linkedOrderId?: string,
+    linkedDesignId?: string
+  ): { success: boolean; note?: any; error?: string } {
+    if (!text.trim()) {
+      return { success: false, error: 'متن یادداشت نمی‌تواند خالی باشد.' };
+    }
+    const customer = this.state.customers.find((c) => c.id === customerId);
+    if (!customer) {
+      return { success: false, error: 'مشتری مورد نظر یافت نشد.' };
+    }
+
+    if (!customer.staffNotes) customer.staffNotes = [];
+    if (!customer.auditTrail) customer.auditTrail = [];
+
+    const nowIso = new Date().toISOString();
+    const noteId = `NOTE-${customerId}-${customer.staffNotes.length + 1}`;
+    const newNote = {
+      id: noteId,
+      timestamp: nowIso,
+      authorId: 'STF-ADMIN',
+      authorName: actorName,
+      text: text.trim(),
+      linkedOrderId: linkedOrderId || undefined,
+      linkedDesignId: linkedDesignId || undefined,
+    };
+    customer.staffNotes.unshift(newNote);
+
+    const auditEntry = {
+      id: `AUD-${Date.now()}`,
+      timestamp: nowIso,
+      actorName,
+      action: 'ثبت یادداشت پرسنلی',
+      note: text.trim().slice(0, 50) + (text.length > 50 ? '...' : ''),
+    };
+    customer.auditTrail.unshift(auditEntry);
+
+    this.addActivityLog({
+      actorId: 'STF-ADMIN',
+      actorName,
+      actorRole: 'super_admin',
+      actionType: 'STAFF_ACTION',
+      description: `ثبت یادداشت جدید در پرونده مشتری ${customer.fullName} (${customer.id})`,
+      entityType: 'general',
+      entityId: customer.id,
+    });
+
+    this.saveState({ ...this.state });
+    return { success: true, note: newNote };
+  }
+
+  public updateCustomer(
+    customerId: string,
+    updates: {
+      fullName?: string;
+      phone?: string;
+      email?: string;
+      city?: string;
+      province?: string;
+      address?: string;
+      postalCode?: string;
+      marketingConsent?: boolean;
+    },
+    actorName: string
+  ): { success: boolean; customer?: Customer; error?: string } {
+    const customer = this.state.customers.find((c) => c.id === customerId);
+    if (!customer) return { success: false, error: 'مشتری مورد نظر یافت نشد.' };
+
+    if (updates.phone !== undefined) {
+      const cleanPhone = updates.phone.trim();
+      const iranPhoneRegex = /^09\d{9}$/;
+      if (!iranPhoneRegex.test(cleanPhone)) {
+        return { success: false, error: 'شماره تلفن همراه باید با ۰۹ شروع شده و دقیقاً ۱۱ رقم باشد.' };
+      }
+      // Duplicate detection
+      const existing = this.state.customers.find((c) => c.id !== customerId && c.phone === cleanPhone);
+      if (existing) {
+        return { success: false, error: `شماره تلفن قبلاً برای مشتری دیگر (${existing.fullName} - ${existing.id}) ثبت شده است.` };
+      }
+      customer.phone = cleanPhone;
+    }
+
+    if (updates.email !== undefined) {
+      const cleanEmail = updates.email.trim().toLowerCase();
+      if (cleanEmail && !cleanEmail.includes('@')) {
+        return { success: false, error: 'فرمت پست الکترونیک وارد شده معتبر نمی‌باشد.' };
+      }
+      // Duplicate detection
+      if (cleanEmail) {
+        const existingEmail = this.state.customers.find((c) => c.id !== customerId && c.email.toLowerCase() === cleanEmail);
+        if (existingEmail) {
+          return { success: false, error: `پست الکترونیک قبلاً برای مشتری دیگر (${existingEmail.fullName} - ${existingEmail.id}) ثبت شده است.` };
+        }
+      }
+      customer.email = cleanEmail;
+    }
+
+    if (updates.fullName !== undefined) {
+      if (!updates.fullName.trim()) return { success: false, error: 'نام و نام‌خانوادگی نمی‌تواند خالی باشد.' };
+      customer.fullName = updates.fullName.trim();
+    }
+    if (updates.city !== undefined) customer.city = updates.city.trim();
+    if (updates.province !== undefined) customer.province = updates.province.trim();
+    if (updates.address !== undefined) customer.address = updates.address.trim();
+    if (updates.postalCode !== undefined) customer.postalCode = updates.postalCode.trim();
+    if (updates.marketingConsent !== undefined) customer.marketingConsent = updates.marketingConsent;
+
+    if (!customer.auditTrail) customer.auditTrail = [];
+    const nowIso = new Date().toISOString();
+    customer.auditTrail.unshift({
+      id: `AUD-${Date.now()}`,
+      timestamp: nowIso,
+      actorName,
+      action: 'ویرایش اطلاعات هویتی و ارتباطی مشتری',
+      note: 'به‌روزرسانی با بررسی اعتبار شماره تماس و عدم تکراری بودن',
+    });
+
+    this.addActivityLog({
+      actorId: 'STF-ADMIN',
+      actorName,
+      actorRole: 'super_admin',
+      actionType: 'STAFF_ACTION',
+      description: `ویرایش مشخصات مشتری ${customer.fullName} (${customer.id})`,
+      entityType: 'general',
+      entityId: customer.id,
+    });
+
+    this.saveState({ ...this.state });
+    return { success: true, customer };
+  }
+
+  public toggleCustomerStatus(
+    customerId: string,
+    newStatus: 'active' | 'inactive' | 'deactivated',
+    reason: string,
+    actorName: string
+  ): { success: boolean; customer?: Customer; error?: string } {
+    const customer = this.state.customers.find((c) => c.id === customerId);
+    if (!customer) return { success: false, error: 'مشتری مورد نظر یافت نشد.' };
+
+    const prev = customer.status || 'active';
+    customer.status = newStatus;
+
+    if (!customer.auditTrail) customer.auditTrail = [];
+    const nowIso = new Date().toISOString();
+    customer.auditTrail.unshift({
+      id: `AUD-${Date.now()}`,
+      timestamp: nowIso,
+      actorName,
+      action: `تغییر وضعیت از ${prev} به ${newStatus}`,
+      note: reason.trim() || undefined,
+    });
+
+    this.addActivityLog({
+      actorId: 'STF-ADMIN',
+      actorName,
+      actorRole: 'super_admin',
+      actionType: 'STAFF_ACTION',
+      description: `تغییر وضعیت حساب مشتری ${customer.fullName} به ${newStatus}. دلیل: ${reason}`,
+      entityType: 'general',
+      entityId: customer.id,
+    });
+
+    this.saveState({ ...this.state });
+    return { success: true, customer };
+  }
+
+  public createCustomer(
+    data: {
+      fullName: string;
+      phone: string;
+      email: string;
+      city: string;
+      province: string;
+      address: string;
+      postalCode: string;
+      marketingConsent?: boolean;
+      tag?: Customer['tag'];
+    },
+    actorName: string
+  ): { success: boolean; customer?: Customer; error?: string } {
+    if (!data.fullName.trim()) return { success: false, error: 'نام و نام‌خانوادگی الزامی است.' };
+    const cleanPhone = data.phone.trim();
+    if (!/^09\d{9}$/.test(cleanPhone)) {
+      return { success: false, error: 'شماره تلفن همراه باید با ۰۹ شروع شده و ۱۱ رقم باشد.' };
+    }
+    // Duplicate detection
+    const existingPhone = this.state.customers.find((c) => c.phone === cleanPhone);
+    if (existingPhone) {
+      return { success: false, error: `شماره تلفن همراه قبلاً برای مشتری (${existingPhone.fullName} - ${existingPhone.id}) ثبت شده است.` };
+    }
+
+    const cleanEmail = data.email.trim().toLowerCase();
+    if (cleanEmail) {
+      const existingEmail = this.state.customers.find((c) => c.email.toLowerCase() === cleanEmail);
+      if (existingEmail) {
+        return { success: false, error: `پست الکترونیک قبلاً برای مشتری (${existingEmail.fullName} - ${existingEmail.id}) ثبت شده است.` };
+      }
+    }
+
+    const nextNum = this.state.customers.length + 1001;
+    const newId = `CUST-${nextNum}`;
+    const nowIso = new Date().toISOString();
+
+    const newCustomer: Customer = {
+      id: newId,
+      fullName: data.fullName.trim(),
+      phone: cleanPhone,
+      email: cleanEmail || `customer${nextNum}@shahpoosh.ir`,
+      city: data.city.trim() || 'تهران',
+      province: data.province.trim() || 'تهران',
+      address: data.address.trim() || 'تهران، خیابان ولیعصر',
+      postalCode: data.postalCode.trim() || '۱۹۸۵۷۱۴۲۳۰',
+      totalOrdersCount: 0,
+      totalSpentTomans: 0,
+      tag: data.tag || 'new',
+      status: 'active',
+      marketingConsent: data.marketingConsent ?? true,
+      createdAt: nowIso,
+      lastActiveAt: nowIso,
+      addresses: [
+        {
+          id: `ADDR-${nextNum}-1`,
+          title: 'نشانی اصلی',
+          recipientName: data.fullName.trim(),
+          phone: cleanPhone,
+          province: data.province.trim() || 'تهران',
+          city: data.city.trim() || 'تهران',
+          fullAddress: data.address.trim() || 'تهران، خیابان ولیعصر',
+          postalCode: data.postalCode.trim() || '۱۹۸۵۷۱۴۲۳۰',
+          isDefault: true,
+        },
+      ],
+      auditTrail: [
+        {
+          id: `AUD-${Date.now()}`,
+          timestamp: nowIso,
+          actorName,
+          action: 'افتتاح پرونده مشتری جدید توسط پرسنل',
+          note: 'ثبت دستی مشتری در پنل مدیریت با احراز مشخصات هویتی',
+        },
+      ],
+      staffNotes: [
+        {
+          id: `NOTE-${newId}-1`,
+          timestamp: nowIso,
+          authorId: 'STF-ADMIN',
+          authorName: actorName,
+          text: 'افتتاح پرونده مشتری توسط واحد پشتیبانی شاه‌پوش.',
+        },
+      ],
+      savedFavorites: [],
+      cartItems: [],
+      supportTickets: [],
+      reviews: [],
+      browsingEvents: [],
+    };
+
+    this.state.customers.unshift(newCustomer);
+
+    this.addActivityLog({
+      actorId: 'STF-ADMIN',
+      actorName,
+      actorRole: 'super_admin',
+      actionType: 'STAFF_ACTION',
+      description: `ایجاد پرونده مشتری جدید ${newCustomer.fullName} با شناسه ${newCustomer.id}`,
+      entityType: 'general',
+      entityId: newCustomer.id,
+    });
+
+    this.saveState({ ...this.state });
+    return { success: true, customer: newCustomer };
+  }
+
+  public requestCustomerDataExport(
+    customerId: string,
+    actorName: string
+  ): { success: boolean; exportData?: any; error?: string } {
+    const details = this.getCustomerDetails(customerId);
+    if (!details) return { success: false, error: 'مشتری مورد نظر یافت نشد.' };
+
+    const nowIso = new Date().toISOString();
+    if (!details.customer.auditTrail) details.customer.auditTrail = [];
+    details.customer.auditTrail.unshift({
+      id: `AUD-${Date.now()}`,
+      timestamp: nowIso,
+      actorName,
+      action: 'صدور بسته استخراج داده‌های شخصی (GDPR Data Portability)',
+      note: 'دریافت خروجی استاندارد JSON از سوابق تراکنش‌ها، سفارش‌ها، طرح‌ها و نظرات',
+    });
+
+    this.addActivityLog({
+      actorId: 'STF-ADMIN',
+      actorName,
+      actorRole: 'super_admin',
+      actionType: 'STAFF_ACTION',
+      description: `صدور خروجی داده‌های شخصی مشتری ${details.customer.fullName} (${details.customer.id})`,
+      entityType: 'general',
+      entityId: details.customer.id,
+    });
+
+    this.saveState({ ...this.state });
+    return {
+      success: true,
+      exportData: {
+        exportedAt: nowIso,
+        system: 'Shahpoosh Streetwear Data Management',
+        customer: details.customer,
+        orders: details.orders,
+        payments: details.payments,
+        customDesigns: details.customDesigns,
+        reviews: details.reviews,
+        supportTickets: details.supportTickets,
+        addresses: details.addresses,
+        calculatedLtvTomans: details.netLtvSpendTomans,
+      },
+    };
+  }
+
+  public requestCustomerDeletion(
+    customerId: string,
+    reason: string,
+    actorName: string
+  ): { success: boolean; customer?: Customer; error?: string } {
+    const customer = this.state.customers.find((c) => c.id === customerId);
+    if (!customer) return { success: false, error: 'مشتری مورد نظر یافت نشد.' };
+
+    const nowIso = new Date().toISOString();
+    customer.deletionRequested = {
+      requestedAt: nowIso,
+      reason: reason.trim() || 'درخواست حذف داده و حق فراموشی (Right to be Forgotten)',
+      status: 'pending_review',
+      requestedBy: actorName,
+    };
+    customer.status = 'deactivated';
+
+    if (!customer.auditTrail) customer.auditTrail = [];
+    customer.auditTrail.unshift({
+      id: `AUD-${Date.now()}`,
+      timestamp: nowIso,
+      actorName,
+      action: 'ثبت درخواست امن حذف و تعلیق حساب (Deletion Request)',
+      note: `دلیل درخواست: ${reason.trim() || 'درخواست کاربر'}. حساب غیرفعال گردید تا پس از اتمام دوره‌های الزامی مالیاتی آرشیو شود.`,
+    });
+
+    this.addActivityLog({
+      actorId: 'STF-ADMIN',
+      actorName,
+      actorRole: 'super_admin',
+      actionType: 'STAFF_ACTION',
+      description: `ثبت درخواست حذف حساب مشتری ${customer.fullName} (${customer.id}) و غیرفعال‌سازی آن`,
+      entityType: 'general',
+      entityId: customer.id,
+    });
+
+    this.saveState({ ...this.state });
+    return { success: true, customer };
+  }
+
+  // ==========================================
+  // SHIPPING & FULFILLMENT (Prompt 15)
+  // ==========================================
+
+  public getShipments(filters?: {
+    status?: string;
+    carrier?: string;
+    search?: string;
+  }): Shipment[] {
+    let list = [...(this.state.shipments || [])];
+
+    if (filters?.status && filters.status !== 'all') {
+      list = list.filter((s) => s.status === filters.status);
+    }
+
+    if (filters?.carrier && filters.carrier !== 'all') {
+      list = list.filter((s) => s.carrier === filters.carrier);
+    }
+
+    if (filters?.search && filters.search.trim()) {
+      const q = filters.search.trim().toLowerCase();
+      list = list.filter((s) =>
+        s.id.toLowerCase().includes(q) ||
+        s.orderId.toLowerCase().includes(q) ||
+        (s.trackingCode && s.trackingCode.toLowerCase().includes(q)) ||
+        (s.customerName && s.customerName.toLowerCase().includes(q)) ||
+        (s.destinationCity && s.destinationCity.toLowerCase().includes(q))
+      );
+    }
+
+    return list;
+  }
+
+  public getShipmentById(id: string): {
+    shipment: Shipment;
+    order?: any;
+    customer?: Customer;
+    qcEligibility: {
+      eligible: boolean;
+      reasonFa?: string;
+      hasCustomItems: boolean;
+      qcPassed: boolean;
+      customJobsCount: number;
+      pendingQcJobsCount: number;
+    };
+  } | null {
+    const shipment = (this.state.shipments || []).find((s) => s.id === id);
+    if (!shipment) return null;
+
+    const order = this.state.orders.find((o) => o.id === shipment.orderId);
+    const customer = this.state.customers.find((c) => c.id === shipment.customerId);
+    const qcEligibility = this.canFulfillShipment(shipment.orderId);
+
+    return {
+      shipment,
+      order,
+      customer,
+      qcEligibility,
+    };
+  }
+
+  /**
+   * INVARIANT (Prompt 15):
+   * Shipment cannot leap over production!
+   * Clearly prevent shipment when custom items have not passed QC.
+   */
+  public canFulfillShipment(orderId: string): {
+    eligible: boolean;
+    reasonFa?: string;
+    hasCustomItems: boolean;
+    qcPassed: boolean;
+    customJobsCount: number;
+    pendingQcJobsCount: number;
+  } {
+    const order = this.state.orders.find((o) => o.id === orderId);
+    if (!order) {
+      return {
+        eligible: false,
+        reasonFa: 'سفارش متناظر در سیستم یافت نشد.',
+        hasCustomItems: false,
+        qcPassed: false,
+        customJobsCount: 0,
+        pendingQcJobsCount: 0,
+      };
+    }
+
+    const customJobs = (this.state.productionJobs || []).filter((j) => j.orderId === orderId);
+    const hasCustomItems = order.hasCustomLineItem || customJobs.length > 0;
+
+    if (!hasCustomItems) {
+      // Standard stock items are ready for packaging without DTG workshop QC
+      return {
+        eligible: true,
+        hasCustomItems: false,
+        qcPassed: true,
+        customJobsCount: 0,
+        pendingQcJobsCount: 0,
+      };
+    }
+
+    // Check if custom jobs have completed QC
+    const pendingQcJobs = customJobs.filter(
+      (j) => j.stage !== 'completed' || (j.checklist && !j.checklist.every((c) => c.checked))
+    );
+
+    const qcPassed = customJobs.length > 0 && pendingQcJobs.length === 0;
+
+    if (!qcPassed) {
+      return {
+        eligible: false,
+        reasonFa: `این سفارش شامل ${customJobs.length} قطعه چاپ اختصاصی DTG است که ${pendingQcJobs.length} مورد آن هنوز آزمون کنترل کیفیت (QC) و تثبیت حرارتی را سپری نکرده‌اند. ارسال مرسوله نمی‌تواند خط تولید را دور بزند.`,
+        hasCustomItems: true,
+        qcPassed: false,
+        customJobsCount: customJobs.length,
+        pendingQcJobsCount: pendingQcJobs.length,
+      };
+    }
+
+    return {
+      eligible: true,
+      hasCustomItems: true,
+      qcPassed: true,
+      customJobsCount: customJobs.length,
+      pendingQcJobsCount: 0,
+    };
+  }
+
+  public packShipment(
+    shipmentId: string,
+    staffName: string,
+    notes?: string
+  ): { success: boolean; error?: string } {
+    const shipment = (this.state.shipments || []).find((s) => s.id === shipmentId);
+    if (!shipment) return { success: false, error: 'مرسوله یافت نشد.' };
+
+    const qc = this.canFulfillShipment(shipment.orderId);
+    if (!qc.eligible) {
+      return { success: false, error: qc.reasonFa };
+    }
+
+    const nowIso = new Date().toISOString();
+    shipment.status = 'packed';
+    shipment.packedAt = nowIso;
+    shipment.packedByStaffName = staffName;
+
+    if (!shipment.timeline) shipment.timeline = [];
+    shipment.timeline.unshift({
+      timestamp: nowIso,
+      stage: 'packed',
+      titleFa: 'بسته‌بندی در جعبه مشکی لوکس شاه‌پوش',
+      descriptionFa: notes || `بسته‌بندی و الصاق شناسنامه اصالت توسط ${staffName} تایید شد.`,
+      isCompleted: true,
+    });
+
+    const order = this.state.orders.find((o) => o.id === shipment.orderId);
+    if (order) {
+      order.shippingStatus = 'packed';
+      order.updatedAt = nowIso;
+    }
+
+    this.addActivityLog({
+      actorId: 'STF-ADMIN',
+      actorName: staffName,
+      actorRole: 'production_operator',
+      actionType: 'STAFF_ACTION',
+      description: `بسته‌بندی مرسوله ${shipment.id} برای سفارش ${shipment.orderId} ثبت گردید.`,
+      entityType: 'order',
+      entityId: shipment.orderId,
+    });
+
+    this.saveState({ ...this.state });
+    return { success: true };
+  }
+
+  public generateMockShippingLabel(
+    shipmentId: string,
+    carrier: CarrierName,
+    staffName: string,
+    customTrackingCode?: string
+  ): { success: boolean; trackingCode?: string; error?: string } {
+    const shipment = (this.state.shipments || []).find((s) => s.id === shipmentId);
+    if (!shipment) return { success: false, error: 'مرسوله یافت نشد.' };
+
+    const nowIso = new Date().toISOString();
+    const prefix = carrier === 'tipax' ? 'TPX' : carrier === 'courier_tehran' ? 'TEH' : 'PST';
+    const trackingCode = customTrackingCode || `${prefix}-${Math.floor(100000000 + Math.random() * 900000000)}`;
+
+    shipment.carrier = carrier;
+    shipment.trackingCode = trackingCode;
+    shipment.status = 'label_created';
+    shipment.isMockLabel = true;
+
+    if (!shipment.timeline) shipment.timeline = [];
+    shipment.timeline.unshift({
+      timestamp: nowIso,
+      stage: 'label_created',
+      titleFa: 'صدور بارنامه و بارکد رهگیری پستی (شبیه‌ساز)',
+      descriptionFa: `بارنامه الکترونیک ${carrier} با کد رهگیری ${trackingCode} صادر شد (وب‌سرویس در حالت دمو).`,
+      isCompleted: true,
+    });
+
+    this.addActivityLog({
+      actorId: 'STF-ADMIN',
+      actorName: staffName,
+      actorRole: 'production_operator',
+      actionType: 'STAFF_ACTION',
+      description: `صدور بارنامه برای مرسوله ${shipment.id} با کد رهگیری ${trackingCode} (${carrier})`,
+      entityType: 'order',
+      entityId: shipment.orderId,
+    });
+
+    this.saveState({ ...this.state });
+    return { success: true, trackingCode };
+  }
+
+  public dispatchShipment(
+    shipmentId: string,
+    staffName: string
+  ): { success: boolean; error?: string } {
+    const shipment = (this.state.shipments || []).find((s) => s.id === shipmentId);
+    if (!shipment) return { success: false, error: 'مرسوله یافت نشد.' };
+
+    const qc = this.canFulfillShipment(shipment.orderId);
+    if (!qc.eligible) {
+      return { success: false, error: qc.reasonFa };
+    }
+
+    const nowIso = new Date().toISOString();
+    shipment.status = 'in_transit';
+    shipment.dispatchedAt = nowIso;
+
+    if (!shipment.timeline) shipment.timeline = [];
+    shipment.timeline.unshift({
+      timestamp: nowIso,
+      stage: 'dispatched',
+      titleFa: 'خروج از مرکز توزیع کارگاه و تحویل به ناوگان حمل',
+      descriptionFa: `مرسوله تحویل نماینده جمع‌آوری ${shipment.carrier} شد و به سمت مقصد در حرکت است.`,
+      isCompleted: true,
+    });
+
+    const order = this.state.orders.find((o) => o.id === shipment.orderId);
+    if (order) {
+      order.status = 'shipped';
+      order.shippingStatus = 'shipped';
+      order.updatedAt = nowIso;
+    }
+
+    this.addActivityLog({
+      actorId: 'STF-ADMIN',
+      actorName: staffName,
+      actorRole: 'production_operator',
+      actionType: 'STAFF_ACTION',
+      description: `ارسال مرسوله ${shipment.id} سفارش ${shipment.orderId} به ناوگان ثبت شد.`,
+      entityType: 'order',
+      entityId: shipment.orderId,
+    });
+
+    this.saveState({ ...this.state });
+    return { success: true };
+  }
+
+  public deliverShipment(
+    shipmentId: string,
+    staffName: string
+  ): { success: boolean; error?: string } {
+    const shipment = (this.state.shipments || []).find((s) => s.id === shipmentId);
+    if (!shipment) return { success: false, error: 'مرسوله یافت نشد.' };
+
+    const nowIso = new Date().toISOString();
+    shipment.status = 'delivered';
+    shipment.deliveredAt = nowIso;
+
+    if (!shipment.timeline) shipment.timeline = [];
+    shipment.timeline.unshift({
+      timestamp: nowIso,
+      stage: 'delivered',
+      titleFa: 'تحویل نهایی به گیرنده',
+      descriptionFa: `مرسوله در نشانی مقصد با ثبت امضای دیجیتال گیرنده (${shipment.recipientName || 'خریدار'}) تحویل گردید.`,
+      isCompleted: true,
+    });
+
+    const order = this.state.orders.find((o) => o.id === shipment.orderId);
+    if (order) {
+      order.status = 'delivered';
+      order.shippingStatus = 'delivered';
+      order.updatedAt = nowIso;
+    }
+
+    this.addActivityLog({
+      actorId: 'STF-ADMIN',
+      actorName: staffName,
+      actorRole: 'support_finance',
+      actionType: 'STAFF_ACTION',
+      description: `تایید تحویل مرسوله ${shipment.id} به خریدار سفارش ${shipment.orderId}`,
+      entityType: 'order',
+      entityId: shipment.orderId,
+    });
+
+    this.saveState({ ...this.state });
+    return { success: true };
+  }
+
+  public recordShipmentAddressCorrection(
+    shipmentId: string,
+    newAddress: string,
+    reason: string,
+    staffName: string
+  ): { success: boolean; error?: string } {
+    const shipment = (this.state.shipments || []).find((s) => s.id === shipmentId);
+    if (!shipment) return { success: false, error: 'مرسوله یافت نشد.' };
+    if (!newAddress || !newAddress.trim()) {
+      return { success: false, error: 'نشانی جدید نمی‌تواند خالی باشد.' };
+    }
+
+    const nowIso = new Date().toISOString();
+    const prevAddress = shipment.shippingAddress || 'نشانی پیشین ثبت نشده';
+    shipment.shippingAddress = newAddress.trim();
+
+    if (!shipment.addressCorrections) shipment.addressCorrections = [];
+    shipment.addressCorrections.unshift({
+      id: `AC-${Date.now()}`,
+      timestamp: nowIso,
+      previousAddress: prevAddress,
+      newAddress: newAddress.trim(),
+      reason: reason.trim() || 'درخواست تغییر نشانی توسط خریدار',
+      actorName: staffName,
+    });
+
+    if (!shipment.timeline) shipment.timeline = [];
+    shipment.timeline.unshift({
+      timestamp: nowIso,
+      stage: 'address_corrected',
+      titleFa: 'اصلاح نشانی و بازتوزیع مرسوله',
+      descriptionFa: `نشانی گیرنده اصلاح شد: ${newAddress.trim()} (علت: ${reason || 'هماهنگی تلفنی'})`,
+      isCompleted: true,
+    });
+
+    const order = this.state.orders.find((o) => o.id === shipment.orderId);
+    if (order) {
+      order.shippingAddress = newAddress.trim();
+      order.updatedAt = nowIso;
+    }
+
+    this.addActivityLog({
+      actorId: 'STF-ADMIN',
+      actorName: staffName,
+      actorRole: 'support_finance',
+      actionType: 'STAFF_ACTION',
+      description: `اصلاح نشانی تحویل مرسوله ${shipment.id} (سفارش ${shipment.orderId})`,
+      entityType: 'order',
+      entityId: shipment.orderId,
+    });
+
+    this.saveState({ ...this.state });
+    return { success: true };
+  }
+
+  public recordShipmentException(
+    shipmentId: string,
+    exceptionReason: string,
+    staffName: string
+  ): { success: boolean; error?: string } {
+    const shipment = (this.state.shipments || []).find((s) => s.id === shipmentId);
+    if (!shipment) return { success: false, error: 'مرسوله یافت نشد.' };
+
+    const nowIso = new Date().toISOString();
+    shipment.status = 'exception';
+    shipment.exceptionReason = exceptionReason.trim();
+
+    if (!shipment.deliveryAttempts) shipment.deliveryAttempts = [];
+    shipment.deliveryAttempts.unshift({
+      attemptNumber: shipment.deliveryAttempts.length + 1,
+      timestamp: nowIso,
+      status: 'failed',
+      note: exceptionReason.trim(),
+    });
+
+    if (!shipment.timeline) shipment.timeline = [];
+    shipment.timeline.unshift({
+      timestamp: nowIso,
+      stage: 'exception',
+      titleFa: 'گزارش رخداد استثنا در توزیع پستی',
+      descriptionFa: `تحویل ناموفق: ${exceptionReason.trim()}. نیاز به تماس پشتیبانی و بازتوزیع.`,
+      isCompleted: true,
+    });
+
+    this.addActivityLog({
+      actorId: 'STF-ADMIN',
+      actorName: staffName,
+      actorRole: 'support_finance',
+      actionType: 'STAFF_ACTION',
+      description: `ثبت رخداد استثنا در ارسال مرسوله ${shipment.id}: ${exceptionReason.trim()}`,
+      entityType: 'order',
+      entityId: shipment.orderId,
+    });
+
+    this.saveState({ ...this.state });
+    return { success: true };
+  }
+
+  public bulkPackEligibleShipments(
+    shipmentIds: string[],
+    staffName: string
+  ): { packedCount: number; skippedCount: number; errors: string[] } {
+    let packedCount = 0;
+    let skippedCount = 0;
+    const errors: string[] = [];
+
+    shipmentIds.forEach((id) => {
+      const res = this.packShipment(id, staffName);
+      if (res.success) {
+        packedCount++;
+      } else {
+        skippedCount++;
+        if (res.error) errors.push(`${id}: ${res.error}`);
+      }
+    });
+
+    return { packedCount, skippedCount, errors };
+  }
+
+  // ==========================================
+  // RETURNS & EXCHANGES (Prompt 15)
+  // ==========================================
+
+  public getReturnRequests(filters?: {
+    status?: string;
+    search?: string;
+  }): ReturnRequest[] {
+    if (!this.state.returnRequests || this.state.returnRequests.length === 0) {
+      this.state.returnRequests = [...DEFAULT_RETURN_REQUESTS];
+    }
+
+    let list = [...this.state.returnRequests];
+
+    if (filters?.status && filters.status !== 'all') {
+      list = list.filter((r) => r.status === filters.status);
+    }
+
+    if (filters?.search && filters.search.trim()) {
+      const q = filters.search.trim().toLowerCase();
+      list = list.filter((r) =>
+        r.id.toLowerCase().includes(q) ||
+        r.orderId.toLowerCase().includes(q) ||
+        r.customerName.toLowerCase().includes(q) ||
+        r.reasonFa.toLowerCase().includes(q)
+      );
+    }
+
+    return list;
+  }
+
+  public getReturnRequestById(id: string): {
+    returnRequest: ReturnRequest;
+    order?: any;
+    customer?: Customer;
+    linkedRefund?: any;
+  } | null {
+    if (!this.state.returnRequests) {
+      this.state.returnRequests = [...DEFAULT_RETURN_REQUESTS];
+    }
+
+    const returnRequest = this.state.returnRequests.find((r) => r.id === id);
+    if (!returnRequest) return null;
+
+    const order = this.state.orders.find((o) => o.id === returnRequest.orderId);
+    const customer = this.state.customers.find((c) => c.id === returnRequest.customerId);
+    const linkedRefund = returnRequest.linkedRefundId
+      ? (this.state.refunds || []).find((rf) => rf.id === returnRequest.linkedRefundId)
+      : undefined;
+
+    return {
+      returnRequest,
+      order,
+      customer,
+      linkedRefund,
+    };
+  }
+
+  /**
+   * INVARIANT (Prompt 15):
+   * Refund/stock are NOT falsely mutated by merely requesting return!
+   */
+  public createReturnRequest(data: {
+    orderId: string;
+    customerId: string;
+    customerName: string;
+    customerPhone?: string;
+    items: ReturnRequestItem[];
+    reason: ReturnReason;
+    reasonFa: string;
+    isCustomizedGood: boolean;
+    policyNotes: string;
+    refundAmountTomans?: number;
+    staffName: string;
+  }): { success: boolean; returnRequest?: ReturnRequest; error?: string } {
+    if (!this.state.returnRequests) {
+      this.state.returnRequests = [...DEFAULT_RETURN_REQUESTS];
+    }
+
+    const nowIso = new Date().toISOString();
+    const newId = `RET-${100 + this.state.returnRequests.length + 1}`;
+
+    const newReq: ReturnRequest = {
+      id: newId,
+      orderId: data.orderId,
+      customerId: data.customerId,
+      customerName: data.customerName,
+      customerPhone: data.customerPhone || '09120000000',
+      items: data.items,
+      reason: data.reason,
+      reasonFa: data.reasonFa,
+      status: 'requested',
+      requestedAt: nowIso,
+      isCustomizedGood: data.isCustomizedGood,
+      policyNotes: data.policyNotes,
+      refundAmountTomans: data.refundAmountTomans,
+      auditTrail: [
+        {
+          timestamp: nowIso,
+          actorName: data.staffName,
+          action: 'ثبت درخواست مرجوعی کالا',
+          note: `ثبت اولیه پرونده مرجوعی با علت: ${data.reasonFa}. موجودی انبار و استرداد مالی در این مرحله تغییر نکرده است.`,
+        },
+      ],
+    };
+
+    this.state.returnRequests.unshift(newReq);
+
+    this.addActivityLog({
+      actorId: 'STF-ADMIN',
+      actorName: data.staffName,
+      actorRole: 'support_finance',
+      actionType: 'STAFF_ACTION',
+      description: `ثبت درخواست مرجوعی ${newId} برای سفارش ${data.orderId}`,
+      entityType: 'order',
+      entityId: data.orderId,
+    });
+
+    this.saveState({ ...this.state });
+    return { success: true, returnRequest: newReq };
+  }
+
+  public receiveReturnParcel(
+    returnId: string,
+    staffName: string,
+    note?: string
+  ): { success: boolean; error?: string } {
+    if (!this.state.returnRequests) this.state.returnRequests = [...DEFAULT_RETURN_REQUESTS];
+    const req = this.state.returnRequests.find((r) => r.id === returnId);
+    if (!req) return { success: false, error: 'پرونده مرجوعی یافت نشد.' };
+
+    const nowIso = new Date().toISOString();
+    req.status = 'received_inspecting';
+    req.receivedAt = nowIso;
+    req.auditTrail.unshift({
+      timestamp: nowIso,
+      actorName: staffName,
+      action: 'دریافت بسته مرجوعی فیزیکی در انبار مرکزی',
+      note: note || 'بسته از پست یا پیک تحویل گرفته شد و در صف کارشناسی فنی قرار گرفت.',
+    });
+
+    this.addActivityLog({
+      actorId: 'STF-ADMIN',
+      actorName: staffName,
+      actorRole: 'production_operator',
+      actionType: 'STAFF_ACTION',
+      description: `دریافت بسته مرجوعی ${returnId} در انبار`,
+      entityType: 'order',
+      entityId: req.orderId,
+    });
+
+    this.saveState({ ...this.state });
+    return { success: true };
+  }
+
+  public inspectReturnParcel(
+    returnId: string,
+    outcome: InspectionOutcome,
+    restockEligible: boolean,
+    notes: string,
+    staffName: string
+  ): { success: boolean; error?: string } {
+    if (!this.state.returnRequests) this.state.returnRequests = [...DEFAULT_RETURN_REQUESTS];
+    const req = this.state.returnRequests.find((r) => r.id === returnId);
+    if (!req) return { success: false, error: 'پرونده مرجوعی یافت نشد.' };
+
+    const nowIso = new Date().toISOString();
+    req.inspectedAt = nowIso;
+    req.inspectionOutcome = outcome;
+    req.restockEligible = restockEligible;
+    req.inspectionNotes = notes.trim();
+
+    req.status = outcome === 'damaged_scrap' ? 'inspection_failed' : 'inspection_passed';
+
+    const outcomeLabels: Record<InspectionOutcome, string> = {
+      intact_resellable: 'سالم و پلمپ (قابل عرضه مجدد)',
+      minor_defect_reworkable: 'نقص جزئی قابل ریوورک و اصلاح',
+      damaged_scrap: 'آسیب‌دیده، غیرقابل استفاده / مصرف شده',
+    };
+
+    req.auditTrail.unshift({
+      timestamp: nowIso,
+      actorName: staffName,
+      action: 'کارشناسی فنی و کنترل فیزیکی لباس',
+      note: `نتیجه: ${outcomeLabels[outcome]} | قابلیت بازگشت به قفسه انبار: ${restockEligible ? 'بله' : 'خیر'} | توضیحات: ${notes.trim()}`,
+    });
+
+    this.addActivityLog({
+      actorId: 'STF-ADMIN',
+      actorName: staffName,
+      actorRole: 'production_operator',
+      actionType: 'STAFF_ACTION',
+      description: `کارشناسی مرجوعی ${returnId}: ${outcomeLabels[outcome]}`,
+      entityType: 'order',
+      entityId: req.orderId,
+    });
+
+    this.saveState({ ...this.state });
+    return { success: true };
+  }
+
+  public resolveReturnRequest(
+    returnId: string,
+    resolution: ReturnResolution,
+    staffName: string,
+    options?: {
+      executeRestock?: boolean;
+      executeRefund?: boolean;
+    }
+  ): { success: boolean; error?: string } {
+    if (!this.state.returnRequests) this.state.returnRequests = [...DEFAULT_RETURN_REQUESTS];
+    const req = this.state.returnRequests.find((r) => r.id === returnId);
+    if (!req) return { success: false, error: 'پرونده مرجوعی یافت نشد.' };
+
+    const nowIso = new Date().toISOString();
+    req.resolution = resolution;
+
+    if (resolution === 'rejected') {
+      req.status = 'rejected';
+      req.auditTrail.unshift({
+        timestamp: nowIso,
+        actorName: staffName,
+        action: 'رد درخواست مرجوعی',
+        note: 'درخواست طبق نظر کارشناسی و مغایرت با شرایط بازگشت کالا رد گردید.',
+      });
+    } else if (resolution === 'exchange_replacement') {
+      req.status = 'replacement_dispatched';
+      req.linkedReplacementOrderId = `SHP-1405-REP-${Math.floor(1000 + Math.random() * 9000)}`;
+      req.auditTrail.unshift({
+        timestamp: nowIso,
+        actorName: staffName,
+        action: 'تایید تعویض کالا و صدور سفارش جایگزین',
+        note: `سفارش جایگزین ${req.linkedReplacementOrderId} برای تحویل به مشتری ایجاد شد.`,
+      });
+    } else if (resolution === 'gateway_refund' || resolution === 'store_credit') {
+      req.status = 'refund_processed';
+
+      if (options?.executeRefund && req.refundAmountTomans && req.refundAmountTomans > 0) {
+        const refRes = this.issueSimulatedRefund(
+          req.orderId,
+          req.refundAmountTomans,
+          `استرداد وجه پرونده مرجوعی ${req.id}`,
+          'STF-01'
+        );
+        if (refRes.success && refRes.refundId) {
+          req.linkedRefundId = refRes.refundId;
+        }
+      }
+
+      req.auditTrail.unshift({
+        timestamp: nowIso,
+        actorName: staffName,
+        action: resolution === 'gateway_refund' ? 'تسویه استرداد مالی به حساب' : 'افزایش اعتبار کیف پول مشتری',
+        note: `تسویه مبلغ ${req.refundAmountTomans?.toLocaleString('fa-IR')} تومان ثبت شد.`,
+      });
+    }
+
+    // Safely increment inventory ONLY if restock eligible and confirmed
+    if (options?.executeRestock && req.restockEligible) {
+      req.items.forEach((item) => {
+        if (!item.isCustomPod) {
+          this.goodsReceipt(
+            item.sku,
+            item.quantity,
+            'STF-01',
+            'انبار مرجوعی',
+            req.id,
+            `بازگشت کالای تاییدشده مرجوعی ${req.id} به انبار`
+          );
+        }
+      });
+    }
+
+    this.addActivityLog({
+      actorId: 'STF-ADMIN',
+      actorName: staffName,
+      actorRole: 'support_finance',
+      actionType: 'STAFF_ACTION',
+      description: `تعیین تکلیف پرونده مرجوعی ${returnId} با روش ${resolution}`,
+      entityType: 'order',
+      entityId: req.orderId,
+    });
+
+    this.saveState({ ...this.state });
+    return { success: true };
+  }
+
+  // ==========================================
+  // SUPPORT TICKETS (Prompt 15)
+  // ==========================================
+
+  public getSupportTickets(filters?: {
+    status?: string;
+    priority?: string;
+    search?: string;
+    assignedStaffId?: string;
+  }): Array<CustomerSupportTicket & { customerName: string; customerId: string }> {
+    const list: Array<CustomerSupportTicket & { customerName: string; customerId: string }> = [];
+
+    (this.state.customers || []).forEach((c) => {
+      (c.supportTickets || []).forEach((t) => {
+        list.push({
+          ...t,
+          customerName: c.fullName,
+          customerId: c.id,
+        });
+      });
+    });
+
+    let result = list;
+
+    if (filters?.status && filters.status !== 'all') {
+      result = result.filter((t) => t.status === filters.status);
+    }
+
+    if (filters?.priority && filters.priority !== 'all') {
+      result = result.filter((t) => t.priority === filters.priority);
+    }
+
+    if (filters?.assignedStaffId && filters.assignedStaffId !== 'all') {
+      result = result.filter((t) => t.assignedStaffId === filters.assignedStaffId);
+    }
+
+    if (filters?.search && filters.search.trim()) {
+      const q = filters.search.trim().toLowerCase();
+      result = result.filter((t) =>
+        t.id.toLowerCase().includes(q) ||
+        t.subject.toLowerCase().includes(q) ||
+        t.customerName.toLowerCase().includes(q) ||
+        (t.linkedOrderId && t.linkedOrderId.toLowerCase().includes(q))
+      );
+    }
+
+    return result;
+  }
+
+  public getSupportTicketById(id: string): {
+    ticket: CustomerSupportTicket;
+    customer: Customer;
+    order?: any;
+    design?: any;
+    shipment?: Shipment;
+  } | null {
+    for (const c of this.state.customers || []) {
+      const t = (c.supportTickets || []).find((ticket) => ticket.id === id);
+      if (t) {
+        const order = t.linkedOrderId ? this.state.orders.find((o) => o.id === t.linkedOrderId) : undefined;
+        const design = t.linkedDesignId ? this.state.customDesigns.find((d) => d.id === t.linkedDesignId) : undefined;
+        const shipment = t.linkedOrderId ? this.state.shipments.find((s) => s.orderId === t.linkedOrderId) : undefined;
+        return {
+          ticket: t,
+          customer: c,
+          order,
+          design,
+          shipment,
+        };
+      }
+    }
+    return null;
+  }
+
+  public addTicketMessage(
+    ticketId: string,
+    text: string,
+    sender: 'customer' | 'agent',
+    senderName: string,
+    isInternalNote: boolean
+  ): { success: boolean; error?: string } {
+    const item = this.getSupportTicketById(ticketId);
+    if (!item) return { success: false, error: 'تیکت یافت نشد.' };
+
+    const nowIso = new Date().toISOString();
+    if (!item.ticket.conversationTimeline) {
+      item.ticket.conversationTimeline = [
+        {
+          id: `MSG-${Date.now() - 10000}`,
+          timestamp: item.ticket.createdAt,
+          sender: 'customer',
+          senderName: item.customer.fullName,
+          text: item.ticket.lastMessage || 'درخواست راهنمایی در سامانه ثبت شد.',
+        },
+      ];
+    }
+
+    item.ticket.conversationTimeline.push({
+      id: `MSG-${Date.now()}`,
+      timestamp: nowIso,
+      sender,
+      senderName,
+      text: text.trim(),
+      isInternalNote,
+    });
+
+    if (!isInternalNote) {
+      item.ticket.lastMessage = text.trim();
+      if (sender === 'agent' && item.ticket.status === 'open') {
+        item.ticket.status = 'in_progress';
+      }
+    }
+
+    this.addActivityLog({
+      actorId: 'STF-ADMIN',
+      actorName: senderName,
+      actorRole: 'support_finance',
+      actionType: 'STAFF_ACTION',
+      description: isInternalNote
+        ? `ثبت یادداشت داخلی روی تیکت ${ticketId}`
+        : `پاسخ به تیکت پشتیبانی ${ticketId} (${senderName})`,
+      entityType: 'general',
+      entityId: ticketId,
+    });
+
+    this.saveState({ ...this.state });
+    return { success: true };
+  }
+
+  public updateTicketStatus(
+    ticketId: string,
+    status: CustomerSupportTicket['status'],
+    staffName: string
+  ): { success: boolean; error?: string } {
+    const item = this.getSupportTicketById(ticketId);
+    if (!item) return { success: false, error: 'تیکت یافت نشد.' };
+
+    item.ticket.status = status;
+
+    this.addActivityLog({
+      actorId: 'STF-ADMIN',
+      actorName: staffName,
+      actorRole: 'support_finance',
+      actionType: 'STAFF_ACTION',
+      description: `تغییر وضعیت تیکت ${ticketId} به ${status}`,
+      entityType: 'general',
+      entityId: ticketId,
+    });
+
+    this.saveState({ ...this.state });
+    return { success: true };
+  }
+
+  public assignTicket(
+    ticketId: string,
+    staffId: string,
+    staffName: string,
+    actorName: string
+  ): { success: boolean; error?: string } {
+    const item = this.getSupportTicketById(ticketId);
+    if (!item) return { success: false, error: 'تیکت یافت نشد.' };
+
+    item.ticket.assignedStaffId = staffId;
+    item.ticket.assignedStaffName = staffName;
+
+    this.addActivityLog({
+      actorId: 'STF-ADMIN',
+      actorName,
+      actorRole: 'support_finance',
+      actionType: 'STAFF_ACTION',
+      description: `ارجاع تیکت ${ticketId} به ${staffName}`,
+      entityType: 'general',
+      entityId: ticketId,
+    });
+
+    this.saveState({ ...this.state });
+    return { success: true };
+  }
+
+  // ==========================================
+  // REVIEW MODERATION (Prompt 15)
+  // ==========================================
+
+  public getCustomerReviews(filters?: {
+    status?: string;
+    search?: string;
+  }): Array<CustomerProductReview & { customerName: string; customerId: string }> {
+    const list: Array<CustomerProductReview & { customerName: string; customerId: string }> = [];
+
+    (this.state.customers || []).forEach((c) => {
+      (c.reviews || []).forEach((r) => {
+        // INVARIANT (Prompt 15):
+        // Show purchased status ONLY when a verified corresponding order exists
+        const verifiedOrder = (this.state.orders || []).find(
+          (o) =>
+            o.customerId === c.id &&
+            (o.paymentStatus === 'verified_paid' || o.status === 'delivered') &&
+            o.items.some((it) => it.productId === r.productId)
+        );
+
+        list.push({
+          ...r,
+          customerName: c.fullName,
+          customerId: c.id,
+          hasVerifiedPurchase: !!verifiedOrder,
+          verifiedOrderId: verifiedOrder?.id,
+        });
+      });
+    });
+
+    let result = list;
+
+    if (filters?.status && filters.status !== 'all') {
+      result = result.filter((r) => r.status === filters.status);
+    }
+
+    if (filters?.search && filters.search.trim()) {
+      const q = filters.search.trim().toLowerCase();
+      result = result.filter((r) =>
+        r.id.toLowerCase().includes(q) ||
+        r.productName.toLowerCase().includes(q) ||
+        r.customerName.toLowerCase().includes(q) ||
+        r.comment.toLowerCase().includes(q)
+      );
+    }
+
+    return result;
+  }
+
+  public moderateReview(
+    reviewId: string,
+    action: 'approved' | 'rejected',
+    staffName: string,
+    reason?: string
+  ): { success: boolean; error?: string } {
+    let found = false;
+    const nowIso = new Date().toISOString();
+
+    (this.state.customers || []).forEach((c) => {
+      const rev = (c.reviews || []).find((r) => r.id === reviewId);
+      if (rev) {
+        rev.status = action;
+        if (!rev.auditTrail) rev.auditTrail = [];
+        rev.auditTrail.unshift({
+          timestamp: nowIso,
+          actorName: staffName,
+          action: action === 'approved' ? 'تایید و انتشار نظر در وب‌سایت' : 'رد دیدگاه خریدار',
+          note: reason || (action === 'approved' ? 'انطباق با قوانین محتوایی فروشگاه' : 'محتوای نامرتبط'),
+        });
+        found = true;
+      }
+    });
+
+    if (!found) return { success: false, error: 'دیدگاه مورد نظر یافت نشد.' };
+
+    this.addActivityLog({
+      actorId: 'STF-ADMIN',
+      actorName: staffName,
+      actorRole: 'super_admin',
+      actionType: 'STAFF_ACTION',
+      description: `داوری نظر ${reviewId}: وضعیت ${action}`,
+      entityType: 'general',
+      entityId: reviewId,
+    });
+
+    this.saveState({ ...this.state });
+    return { success: true };
+  }
+
+  public replyToReview(
+    reviewId: string,
+    replyText: string,
+    staffName: string
+  ): { success: boolean; error?: string } {
+    let found = false;
+    const nowIso = new Date().toISOString();
+
+    (this.state.customers || []).forEach((c) => {
+      const rev = (c.reviews || []).find((r) => r.id === reviewId);
+      if (rev) {
+        rev.adminReply = replyText.trim();
+        rev.adminRepliedAt = nowIso;
+        if (!rev.auditTrail) rev.auditTrail = [];
+        rev.auditTrail.unshift({
+          timestamp: nowIso,
+          actorName: staffName,
+          action: 'ثبت پاسخ رسمی پشتیبانی شاه‌پوش',
+          note: replyText.trim(),
+        });
+        found = true;
+      }
+    });
+
+    if (!found) return { success: false, error: 'دیدگاه مورد نظر یافت نشد.' };
+
+    this.addActivityLog({
+      actorId: 'STF-ADMIN',
+      actorName: staffName,
+      actorRole: 'support_finance',
+      actionType: 'STAFF_ACTION',
+      description: `ثبت پاسخ به دیدگاه ${reviewId} توسط ${staffName}`,
+      entityType: 'general',
+      entityId: reviewId,
+    });
+
+    this.saveState({ ...this.state });
+    return { success: true };
+  }
+
+  // ==========================================
+  // NOTIFICATIONS & MESSAGING (Prompt 15)
+  // ==========================================
+
+  public getNotificationTemplates(): NotificationTemplate[] {
+    return DEFAULT_NOTIFICATION_TEMPLATES;
+  }
+
+  public getSimulatedNotificationLogs(): SimulatedNotificationLog[] {
+    return this.state.simulatedNotificationLogs || [];
+  }
+
+  public sendSimulatedNotification(
+    templateId: string,
+    recipient: string,
+    variableValues: Record<string, string>,
+    staffName: string
+  ): {
+    success: boolean;
+    renderedText: string;
+    logEntry?: SimulatedNotificationLog;
+    error?: string;
+  } {
+    const tpl = DEFAULT_NOTIFICATION_TEMPLATES.find((t) => t.id === templateId);
+    if (!tpl) return { success: false, renderedText: '', error: 'قالب پیامک یافت نشد.' };
+
+    const rendered = renderNotificationTemplate(tpl, variableValues);
+    if (!rendered.isValid) {
+      return {
+        success: false,
+        renderedText: rendered.renderedText,
+        error: `متغیرهای الزامی تکمیل نشده است: ${rendered.missingVariables.join(', ')}`,
+      };
+    }
+
+    const nowIso = new Date().toISOString();
+    const logEntry: SimulatedNotificationLog = {
+      id: `NOTIF-${Date.now()}`,
+      timestamp: nowIso,
+      channel: tpl.channel,
+      recipient: recipient.trim() || '۰۹۱۲۰۰۰۰۰۰۰',
+      trigger: tpl.trigger,
+      renderedBody: rendered.renderedText,
+      status: 'simulated_success',
+      variableValues,
+    };
+
+    if (!this.state.simulatedNotificationLogs) {
+      this.state.simulatedNotificationLogs = [];
+    }
+    this.state.simulatedNotificationLogs.unshift(logEntry);
+
+    this.addActivityLog({
+      actorId: 'STF-ADMIN',
+      actorName: staffName,
+      actorRole: 'support_finance',
+      actionType: 'STAFF_ACTION',
+      description: `شبیه‌سازی ارسال اعلان ${tpl.titleFa} به ${recipient}`,
+      entityType: 'general',
+      entityId: logEntry.id,
+    });
+
+    this.saveState({ ...this.state });
+    return { success: true, renderedText: rendered.renderedText, logEntry };
+  }
+
+  // ==========================================
+  // MARKETING & DISCOUNTS DOMAIN (Prompt 16)
+  // ==========================================
+
+  public getDiscounts(): DiscountRule[] {
+    if (!this.state.discounts || this.state.discounts.length === 0) {
+      this.state.discounts = [...DEFAULT_DISCOUNTS];
+    }
+    return this.state.discounts;
+  }
+
+  public getDiscountById(id: string): DiscountRule | undefined {
+    return this.getDiscounts().find((d) => d.id === id);
+  }
+
+  public createDiscount(
+    data: Omit<DiscountRule, 'id' | 'createdAt' | 'usedCount'>,
+    actorName: string
+  ): { success: boolean; discount?: DiscountRule; error?: string; warnings?: string[] } {
+    const existing = this.getDiscounts();
+    const validation = validateDiscountConflicts(data, existing);
+    if (!validation.isValid) {
+      return { success: false, error: validation.errors[0], warnings: validation.warnings };
+    }
+
+    const nowIso = new Date().toISOString();
+    const newId = `DSC-${100 + existing.length + 1}`;
+
+    const newDiscount: DiscountRule = {
+      id: newId,
+      ...data,
+      usedCount: 0,
+      createdAt: nowIso,
+      updatedAt: nowIso,
+    };
+
+    this.state.discounts?.unshift(newDiscount);
+
+    this.addActivityLog({
+      actorId: 'STF-ADMIN',
+      actorName,
+      actorRole: 'super_admin',
+      actionType: 'STAFF_ACTION',
+      description: `ایجاد کد تخفیف جدید «${newDiscount.title}» با کد ${newDiscount.code || 'خودکار'}`,
+      entityType: 'general',
+      entityId: newId,
+    });
+
+    this.saveState({ ...this.state });
+    return { success: true, discount: newDiscount, warnings: validation.warnings };
+  }
+
+  public updateDiscount(
+    id: string,
+    updates: Partial<DiscountRule>,
+    actorName: string
+  ): { success: boolean; error?: string; warnings?: string[] } {
+    const existing = this.getDiscounts();
+    const discount = existing.find((d) => d.id === id);
+    if (!discount) return { success: false, error: 'کد تخفیف یافت نشد.' };
+
+    const merged = { ...discount, ...updates };
+    const validation = validateDiscountConflicts(merged, existing);
+    if (!validation.isValid) {
+      return { success: false, error: validation.errors[0], warnings: validation.warnings };
+    }
+
+    Object.assign(discount, updates, { updatedAt: new Date().toISOString() });
+
+    this.addActivityLog({
+      actorId: 'STF-ADMIN',
+      actorName,
+      actorRole: 'super_admin',
+      actionType: 'STAFF_ACTION',
+      description: `ویرایش تخفیف ${discount.title} (${discount.id})`,
+      entityType: 'general',
+      entityId: id,
+    });
+
+    this.saveState({ ...this.state });
+    return { success: true, warnings: validation.warnings };
+  }
+
+  public toggleDiscountStatus(
+    id: string,
+    status: DiscountRule['status'],
+    actorName: string
+  ): { success: boolean; error?: string } {
+    const discount = this.getDiscountById(id);
+    if (!discount) return { success: false, error: 'کد تخفیف یافت نشد.' };
+
+    discount.status = status;
+    discount.updatedAt = new Date().toISOString();
+
+    this.addActivityLog({
+      actorId: 'STF-ADMIN',
+      actorName,
+      actorRole: 'super_admin',
+      actionType: 'STAFF_ACTION',
+      description: `تغییر وضعیت تخفیف ${discount.id} به ${status}`,
+      entityType: 'general',
+      entityId: id,
+    });
+
+    this.saveState({ ...this.state });
+    return { success: true };
+  }
+
+  public deleteDiscount(id: string, actorName: string): { success: boolean; error?: string } {
+    const index = (this.state.discounts || []).findIndex((d) => d.id === id);
+    if (index === -1) return { success: false, error: 'کد تخفیف یافت نشد.' };
+
+    const removed = this.state.discounts?.splice(index, 1)[0];
+
+    this.addActivityLog({
+      actorId: 'STF-ADMIN',
+      actorName,
+      actorRole: 'super_admin',
+      actionType: 'STAFF_ACTION',
+      description: `حذف کد تخفیف ${removed?.title} (${id})`,
+      entityType: 'general',
+      entityId: id,
+    });
+
+    this.saveState({ ...this.state });
+    return { success: true };
+  }
+
+  // ==========================================
+  // MARKETING CAMPAIGNS (Prompt 16)
+  // ==========================================
+
+  public getMarketingCampaigns(): MarketingCampaign[] {
+    if (!this.state.marketingCampaigns || this.state.marketingCampaigns.length === 0) {
+      this.state.marketingCampaigns = [...DEFAULT_MARKETING_CAMPAIGNS];
+    }
+    return this.state.marketingCampaigns;
+  }
+
+  public createMarketingCampaign(
+    data: Omit<
+      MarketingCampaign,
+      'id' | 'createdAt' | 'trackedVisits' | 'trackedOrders' | 'attributedRevenueTomans'
+    >,
+    actorName: string
+  ): { success: boolean; campaign?: MarketingCampaign; error?: string } {
+    const existing = this.getMarketingCampaigns();
+    const nowIso = new Date().toISOString();
+    const newId = `CMP-0${existing.length + 1}`;
+
+    const newCamp: MarketingCampaign = {
+      id: newId,
+      ...data,
+      trackedVisits: 0,
+      trackedOrders: 0,
+      attributedRevenueTomans: 0,
+      createdAt: nowIso,
+    };
+
+    this.state.marketingCampaigns?.unshift(newCamp);
+
+    this.addActivityLog({
+      actorId: 'STF-ADMIN',
+      actorName,
+      actorRole: 'super_admin',
+      actionType: 'STAFF_ACTION',
+      description: `ایجاد کمپین بازاریابی جدید «${newCamp.name}» (UTM: ${newCamp.utmSource}/${newCamp.utmCampaign})`,
+      entityType: 'general',
+      entityId: newId,
+    });
+
+    this.saveState({ ...this.state });
+    return { success: true, campaign: newCamp };
+  }
+
+  public updateMarketingCampaign(
+    id: string,
+    updates: Partial<MarketingCampaign>,
+    actorName: string
+  ): { success: boolean; error?: string } {
+    const camp = this.getMarketingCampaigns().find((c) => c.id === id);
+    if (!camp) return { success: false, error: 'کمپین یافت نشد.' };
+
+    Object.assign(camp, updates);
+
+    this.addActivityLog({
+      actorId: 'STF-ADMIN',
+      actorName,
+      actorRole: 'super_admin',
+      actionType: 'STAFF_ACTION',
+      description: `به‌روزرسانی کمپین ${camp.name} (${id})`,
+      entityType: 'general',
+      entityId: id,
+    });
+
+    this.saveState({ ...this.state });
+    return { success: true };
+  }
+
+  // ==========================================
+  // FUNNEL & CONVERSION ANALYSIS (Prompt 16)
+  // ==========================================
+
+  public getFunnelAnalysis(): FunnelAnalysis {
+    const verifiedPaidOrders = this.state.orders.filter(
+      (o) => o.paymentStatus === 'verified_paid'
+    );
+    const standardOrders = verifiedPaidOrders.filter((o) => !o.hasCustomLineItem);
+    const customOrders = verifiedPaidOrders.filter((o) => o.hasCustomLineItem);
+
+    const standardRev = standardOrders.reduce((sum, o) => sum + o.totalTomans, 0);
+    const customRev = customOrders.reduce((sum, o) => sum + o.totalTomans, 0);
+
+    // Realistic conversion funnel based on sessions, designs, carts and orders
+    const stage1_view = 18360;
+    const stage2_designer = 7710;
+    const stage3_artwork = 2930;
+    const stage4_cart = 1495;
+    const stage5_checkout = 1240;
+    const stage6_paid = verifiedPaidOrders.length > 0 ? verifiedPaidOrders.length * 28 : 1032;
+
+    const stages = [
+      {
+        stageId: 'F1_VIEW',
+        titleFa: '۱. بازدید از صفحه نخست و ویترین کاتالوگ',
+        stepNumber: 1,
+        totalVisitors: stage1_view,
+        standardGarmentCount: 11200,
+        customDesignPodCount: 7160,
+        conversionFromPreviousPct: 100,
+        dropoffPct: 58,
+      },
+      {
+        stageId: 'F2_DESIGNER',
+        titleFa: '۲. ورود به استودیو و طراح سه‌بعدی تیشرت',
+        stepNumber: 2,
+        totalVisitors: stage2_designer,
+        standardGarmentCount: 3200,
+        customDesignPodCount: 4510,
+        conversionFromPreviousPct: 42,
+        dropoffPct: 62,
+      },
+      {
+        stageId: 'F3_ARTWORK',
+        titleFa: '۳. ویرایش آرت‌ورک، متن نستعلیق یا فونت دلخواه',
+        stepNumber: 3,
+        totalVisitors: stage3_artwork,
+        standardGarmentCount: 650,
+        customDesignPodCount: 2280,
+        conversionFromPreviousPct: 38,
+        dropoffPct: 49,
+      },
+      {
+        stageId: 'F4_CART',
+        titleFa: '۴. افزودن پوشاک اختصاصی/کاتالوگ به سبد خرید',
+        stepNumber: 4,
+        totalVisitors: stage4_cart,
+        standardGarmentCount: 680,
+        customDesignPodCount: 815,
+        conversionFromPreviousPct: 51,
+        dropoffPct: 17,
+      },
+      {
+        stageId: 'F5_CHECKOUT',
+        titleFa: '۵. انتقال به درگاه شاپرک و تسویه قطعی فاکتور',
+        stepNumber: 5,
+        totalVisitors: stage5_checkout,
+        standardGarmentCount: 560,
+        customDesignPodCount: 680,
+        conversionFromPreviousPct: 83,
+        dropoffPct: 16.8,
+      },
+      {
+        stageId: 'F6_VERIFIED_PAID',
+        titleFa: '۶. پرداخت موفق تاییدشده و ارجاع به چاپخانه/انبار',
+        stepNumber: 6,
+        totalVisitors: stage6_paid,
+        standardGarmentCount: Math.round(stage6_paid * 0.45),
+        customDesignPodCount: Math.round(stage6_paid * 0.55),
+        conversionFromPreviousPct: 83.2,
+        dropoffPct: 0,
+      },
+    ];
+
+    return {
+      timeframe: '۳۰ روز اخیر (داده‌های تجمیعی پایگاه داده محلی)',
+      consentNotice:
+        'توجه حریم خصوصی: قیف تبدیل بر اساس نشست‌های مستعار بدون ردیابی تهاجمی کاربر تولید شده است. هیچ‌گونه ادعای شناسایی هویتی افراد بدون رضایت وجود ندارد.',
+      stages,
+      overallConversionRatePct: Math.round((stage6_paid / stage1_view) * 100 * 10) / 10,
+      customPodVsStandardSplit: {
+        standardRevenueTomans: standardRev,
+        customRevenueTomans: customRev,
+        standardConversionPct: 5.2,
+        customConversionPct: 6.8,
+      },
+    };
+  }
+
+  // ==========================================
+  // STOREFRONT CMS HOMEPAGE & BANNERS (Prompt 16)
+  // ==========================================
+
+  public getHomepageConfig(): HomepageLayoutConfig {
+    if (!this.state.homepageConfig) {
+      this.state.homepageConfig = { ...DEFAULT_HOMEPAGE_CONFIG };
+    }
+    return this.state.homepageConfig;
+  }
+
+  public updateHomepageConfig(
+    updates: Partial<HomepageLayoutConfig>,
+    actorName: string,
+    changeSummary: string
+  ): { success: boolean } {
+    const current = this.getHomepageConfig();
+    const nowIso = new Date().toISOString();
+
+    const newRev = {
+      id: `REV-${Date.now()}`,
+      timestamp: nowIso,
+      actorName,
+      changeSummary: changeSummary || 'به‌روزرسانی تنظیمات صفحه اصلی',
+      status: updates.status || current.status,
+    };
+
+    if (!current.revisionHistory) current.revisionHistory = [];
+    current.revisionHistory.unshift(newRev);
+
+    this.state.homepageConfig = {
+      ...current,
+      ...updates,
+      updatedAt: nowIso,
+      revisionHistory: current.revisionHistory,
+    };
+
+    this.addActivityLog({
+      actorId: 'STF-ADMIN',
+      actorName,
+      actorRole: 'super_admin',
+      actionType: 'STAFF_ACTION',
+      description: `ویرایش و ذخیره چیدمان صفحه اصلی ویترین: ${changeSummary}`,
+      entityType: 'general',
+      entityId: 'homepage',
+    });
+
+    this.saveState({ ...this.state });
+    return { success: true };
+  }
+
+  public getStoreBanners(): StoreBanner[] {
+    if (!this.state.storeBanners || this.state.storeBanners.length === 0) {
+      this.state.storeBanners = [...DEFAULT_STORE_BANNERS];
+    }
+    return this.state.storeBanners;
+  }
+
+  public createStoreBanner(
+    banner: Omit<StoreBanner, 'id' | 'createdAt' | 'updatedAt'>,
+    actorName: string
+  ): { success: boolean; banner?: StoreBanner } {
+    const list = this.getStoreBanners();
+    const nowIso = new Date().toISOString();
+    const newId = `BAN-0${list.length + 1}`;
+
+    const newBanner: StoreBanner = {
+      id: newId,
+      ...banner,
+      createdAt: nowIso,
+      updatedAt: nowIso,
+    };
+
+    this.state.storeBanners?.unshift(newBanner);
+
+    this.addActivityLog({
+      actorId: 'STF-ADMIN',
+      actorName,
+      actorRole: 'super_admin',
+      actionType: 'STAFF_ACTION',
+      description: `ایجاد بنر تبلیغاتی جدید «${newBanner.title}»`,
+      entityType: 'general',
+      entityId: newId,
+    });
+
+    this.saveState({ ...this.state });
+    return { success: true, banner: newBanner };
+  }
+
+  public updateStoreBanner(
+    id: string,
+    updates: Partial<StoreBanner>,
+    actorName: string
+  ): { success: boolean; error?: string } {
+    const banner = this.getStoreBanners().find((b) => b.id === id);
+    if (!banner) return { success: false, error: 'بنر یافت نشد.' };
+
+    Object.assign(banner, updates, { updatedAt: new Date().toISOString() });
+
+    this.addActivityLog({
+      actorId: 'STF-ADMIN',
+      actorName,
+      actorRole: 'super_admin',
+      actionType: 'STAFF_ACTION',
+      description: `به‌روزرسانی بنر ${banner.title} (${id})`,
+      entityType: 'general',
+      entityId: id,
+    });
+
+    this.saveState({ ...this.state });
+    return { success: true };
+  }
+
+  public deleteStoreBanner(id: string, actorName: string): { success: boolean; error?: string } {
+    const index = (this.state.storeBanners || []).findIndex((b) => b.id === id);
+    if (index === -1) return { success: false, error: 'بنر یافت نشد.' };
+
+    const removed = this.state.storeBanners?.splice(index, 1)[0];
+
+    this.addActivityLog({
+      actorId: 'STF-ADMIN',
+      actorName,
+      actorRole: 'super_admin',
+      actionType: 'STAFF_ACTION',
+      description: `حذف بنر ${removed?.title} (${id})`,
+      entityType: 'general',
+      entityId: id,
+    });
+
+    this.saveState({ ...this.state });
+    return { success: true };
+  }
+
+  // ==========================================
+  // CMS CUSTOM PAGES (Prompt 16)
+  // ==========================================
+
+  public getCmsPages(): CmsCustomPage[] {
+    if (!this.state.cmsPages || this.state.cmsPages.length === 0) {
+      this.state.cmsPages = [...DEFAULT_CMS_PAGES];
+    }
+    return this.state.cmsPages;
+  }
+
+  public getCmsPageById(id: string): CmsCustomPage | undefined {
+    return this.getCmsPages().find((p) => p.id === id || p.slug === id);
+  }
+
+  public createCmsPage(
+    page: Omit<CmsCustomPage, 'id' | 'createdAt' | 'updatedAt' | 'revisionHistory'>,
+    actorName: string
+  ): { success: boolean; page?: CmsCustomPage; error?: string } {
+    const list = this.getCmsPages();
+    if (list.some((p) => p.slug === page.slug)) {
+      return { success: false, error: `شناسه نامک (Slug) «${page.slug}» تکراری است.` };
+    }
+
+    const nowIso = new Date().toISOString();
+    const newPage: CmsCustomPage = {
+      id: page.slug,
+      ...page,
+      createdAt: nowIso,
+      updatedAt: nowIso,
+      revisionHistory: [
+        {
+          id: `REV-${Date.now()}`,
+          timestamp: nowIso,
+          actorName,
+          summary: 'ایجاد صفحه استاتیک در سیستم CMS',
+        },
+      ],
+    };
+
+    this.state.cmsPages?.unshift(newPage);
+
+    this.addActivityLog({
+      actorId: 'STF-ADMIN',
+      actorName,
+      actorRole: 'super_admin',
+      actionType: 'STAFF_ACTION',
+      description: `ایجاد صفحه جدید در CMS: ${newPage.titleFa} (/pages/${newPage.slug})`,
+      entityType: 'general',
+      entityId: newPage.id,
+    });
+
+    this.saveState({ ...this.state });
+    return { success: true, page: newPage };
+  }
+
+  public updateCmsPage(
+    id: string,
+    updates: Partial<CmsCustomPage>,
+    actorName: string,
+    summary: string
+  ): { success: boolean; error?: string } {
+    const page = this.getCmsPageById(id);
+    if (!page) return { success: false, error: 'صفحه یافت نشد.' };
+
+    const nowIso = new Date().toISOString();
+    if (!page.revisionHistory) page.revisionHistory = [];
+    page.revisionHistory.unshift({
+      id: `REV-${Date.now()}`,
+      timestamp: nowIso,
+      actorName,
+      summary: summary || 'ویرایش محتوای صفحه',
+    });
+
+    Object.assign(page, updates, { updatedAt: nowIso });
+
+    this.addActivityLog({
+      actorId: 'STF-ADMIN',
+      actorName,
+      actorRole: 'super_admin',
+      actionType: 'STAFF_ACTION',
+      description: `ویرایش صفحه CMS ${page.titleFa}: ${summary}`,
+      entityType: 'general',
+      entityId: id,
+    });
+
+    this.saveState({ ...this.state });
+    return { success: true };
+  }
+
+  public deleteCmsPage(id: string, actorName: string): { success: boolean; error?: string } {
+    const index = (this.state.cmsPages || []).findIndex((p) => p.id === id || p.slug === id);
+    if (index === -1) return { success: false, error: 'صفحه یافت نشد.' };
+
+    const removed = this.state.cmsPages?.splice(index, 1)[0];
+
+    this.addActivityLog({
+      actorId: 'STF-ADMIN',
+      actorName,
+      actorRole: 'super_admin',
+      actionType: 'STAFF_ACTION',
+      description: `حذف صفحه CMS ${removed?.titleFa} (${id})`,
+      entityType: 'general',
+      entityId: id,
+    });
+
+    this.saveState({ ...this.state });
+    return { success: true };
+  }
+
+  // ==========================================
+  // SEO METADATA RECORDS (Prompt 16)
+  // ==========================================
+
+  public getSeoRecords(): SeoMetadataRecord[] {
+    if (!this.state.seoRecords || this.state.seoRecords.length === 0) {
+      this.state.seoRecords = [...DEFAULT_SEO_RECORDS];
+    }
+    return this.state.seoRecords;
+  }
+
+  public getSeoRecordById(id: string): SeoMetadataRecord | undefined {
+    return this.getSeoRecords().find((r) => r.id === id || r.urlPath === id);
+  }
+
+  public updateSeoRecord(
+    id: string,
+    updates: Partial<SeoMetadataRecord>,
+    actorName: string
+  ): { success: boolean; error?: string } {
+    const record = this.getSeoRecordById(id);
+    if (!record) return { success: false, error: 'رکورد سئو یافت نشد.' };
+
+    Object.assign(record, updates, { updatedAt: new Date().toISOString() });
+
+    this.addActivityLog({
+      actorId: 'STF-ADMIN',
+      actorName,
+      actorRole: 'super_admin',
+      actionType: 'STAFF_ACTION',
+      description: `به‌روزرسانی متادیتا و اسکیما سئو برای ${record.urlPath}`,
+      entityType: 'general',
+      entityId: id,
+    });
+
+    this.saveState({ ...this.state });
+    return { success: true };
+  }
+
+  public addActivityLog(log: Omit<ActivityLog, 'id' | 'timestamp'>) {
     const newLog: ActivityLog = {
       id: `LOG-${9900 + this.state.activities.length + 1}`,
       timestamp: new Date().toISOString(),
       ...log,
     };
     this.state.activities.unshift(newLog);
+    this.saveState({ ...this.state });
   }
 }
 

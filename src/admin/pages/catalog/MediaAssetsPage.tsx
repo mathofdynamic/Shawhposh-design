@@ -1,13 +1,14 @@
 import React, { useState, useMemo } from 'react';
 import { Image as ImageIcon, Plus, Trash2, Copy, Check, Filter, ExternalLink, Sparkles } from 'lucide-react';
 import { AdminPageHeader } from '../../components/shell/AdminPageHeader';
-import { Button, SearchInput, Badge } from '../../components/ui';
+import { Button, SearchInput, Badge, useToast } from '../../components/ui';
 import { useAdminRepository } from '../../domain/useAdminRepository';
 import { MediaAsset } from '../../domain/types';
 import { toFaDigits } from '../../utils/formatters';
 
 export const MediaAssetsPage: React.FC = () => {
   const { getMediaAssets, addMediaAsset, deleteMediaAsset, state } = useAdminRepository();
+  const { addToast } = useToast();
   const mediaAssets = getMediaAssets();
 
   const [search, setSearch] = useState('');
@@ -46,7 +47,11 @@ export const MediaAssetsPage: React.FC = () => {
 
   const handleCreateAsset = () => {
     if (!newAsset.url?.trim()) {
-      alert('آدرس URL تصویر الزامی است.');
+      addToast({
+        title: 'خطای ورودی تصویر',
+        description: 'آدرس URL تصویر رسانه الزامی است.',
+        type: 'error',
+      });
       return;
     }
     addMediaAsset({
@@ -60,6 +65,11 @@ export const MediaAssetsPage: React.FC = () => {
       fileSizeBytes: newAsset.fileSizeBytes || 350000,
       format: newAsset.format || 'webp',
       associatedProductIds: [],
+    });
+    addToast({
+      title: 'رسانه افزوده شد',
+      description: 'فایل تصویری با موفقیت به کتابخانه رسانه شاه‌پوش اضافه شد.',
+      type: 'success',
     });
     setIsUploadModalOpen(false);
     setNewAsset({

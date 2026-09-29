@@ -21,10 +21,24 @@ export const AdminPageHeader: React.FC<AdminPageHeaderProps> = ({
 
   const displayTitle = title || activeRoute?.titleFa || 'میز کارگاه';
   const displayDescription = description || activeRoute?.descriptionFa || '';
+  const normalizedRole =
+    currentRole === 'super_admin'
+      ? 'owner'
+      : currentRole === 'designer_reviewer'
+      ? 'production'
+      : currentRole === 'production_operator'
+      ? 'production'
+      : currentRole === 'support_finance'
+      ? 'finance'
+      : currentRole;
+
   const isRestricted =
     currentRole &&
+    normalizedRole !== 'owner' &&
+    currentRole !== 'super_admin' &&
     activeRoute?.allowedRoles &&
-    !activeRoute.allowedRoles.includes(currentRole);
+    !activeRoute.allowedRoles.includes(currentRole) &&
+    !activeRoute.allowedRoles.includes(normalizedRole as any);
 
   return (
     <div className="border-b border-white/10 pb-5 mb-6 font-sans">

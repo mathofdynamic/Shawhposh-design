@@ -177,7 +177,7 @@ export const InventoryPage: React.FC = () => {
             <div className="w-10 h-10 rounded-xl bg-stone-900 border border-white/10 overflow-hidden shrink-0 flex items-center justify-center">
               {prod?.images && prod.images[0] ? (
                 <img
-                  src={prod.images[0].url}
+                  src={typeof prod.images[0] === 'string' ? prod.images[0] : (prod.images[0] as any)?.url}
                   alt={prod.name}
                   className="w-full h-full object-cover"
                 />
@@ -453,7 +453,7 @@ export const InventoryPage: React.FC = () => {
           </div>
         </div>
         <div className="flex items-center gap-2 shrink-0">
-          <span className="text-[10px] font-mono bg-black/40 border border-white/10 px-2.5 py-1 rounded-full text-stone-300">
+          <span className="text-[10px] font-mono bg-black/40 border border-white/10 px-2.5 py-1 rounded-md text-stone-300">
             INVARIANT GUARD: AVAILABLE = ON_HAND - RESERVED ≥ 0
           </span>
         </div>
@@ -472,7 +472,7 @@ export const InventoryPage: React.FC = () => {
         >
           <Box size={16} />
           ماتریس تنوع کالاها (SKUs)
-          <span className="bg-white/10 text-stone-300 font-mono text-[10px] px-2 py-0.5 rounded-full">
+          <span className="bg-white/10 text-stone-300 font-mono text-[10px] px-2 py-0.5 rounded-md">
             {toFaDigits(state.variants.length)}
           </span>
         </button>
@@ -488,7 +488,7 @@ export const InventoryPage: React.FC = () => {
         >
           <Package size={16} />
           مواد اولیه و ملزومات کارگاه چاپ
-          <span className="bg-white/10 text-stone-300 font-mono text-[10px] px-2 py-0.5 rounded-full">
+          <span className="bg-white/10 text-stone-300 font-mono text-[10px] px-2 py-0.5 rounded-md">
             {toFaDigits(state.workshopMaterials.length)}
           </span>
         </button>

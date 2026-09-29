@@ -1,4 +1,5 @@
 import React from 'react';
+import { toFaDigits } from '../../utils/formatters';
 
 export interface SegmentOption<T extends string> {
   value: T;
@@ -48,8 +49,8 @@ export function SegmentedControl<T extends string>({
             {opt.icon && <span className="shrink-0">{opt.icon}</span>}
             <span>{opt.label}</span>
             {opt.count !== undefined && (
-              <span className="text-[10px] bg-white/10 px-1.5 py-0.2 rounded-full text-gray-300 font-fanum">
-                {opt.count}
+              <span className="text-[10px] bg-white/10 px-1.5 py-0.2 rounded-md text-gray-300 font-fanum">
+                {toFaDigits(opt.count)}
               </span>
             )}
           </button>
@@ -101,7 +102,7 @@ export const Tabs: React.FC<TabsProps> = ({ tabs, activeId, onChange, className 
                     isActive ? 'bg-[#ba8d3d]/20 text-[#eed29d]' : 'bg-white/5 text-gray-400'
                   }`}
                 >
-                  {tab.count}
+                  {toFaDigits(tab.count)}
                 </span>
               )}
             </button>

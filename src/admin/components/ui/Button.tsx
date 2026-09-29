@@ -1,7 +1,7 @@
 import React from 'react';
 import { Loader2 } from 'lucide-react';
 
-export type ButtonVariant = 'primary' | 'secondary' | 'outline' | 'ghost' | 'destructive' | 'brass';
+export type ButtonVariant = 'primary' | 'secondary' | 'outline' | 'ghost' | 'destructive' | 'danger' | 'brass';
 export type ButtonSize = 'sm' | 'md' | 'lg';
 
 export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
@@ -50,6 +50,8 @@ export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
       ghost:
         'bg-transparent hover:bg-white/5 text-white/70 hover:text-white active:scale-[0.98]',
       destructive:
+        'bg-red-500/15 hover:bg-red-500/25 text-red-400 border border-red-500/30 active:scale-[0.98] font-semibold',
+      danger:
         'bg-red-500/15 hover:bg-red-500/25 text-red-400 border border-red-500/30 active:scale-[0.98] font-semibold',
     };
 
@@ -109,6 +111,7 @@ export const IconButton = React.forwardRef<HTMLButtonElement, IconButtonProps>(
       outline: 'bg-transparent hover:bg-white/5 text-white/80 border border-white/15 active:scale-[0.96]',
       ghost: 'bg-transparent hover:bg-white/5 text-white/70 hover:text-white active:scale-[0.96]',
       destructive: 'bg-red-500/15 hover:bg-red-500/25 text-red-400 border border-red-500/30 active:scale-[0.96]',
+      danger: 'bg-red-500/15 hover:bg-red-500/25 text-red-400 border border-red-500/30 active:scale-[0.96]',
     };
 
     return (

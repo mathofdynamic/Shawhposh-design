@@ -3,9 +3,75 @@
  * Prompt 03: Synthetic Domain & UI-Only Repository Layer
  */
 
-export type StaffRole = 'super_admin' | 'designer_reviewer' | 'production_operator' | 'support_finance';
+export type StaffRole =
+  | 'owner'
+  | 'store_manager'
+  | 'finance'
+  | 'production'
+  | 'inventory'
+  | 'support'
+  // Legacy aliases for backward compatibility
+  | 'super_admin'
+  | 'designer_reviewer'
+  | 'production_operator'
+  | 'support_finance';
 
 export type DateRangePreset = 'today' | '7d' | '30d' | '90d' | 'all';
+
+export interface CustomerAddress {
+  id: string;
+  title: string;
+  recipientName: string;
+  phone: string;
+  province: string;
+  city: string;
+  fullAddress: string;
+  postalCode: string;
+  isDefault: boolean;
+}
+
+export interface CustomerSupportTicket {
+  id: string; // e.g. "TCK-801"
+  subject: string;
+  status: 'open' | 'in_progress' | 'resolved' | 'closed';
+  priority: 'low' | 'normal' | 'high';
+  category: string;
+  createdAt: string;
+  linkedOrderId?: string;
+  linkedDesignId?: string;
+  linkedRefundId?: string;
+  linkedShipmentId?: string;
+  assignedStaffId?: string;
+  assignedStaffName?: string;
+  slaDueAt?: string;
+  isSlaBreached?: boolean;
+  lastMessage: string;
+  conversationTimeline?: Array<{
+    id: string;
+    timestamp: string;
+    sender: 'customer' | 'agent';
+    senderName: string;
+    text: string;
+    isInternalNote?: boolean;
+  }>;
+}
+
+export interface CustomerProductReview {
+  id: string; // e.g. "REV-901"
+  productId: string;
+  productName: string;
+  customerId?: string;
+  customerName?: string;
+  rating: number; // 1-5
+  comment: string;
+  status: 'approved' | 'pending' | 'rejected';
+  createdAt: string;
+  hasVerifiedPurchase?: boolean;
+  verifiedOrderId?: string;
+  adminReply?: string;
+  adminRepliedAt?: string;
+  auditTrail?: Array<{ timestamp: string; actorName: string; action: string; note?: string }>;
+}
 
 export interface Customer {
   id: string; // e.g. "CUST-1001"
@@ -19,12 +85,76 @@ export interface Customer {
   totalOrdersCount: number;
   totalSpentTomans: number;
   tag: 'vip' | 'regular' | 'wholesale' | 'new';
+  status?: 'active' | 'inactive' | 'deactivated';
+  marketingConsent?: boolean;
   createdAt: string; // ISO
   lastActiveAt: string; // ISO
   notes?: string;
+  addresses?: CustomerAddress[];
+  savedFavorites?: Array<{ productId: string; productName: string; addedAt: string }>;
+  cartItems?: Array<{ productId: string; productName: string; variantSku: string; quantity: number }>;
+  supportTickets?: CustomerSupportTicket[];
+  reviews?: CustomerProductReview[];
+  staffNotes?: Array<{
+    id: string;
+    timestamp: string;
+    authorId: string;
+    authorName: string;
+    text: string;
+    linkedOrderId?: string;
+    linkedDesignId?: string;
+  }>;
+  auditTrail?: Array<{
+    id: string;
+    timestamp: string;
+    actorName: string;
+    action: string;
+    note?: string;
+  }>;
+  browsingEvents?: Array<{
+    id: string;
+    timestamp: string;
+    eventType: string;
+    pageTitle: string;
+    url: string;
+    device: string;
+    durationSeconds?: number;
+  }>;
+  deletionRequested?: {
+    requestedAt: string;
+    reason: string;
+    status: 'pending_review' | 'rejected' | 'processed';
+    requestedBy: string;
+  };
 }
 
-export type GarmentFit = 'oversize' | 'classic' | 'slim';
+export interface CustomerDetailData {
+  customer: Customer;
+  orders: Order[];
+  payments: PaymentAttempt[];
+  customDesigns: CustomDesign[];
+  shipments: Shipment[];
+  supportTickets: CustomerSupportTicket[];
+  reviews: CustomerProductReview[];
+  staffNotes: NonNullable<Customer['staffNotes']>;
+  auditTrail: NonNullable<Customer['auditTrail']>;
+  addresses: CustomerAddress[];
+  savedFavorites: NonNullable<Customer['savedFavorites']>;
+  cartItems: NonNullable<Customer['cartItems']>;
+  browsingEvents: NonNullable<Customer['browsingEvents']>;
+  // Metrics
+  totalOrdersCount: number;
+  verifiedPaidOrdersCount: number;
+  verifiedPaidSpendTomans: number;
+  processedRefundsTomans: number;
+  netLtvSpendTomans: number;
+  averageOrderValueTomans: number;
+  firstOrderDate?: string;
+  lastOrderDate?: string;
+  hasCustomOrders: boolean;
+}
+
+export type GarmentFit = 'oversize' | 'classic' | 'slim' | 'oversized';
 
 export interface ProductVariant {
   sku: string; // e.g. "TSH-OVR-BLK-XL"
@@ -40,6 +170,9 @@ export interface ProductVariant {
   priceAdjustmentTomans: number; // difference from base product price (usually 0)
   isEnabled?: boolean;
   warehouseLocation?: string; // e.g. "انبار مرکزی تهران - ردیف C4"
+  barcode?: string;
+  priceTomans?: number;
+  isCustomPodBlank?: boolean;
 }
 
 export type ProductCategoryKey = 'calligraphy' | 'graphic' | 'minimalist' | string;
@@ -132,10 +265,47 @@ export interface MediaAsset {
 
 export type DesignReviewStatus = 'submitted' | 'under_review' | 'approved' | 'rejected' | 'revision_requested';
 
+export interface DesignSettings {
+  designMode: 'graphic' | 'text' | 'mixed';
+  selectedGraphicId?: string;
+  graphicName?: string;
+  customText?: string;
+  fontName?: string;
+  textColorHex?: string;
+  designScale: number; // 50 to 150 %
+  designPosX: number; // -20 to 20 %
+  designPosY: number; // -20 to 20 %
+  tshirtColorName: string;
+  tshirtColorHex: string;
+}
+
+export interface DesignRevisionSnapshot {
+  revisionNumber: number;
+  submittedAt: string;
+  previewUrl: string;
+  settings: DesignSettings;
+  changeSummaryFa?: string;
+  customerNote?: string;
+}
+
+export interface DesignAuditEntry {
+  id: string;
+  timestamp: string;
+  actorId: string;
+  actorName: string;
+  action: 'submitted' | 'assigned' | 'approved' | 'rejected' | 'revision_requested' | 'revision_submitted' | 'note_added';
+  notes?: string;
+  previousStatus?: DesignReviewStatus;
+  newStatus?: DesignReviewStatus;
+}
+
 export interface CustomDesign {
   id: string; // e.g. "DSG-9021"
   orderId: string;
+  lineItemId?: string;
   customerId: string;
+  customerName?: string;
+  customerPhone?: string;
   title: string;
   previewUrl: string;
   format: 'SVG' | 'PNG' | 'PDF';
@@ -144,11 +314,55 @@ export interface CustomDesign {
   dimensionsMm: string; // e.g. "280 x 380 mm"
   printZone: 'front_chest' | 'back_full' | 'sleeve_left' | 'collar_minimal';
   status: DesignReviewStatus;
+  designType?: 'graphic' | 'text' | 'mixed';
+  blankSku?: string;
+  blankProductName?: string;
+  blankColorName?: string;
+  blankSize?: string;
   reviewerNotes?: string;
   assignedStaffId?: string;
+  reviewerName?: string;
   submittedAt: string;
   reviewedAt?: string;
+  slaDueAt?: string;
+  slaStatus?: 'on_track' | 'at_risk' | 'breached';
   revisionCount: number;
+  settings?: DesignSettings;
+  revisions?: DesignRevisionSnapshot[];
+  customerNote?: string;
+  auditTrail?: DesignAuditEntry[];
+  staffNotes?: Array<{ id: string; timestamp: string; authorId: string; authorName: string; text: string }>;
+}
+
+export interface ArtworkAsset {
+  id: string; // e.g. "ART-01"
+  title: string;
+  artist: string;
+  attributionFa: string;
+  license: string;
+  category: 'calligraphy' | 'classic_ornament' | 'contemporary_typography' | 'street_miniature';
+  categoryLabelFa: string;
+  format: string;
+  status: 'active' | 'archived';
+  previewUrl: string;
+  downloadsCount: number;
+  usageCount: number;
+  isCustomerUploadSample?: boolean;
+}
+
+export interface PrintRuleZone {
+  id: 'front_chest' | 'back_full' | 'sleeve_left' | 'collar_minimal';
+  nameFa: string;
+  maxDimensionsMm: string;
+  recommendedDimensionsMm: string;
+  primaryTechnique: string;
+  alternativeTechnique?: string;
+  minResolutionDpi: number;
+  allowedFormats: string[];
+  transparencyRequired: boolean;
+  colorProfile: 'CMYK' | 'RGB';
+  safetyMarginMm: number;
+  restrictions: string[];
 }
 
 export interface OrderLineItem {
@@ -169,35 +383,127 @@ export interface OrderLineItem {
 
 export type PaymentMethod = 'saman_gateway' | 'zarinpal' | 'card_to_card' | 'wallet';
 
-export type PaymentStatus = 'verified_paid' | 'pending' | 'failed' | 'refunded';
+export type PaymentStatus =
+  | 'initiated'
+  | 'pending'
+  | 'verified_paid'
+  | 'failed'
+  | 'partial_refund'
+  | 'refunded';
+
+export interface PaymentLifecycleStep {
+  step: 'token_requested' | 'redirected_to_shaparak' | 'callback_received' | 'verified_with_bank' | 'settled' | 'refunded' | 'failed';
+  timestamp: string;
+  status: 'success' | 'pending' | 'failed';
+  titleFa: string;
+  descriptionFa: string;
+}
 
 export interface PaymentAttempt {
   id: string; // e.g. "PAY-7701"
   orderId: string;
   customerId: string;
+  customerName?: string;
+  customerPhone?: string;
   amountTomans: number;
   method: PaymentMethod;
   status: PaymentStatus;
   gatewayRefId: string;
   traceNumber: string;
   errorMessage?: string;
+  gatewayErrorCode?: string;
   // Documentation-range fake IP (RFC 5737: 192.0.2.0/24, 198.51.100.0/24, 203.0.113.0/24)
   maskedIpAddress: string;
+  cardPanMasked?: string;
+  terminalId?: string;
+  settlementBatchId?: string;
+  settledAt?: string;
+  isReconciled?: boolean;
+  retryAttemptNumber?: number;
+  parentFailedPaymentId?: string;
   createdAt: string;
+  verifiedAt?: string;
   refundedAmountTomans?: number;
   refundReason?: string;
   refundedAt?: string;
+  lifecycleTimeline?: PaymentLifecycleStep[];
+  staffNotes?: Array<{ id: string; timestamp: string; authorName: string; text: string }>;
+}
+
+export type RefundStatus = 'requested' | 'approved' | 'processed' | 'rejected';
+
+export interface RefundRecord {
+  id: string; // e.g. "REF-8801"
+  paymentId: string;
+  orderId: string;
+  customerId: string;
+  customerName: string;
+  customerPhone?: string;
+  requestedAmountTomans: number;
+  processedAmountTomans?: number;
+  reason: string;
+  status: RefundStatus;
+  requestedAt: string;
+  approvedAt?: string;
+  processedAt?: string;
+  rejectedAt?: string;
+  approvedById?: string;
+  approvedByName?: string;
+  rejectionReason?: string;
+  destinationAccountMasked: string; // e.g. "IR** **** **** **** **۰۸ ۴۳ (بانک سامان)"
+  isPartial: boolean;
+  notes?: string;
+}
+
+export interface SettlementBatchItem {
+  id: string; // e.g. "STL-2026-09-22"
+  bankName: string;
+  settlementDate: string;
+  totalCapturedTomans: number;
+  feeTomans: number;
+  netSettledTomans: number;
+  transactionsCount: number;
+  status: 'matched' | 'discrepancy' | 'in_progress';
+  unmatchedPaymentIds?: string[];
+  depositReferenceNumber: string;
 }
 
 export type ProductionStage = 
+  | 'ready'
   | 'queued'
   | 'pretreatment'
   | 'printing_dtg'
   | 'curing_heatpress'
   | 'qc_inspection'
+  | 'ready_for_fulfillment'
   | 'packaging'
   | 'completed'
-  | 'reprint_needed';
+  | 'reprint_needed'
+  | 'on_hold';
+
+export interface ProductionAuditItem {
+  id: string;
+  timestamp: string;
+  actorName: string;
+  action: string;
+  note?: string;
+  fromStage?: string;
+  toStage?: string;
+}
+
+export interface ProductionMaterialRequirement {
+  name: string;
+  quantityNeeded: string;
+  available: boolean;
+  consumed: boolean;
+}
+
+export interface ProductionQcPhoto {
+  id: string;
+  label: string;
+  url: string;
+  timestamp: string;
+}
 
 export interface ProductionJob {
   id: string; // e.g. "JOB-401"
@@ -206,23 +512,83 @@ export interface ProductionJob {
   variantSku: string;
   customDesignId?: string;
   operatorId?: string;
+  assignedStaffName?: string;
+  vendorPartner?: string; // Optional future external partner field
   stage: ProductionStage;
   priority: 'normal' | 'rush' | 'sample';
+  quantity: number;
+  printingTechnique: string;
+  printPlacement: string;
+  dueDate: string;
   qcStatus: 'pending' | 'passed' | 'failed';
   qcNotes?: string;
   reprintCount: number;
+  holdReason?: string;
+  reworkReason?: string;
+  defectReason?: string;
+  wastedGarmentCount?: number;
+  qcDefectPhotos?: ProductionQcPhoto[];
+  materialRequirements?: ProductionMaterialRequirement[];
+  checklist?: Array<{ id: string; title: string; checked: boolean }>;
+  auditTrail?: ProductionAuditItem[];
   startedAt?: string;
   finishedAt?: string;
 }
 
-export type CarrierName = 'tipax' | 'post_pishtaz' | 'chapar' | 'courier_tehran';
+export type CarrierName = 'tipax' | 'post_pishtaz' | 'chapar' | 'courier_tehran' | 'snapp_box';
 
-export type ShipmentStatus = 'label_created' | 'dispatched' | 'in_transit' | 'delivered' | 'returned';
+export type ShipmentStatus =
+  | 'packed'
+  | 'ready'
+  | 'label_created'
+  | 'dispatched'
+  | 'in_transit'
+  | 'delivered'
+  | 'exception'
+  | 'returned';
+
+export interface ShipmentItem {
+  sku: string;
+  productName: string;
+  quantity: number;
+  isCustomPod?: boolean;
+  designId?: string;
+  designTitle?: string;
+}
+
+export interface ShipmentTimelineEvent {
+  timestamp: string;
+  stage: string;
+  titleFa: string;
+  descriptionFa: string;
+  location?: string;
+  isCompleted: boolean;
+}
+
+export interface ShipmentAddressCorrection {
+  id: string;
+  timestamp: string;
+  previousAddress: string;
+  newAddress: string;
+  reason: string;
+  actorName: string;
+}
+
+export interface ShipmentDeliveryAttempt {
+  attemptNumber: number;
+  timestamp: string;
+  status: 'failed' | 'successful' | 'rescheduled';
+  note: string;
+}
 
 export interface Shipment {
   id: string; // e.g. "SHP-PKG-3310"
   orderId: string;
   customerId: string;
+  customerName?: string;
+  recipientName?: string;
+  recipientPhone?: string;
+  shippingAddress?: string;
   carrier: CarrierName;
   trackingCode: string;
   status: ShipmentStatus;
@@ -231,6 +597,114 @@ export interface Shipment {
   dispatchedAt?: string;
   deliveredAt?: string;
   estimatedDeliveryDate: string;
+  items?: ShipmentItem[];
+  timeline?: ShipmentTimelineEvent[];
+  addressCorrections?: ShipmentAddressCorrection[];
+  deliveryAttempts?: ShipmentDeliveryAttempt[];
+  exceptionReason?: string;
+  isMockLabel?: boolean;
+  packedAt?: string;
+  packedByStaffId?: string;
+  packedByStaffName?: string;
+}
+
+// Return / Exchange Domain Models (Prompt 15)
+export type ReturnReason =
+  | 'size_mismatch'
+  | 'defective_stitching'
+  | 'print_color_drift'
+  | 'customer_remorse'
+  | 'wrong_item_shipped';
+
+export type ReturnStatus =
+  | 'requested'
+  | 'approved_pending_receipt'
+  | 'received_inspecting'
+  | 'inspection_passed'
+  | 'inspection_failed'
+  | 'replacement_dispatched'
+  | 'refund_processed'
+  | 'rejected';
+
+export type InspectionOutcome =
+  | 'intact_resellable'
+  | 'minor_defect_reworkable'
+  | 'damaged_scrap';
+
+export type ReturnResolution =
+  | 'exchange_replacement'
+  | 'store_credit'
+  | 'gateway_refund'
+  | 'rejected';
+
+export interface ReturnRequestItem {
+  sku: string;
+  productName: string;
+  quantity: number;
+  unitPriceTomans: number;
+  isCustomPod: boolean;
+  reason?: string;
+}
+
+export interface ReturnRequest {
+  id: string; // e.g. "RET-101"
+  orderId: string;
+  customerId: string;
+  customerName: string;
+  customerPhone?: string;
+  items: ReturnRequestItem[];
+  reason: ReturnReason;
+  reasonFa: string;
+  status: ReturnStatus;
+  requestedAt: string;
+  receivedAt?: string;
+  inspectedAt?: string;
+  inspectionOutcome?: InspectionOutcome;
+  restockEligible?: boolean;
+  inspectionNotes?: string;
+  resolution?: ReturnResolution;
+  linkedRefundId?: string;
+  linkedReplacementOrderId?: string;
+  isCustomizedGood: boolean;
+  policyNotes: string;
+  refundAmountTomans?: number;
+  auditTrail: Array<{
+    timestamp: string;
+    actorName: string;
+    action: string;
+    note?: string;
+  }>;
+}
+
+// Notification & Messaging Domain Models (Prompt 15)
+export interface NotificationTemplate {
+  id: string;
+  trigger:
+    | 'order_confirmed'
+    | 'payment_verified'
+    | 'design_approved'
+    | 'production_started'
+    | 'qc_passed'
+    | 'shipment_dispatched'
+    | 'out_for_delivery'
+    | 'refund_processed';
+  titleFa: string;
+  channel: 'sms' | 'email';
+  templateText: string;
+  variables: string[];
+  samplePreview: string;
+  mockServiceNotice: string;
+}
+
+export interface SimulatedNotificationLog {
+  id: string;
+  timestamp: string;
+  channel: 'sms' | 'email';
+  recipient: string;
+  trigger: string;
+  renderedBody: string;
+  status: 'simulated_success' | 'demo_blocked';
+  variableValues: Record<string, string>;
 }
 
 export type OrderStatus =
@@ -264,6 +738,34 @@ export interface Order {
   updatedAt: string;
   notes?: string;
   isRushOrder: boolean;
+  orderType?: 'standard' | 'custom' | 'mixed';
+  assignedOwnerId?: string;
+  assignedOwnerName?: string;
+  productionStatus?: 'none' | 'queued' | 'in_progress' | 'qc' | 'ready' | 'rework';
+  shippingStatus?: 'unfulfilled' | 'packed' | 'shipped' | 'delivered' | 'exception' | 'returned';
+  cancellationReason?: string;
+  statusTimeline?: Array<{
+    id: string;
+    timestamp: string;
+    fromStatus: string;
+    toStatus: string;
+    actorName: string;
+    note?: string;
+  }>;
+  deliveryHistory?: Array<{
+    timestamp: string;
+    previousAddress: string;
+    newAddress: string;
+    actorName: string;
+    reason: string;
+  }>;
+  staffNotes?: Array<{
+    id: string;
+    timestamp: string;
+    authorId: string;
+    authorName: string;
+    text: string;
+  }>;
 }
 
 export interface StaffMember {
@@ -277,6 +779,20 @@ export interface StaffMember {
   activeTasksCount: number;
 }
 
+export interface StaffTaskChecklistItem {
+  id: string;
+  title: string;
+  isDone: boolean;
+}
+
+export interface StaffTaskComment {
+  id: string;
+  authorStaffId: string;
+  authorName: string;
+  text: string;
+  createdAt: string;
+}
+
 export interface StaffTask {
   id: string; // e.g. "TSK-501"
   title: string;
@@ -284,18 +800,21 @@ export interface StaffTask {
   assignedStaffId: string;
   priority: 'low' | 'medium' | 'high' | 'urgent';
   status: 'todo' | 'in_progress' | 'completed';
-  relatedEntityType?: 'order' | 'design' | 'job';
+  relatedEntityType?: 'order' | 'design' | 'job' | 'product' | 'ticket';
   relatedEntityId?: string;
   dueDate: string;
   createdAt: string;
   completedAt?: string;
+  checklist?: StaffTaskChecklistItem[];
+  comments?: StaffTaskComment[];
+  resolutionNotes?: string;
 }
 
 export interface ActivityLog {
   id: string; // e.g. "LOG-9921"
   actorId: string;
   actorName: string;
-  actorRole: StaffRole | 'system' | 'customer';
+  actorRole: StaffRole | 'system' | 'customer' | 'admin';
   actionType: string;
   description: string;
   entityType:
@@ -310,9 +829,18 @@ export interface ActivityLog {
     | 'variant'
     | 'category'
     | 'collection'
-    | 'media';
+    | 'media'
+    | 'supplier'
+    | 'purchase_order'
+    | 'work_report'
+    | 'rbac_permission'
+    | 'general';
   entityId: string;
   timestamp: string;
+  sourceMode?: 'web_admin' | 'api' | 'automated_cron' | 'studio_hook';
+  conciseBefore?: string; // Masked before snapshot
+  conciseAfter?: string; // Masked after snapshot
+  relatedLink?: string; // Deep link e.g. /admin/sales/orders/SHP-1405-882101
   metadata?: Record<string, any>;
 }
 
@@ -437,6 +965,204 @@ export interface UtmCampaignStat {
   orders: number;
   conversionRatePercent: number;
   attributedRevenueTomans: number;
+}
+
+// ==========================================
+// MARKETING & DISCOUNTS DOMAIN (Prompt 16)
+// ==========================================
+
+export type DiscountType = 'percentage' | 'fixed_amount';
+export type DiscountApplyType = 'code' | 'automatic';
+export type StackingPolicy = 'standalone' | 'stackable_with_promotions';
+
+export interface DiscountRule {
+  id: string; // e.g. "DSC-101"
+  title: string;
+  code?: string; // empty if automatic
+  applyType: DiscountApplyType;
+  discountType: DiscountType;
+  discountValue: number; // percentage (e.g. 15 for 15%) or Tomans (e.g. 100000)
+  maxDiscountCapTomans?: number; // max cap for percentage discounts
+  minOrderAmountTomans: number; // 0 if none
+  eligibleProductIds: string[]; // empty means all catalog products
+  eligibleCategoryIds: string[];
+  eligibleSkus: string[];
+  perCustomerLimit: number; // 0 for unlimited, 1 for once per customer
+  globalUsageLimit: number; // 0 for unlimited
+  usedCount: number;
+  startDate: string; // ISO
+  endDate: string; // ISO
+  status: 'active' | 'scheduled' | 'expired' | 'disabled';
+  stackingPolicy: StackingPolicy;
+  isFirstOrderOnly?: boolean;
+  notes?: string;
+  createdAt: string;
+  updatedAt?: string;
+}
+
+export interface MarketingCampaign {
+  id: string; // e.g. "CMP-FALL-2026"
+  name: string;
+  utmSource: string; // e.g. "instagram", "google", "telegram"
+  utmMedium: string; // e.g. "influencer_story", "cpc", "channel_post"
+  utmCampaign: string; // e.g. "shahneshin_launch"
+  utmContent?: string; // e.g. "black_box_teaser"
+  utmTerm?: string;
+  startDate: string;
+  endDate: string;
+  status: 'active' | 'scheduled' | 'completed' | 'paused';
+  adSpendCostTomans?: number; // actual instrumented cost or undefined
+  hasInstrumentedCost: boolean;
+  targetUrl: string;
+  linkedDiscountCode?: string;
+  trackedVisits: number;
+  trackedOrders: number;
+  attributedRevenueTomans: number;
+  notes?: string;
+  createdAt: string;
+}
+
+export interface FunnelStageData {
+  stageId: string;
+  titleFa: string;
+  stepNumber: number;
+  totalVisitors: number;
+  standardGarmentCount: number;
+  customDesignPodCount: number;
+  conversionFromPreviousPct: number;
+  dropoffPct: number;
+}
+
+export interface FunnelAnalysis {
+  timeframe: string;
+  consentNotice: string;
+  stages: FunnelStageData[];
+  overallConversionRatePct: number;
+  customPodVsStandardSplit: {
+    standardRevenueTomans: number;
+    customRevenueTomans: number;
+    standardConversionPct: number;
+    customConversionPct: number;
+  };
+}
+
+// ==========================================
+// STOREFRONT CMS & SEO DOMAIN (Prompt 16)
+// ==========================================
+
+export type PublishingStatus = 'draft' | 'scheduled' | 'published' | 'archived';
+
+export interface HeroSlide {
+  id: string;
+  titleFa: string;
+  titleEn?: string;
+  subtitleFa: string;
+  subtitleEn?: string;
+  ctaTextFa: string;
+  ctaLink: string;
+  secondaryCtaTextFa?: string;
+  secondaryCtaLink?: string;
+  imageUrl: string;
+  badgeFa?: string;
+  displayOrder: number;
+  isActive: boolean;
+}
+
+export interface StoreBanner {
+  id: string;
+  title: string;
+  slot: 'top_announcement' | 'hero_secondary' | 'middle_collection' | 'footer_vip';
+  contentFa: string;
+  contentEn?: string;
+  imageUrl?: string;
+  linkUrl: string;
+  backgroundColorHex?: string;
+  textColorHex?: string;
+  status: PublishingStatus;
+  publishAt?: string;
+  expireAt?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface HomepageLayoutConfig {
+  announcementBar: {
+    enabled: boolean;
+    textFa: string;
+    textEn?: string;
+    linkUrl: string;
+    bgColor: string;
+  };
+  heroSlides: HeroSlide[];
+  featuredProductIds: string[]; // Pick from shared catalog!
+  featuredCollectionIds: string[]; // Pick from collections!
+  studioTeaserBlock: {
+    enabled: boolean;
+    titleFa: string;
+    descriptionFa: string;
+    ctaTextFa: string;
+    ctaLink: string;
+    previewMockupUrl: string;
+  };
+  storySection: {
+    enabled: boolean;
+    titleFa: string;
+    bodyFa: string;
+    craftFeatures: Array<{ id: string; titleFa: string; descFa: string; iconName: string }>;
+  };
+  status: PublishingStatus;
+  updatedAt: string;
+  revisionHistory: Array<{
+    id: string;
+    timestamp: string;
+    actorName: string;
+    changeSummary: string;
+    status: PublishingStatus;
+  }>;
+}
+
+export interface CmsCustomPage {
+  id: string; // e.g. "about-us", "size-guide", "terms", "washing-instructions"
+  slug: string;
+  titleFa: string;
+  titleEn?: string;
+  summaryFa: string;
+  blocks: Array<{
+    id: string;
+    type: 'rich_text' | 'hero_image' | 'features_grid' | 'faq_accordion' | 'call_to_action';
+    contentJson: Record<string, any>;
+  }>;
+  status: PublishingStatus;
+  publishAt?: string;
+  seoTitle?: string;
+  seoDescription?: string;
+  canonicalUrl?: string;
+  authorName: string;
+  createdAt: string;
+  updatedAt: string;
+  revisionHistory: Array<{
+    id: string;
+    timestamp: string;
+    actorName: string;
+    summary: string;
+  }>;
+}
+
+export interface SeoMetadataRecord {
+  id: string;
+  pageType: 'home' | 'catalog' | 'product' | 'collection' | 'studio' | 'page';
+  entityId?: string; // e.g. productId if product SEO
+  urlPath: string;
+  slug: string;
+  titleFa: string;
+  titleEn?: string;
+  metaDescriptionFa: string;
+  metaDescriptionEn?: string;
+  canonicalUrl: string;
+  ogImageUrl?: string;
+  robotsDirective: 'index, follow' | 'noindex, nofollow' | 'noindex, follow';
+  structuredDataJsonLd: Record<string, any>; // BreadcrumbList, Product, Organization
+  updatedAt: string;
 }
 
 export interface SalesTimelinePoint {
@@ -599,21 +1325,24 @@ export type SupplierCategory =
 export interface Supplier {
   id: string; // e.g. "SUP-01"
   name: string;
-  category: SupplierCategory;
-  categoryLabelFa: string;
+  category: SupplierCategory | string;
+  categoryLabelFa?: string;
   contactPerson: string;
   phone: string; // unmasked
-  maskedPhone: string; // e.g. "۰۹۱۲***۴۵۶۷"
+  maskedPhone?: string; // e.g. "۰۹۱۲***۴۵۶۷"
   email: string;
-  maskedEmail: string; // e.g. "m***@tarpood.ir"
+  maskedEmail?: string; // e.g. "m***@tarpood.ir"
   city: string;
   address: string;
   leadTimeDays: number;
-  minimumOrderQuantity: number;
-  ratingScore: number; // e.g. 4.9
-  qualityRating: string; // e.g. "درجه یک (A+)"
+  minimumOrderQuantity?: number;
+  minOrderQty?: number;
+  ratingScore?: number; // e.g. 4.9
+  qualityRating?: string; // e.g. "درجه یک (A+)"
   status: 'active' | 'under_review' | 'inactive';
-  suppliedMaterialIds: string[];
+  activePurchaseOrdersCount?: number;
+  suppliedMaterialIds?: string[];
+  suppliedMaterials?: string[];
   notes?: string;
   createdAt: string;
 }
@@ -629,24 +1358,28 @@ export interface PurchaseOrderLineItem {
   id: string; // e.g. "POLI-1"
   itemType: 'variant_sku' | 'raw_material';
   itemRefId: string; // SKU or Material ID
-  title: string;
+  title?: string;
+  nameFa?: string;
   orderedQuantity: number;
   receivedQuantity: number;
   unitCostTomans: number;
-  subtotalCostTomans: number;
+  subtotalCostTomans?: number;
+  totalCostTomans?: number;
 }
 
 export interface PurchaseOrder {
   id: string; // e.g. "PO-2026-041"
   supplierId: string;
   supplierName: string;
+  supplierCategory?: string;
   status: PurchaseOrderStatus;
   createdAt: string;
   expectedDeliveryDate: string;
   receivedAt?: string;
   items: PurchaseOrderLineItem[];
   totalCostTomans: number;
-  shippingCostTomans: number;
+  shippingCostTomans?: number;
+  currency?: string;
   notes?: string;
   createdById: string;
   createdByName: string;
@@ -693,4 +1426,16 @@ export interface AdminDatabaseState {
   suppliers: Supplier[];
   purchaseOrders: PurchaseOrder[];
   workshopMaterials: WorkshopMaterial[];
+  refunds?: RefundRecord[];
+  settlementBatches?: SettlementBatchItem[];
+  artworks?: ArtworkAsset[];
+  printRuleZones?: PrintRuleZone[];
+  returnRequests?: ReturnRequest[];
+  simulatedNotificationLogs?: SimulatedNotificationLog[];
+  discounts?: DiscountRule[];
+  marketingCampaigns?: MarketingCampaign[];
+  homepageConfig?: HomepageLayoutConfig;
+  storeBanners?: StoreBanner[];
+  cmsPages?: CmsCustomPage[];
+  seoRecords?: SeoMetadataRecord[];
 }

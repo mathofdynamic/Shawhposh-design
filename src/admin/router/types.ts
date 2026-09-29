@@ -7,6 +7,8 @@ export type AdminGroupId =
   | 'catalog'
   | 'custom_studio'
   | 'customers'
+  | 'marketing'
+  | 'content'
   | 'analytics'
   | 'team'
   | 'system';
@@ -40,6 +42,7 @@ export interface RouterState {
   currentPath: string;
   activeGroup: AdminNavGroupDef | null;
   activeRoute: AdminRouteDef | null;
+  params: Record<string, string>;
   navigate: (toPath: string, replace?: boolean) => void;
   goBackToStore: () => void;
 }

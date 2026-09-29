@@ -77,7 +77,7 @@ export const AdminLayout: React.FC = () => {
   const invariantReport = verifyDomainInvariants(state);
 
   return (
-    <div className="min-h-screen bg-[#0d0c0b] text-stone-100 flex flex-col font-sans select-none overflow-x-hidden antialiased" dir="rtl">
+    <div className="min-h-screen bg-[#0d0c0b] text-stone-100 flex flex-col font-sans select-text overflow-x-hidden antialiased" dir="rtl">
       {/* Top Demo Notice Bar */}
       <div className="bg-[#ba8d3d]/15 border-b border-[#ba8d3d]/20 px-4 py-1.5 text-xs text-[#eed29d] flex items-center justify-between z-40 shrink-0">
         <div className="flex items-center gap-2">

@@ -329,6 +329,52 @@ export function runInvariantVerification(db: AdminDatabaseState): InvariantSuite
     details: { totalMovements: movements.length, invalidCount: invalidMovements.length },
   });
 
+  // 15. Financial Refund Cap Invariant:
+  // No refund record or payment refund amount may exceed the captured amount
+  const paymentsWithExcessiveRefunds = (db.payments || []).filter(
+    (p) => (p.refundedAmountTomans || 0) > p.amountTomans
+  );
+  const excessiveRefundRecords = (db.refunds || []).filter((r) => {
+    const p = db.payments.find((pay) => pay.id === r.paymentId);
+    return p && (r.processedAmountTomans || r.requestedAmountTomans) > p.amountTomans;
+  });
+  const hasExcessiveRefunds = paymentsWithExcessiveRefunds.length > 0 || excessiveRefundRecords.length > 0;
+  checks.push({
+    id: 'FIN_REFUND_CAP_INVARIANT',
+    name: 'سقف مبلغ استرداد (عدم فراتر رفتن مجموع مرجوعی از کل تراکنش قطعی)',
+    category: 'financial',
+    status: !hasExcessiveRefunds ? 'passed' : 'failed',
+    message: !hasExcessiveRefunds
+      ? 'هیچ مبلغ استردادی از سقف مجاز پرداخت تاییدشده فراتر نرفته است.'
+      : 'استرداد غیرمجاز بیش از سقف پرداخت در پایگاه داده شناسایی شد!',
+    details: {
+      excessivePayments: paymentsWithExcessiveRefunds.length,
+      excessiveRefunds: excessiveRefundRecords.length,
+    },
+  });
+
+  // 16. State Machine Consistency: Production cannot start on unverified payments
+  const contradictoryOrders = (db.orders || []).filter((o) => {
+    const isProductionOrBeyond =
+      o.status === 'in_production' ||
+      o.status === 'quality_check' ||
+      o.status === 'ready_to_ship' ||
+      o.status === 'shipped' ||
+      o.status === 'delivered';
+    const isUnverifiedPayment = o.paymentStatus !== 'verified_paid' && o.paymentStatus !== 'partial_refund';
+    return isProductionOrBeyond && isUnverifiedPayment;
+  });
+  checks.push({
+    id: 'ORDER_PRODUCTION_PAYMENT_CONSISTENCY',
+    name: 'عدم تناقض خطوط حالت: ممنوعیت ورود سفارشات پرداخت‌نشده به خط تولید',
+    category: 'lifecycle',
+    status: contradictoryOrders.length === 0 ? 'passed' : 'failed',
+    message: contradictoryOrders.length === 0
+      ? 'هیچ سفارش پرداخت‌نشده یا ناموفقی در صف تولید کارگاه یا ارسال بارنامه وجود ندارد.'
+      : `تعداد ${contradictoryOrders.length} سفارش بدون تسویه معتبر وارد فرآیند تولید یا ارسال شده‌اند!`,
+    details: { contradictoryCount: contradictoryOrders.length },
+  });
+
   const passedChecks = checks.filter((c) => c.status === 'passed').length;
   const failedChecks = checks.length - passedChecks;
 

@@ -9,6 +9,8 @@
     "preview": "vite preview",
     "clean": "rm -rf dist server.js",
     "test:invariants": "tsx src/admin/domain/verify-invariants.ts",
+    "test:journeys": "tsx --test src/admin/domain/__tests__/journeys.test.ts",
+    "test": "npm run test:invariants && npm run test:journeys",
     "lint": "tsc --noEmit"
   },
   "dependencies": {

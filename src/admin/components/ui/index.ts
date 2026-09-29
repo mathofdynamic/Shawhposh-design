@@ -10,6 +10,7 @@ export * from './SegmentedControl';
 export * from './Breadcrumb';
 export * from './Drawer';
 export * from './Dialog';
+export { Dialog as Modal } from './Dialog';
 export * from './FormFields';
 export * from './DateTimeDisplay';
 export * from './Avatar';

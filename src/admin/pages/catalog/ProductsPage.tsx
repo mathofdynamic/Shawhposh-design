@@ -30,6 +30,7 @@ import {
   MoneyDisplay,
   SearchInput,
   Pagination,
+  useToast,
 } from '../../components/ui';
 import { useAdminRepository } from '../../domain/useAdminRepository';
 import { AdminProduct } from '../../domain/types';
@@ -46,6 +47,7 @@ export const ProductsPage: React.FC = () => {
     createProduct,
     importProductsCsv,
   } = useAdminRepository();
+  const { addToast } = useToast();
 
   const categories = getCategories();
 
@@ -174,9 +176,17 @@ export const ProductsPage: React.FC = () => {
 
     const res = deleteProduct(p.id);
     if (!res.success) {
-      alert(res.error);
+      addToast({
+        title: 'خطا در حذف محصول',
+        description: res.error || 'امکان حذف این محصول وجود ندارد.',
+        type: 'error',
+      });
     } else {
-      alert(`محصول «${p.name}» با موفقیت حذف شد.`);
+      addToast({
+        title: 'محصول حذف شد',
+        description: `محصول «${p.name}» با موفقیت از کاتالوگ حذف گردید.`,
+        type: 'success',
+      });
     }
   };
 
@@ -204,7 +214,11 @@ export const ProductsPage: React.FC = () => {
       isLive: false,
       variants: duplicatedVariants,
     });
-    alert(`نسخه کپی از محصول «${p.name}» با شناسه ${newId} در وضعیت پیش‌نویس ایجاد شد.`);
+    addToast({
+      title: 'محصول کپی شد',
+      description: `نسخه کپی از محصول «${p.name}» با شناسه ${newId} در وضعیت پیش‌نویس ایجاد شد.`,
+      type: 'info',
+    });
   };
 
   // Export CSV

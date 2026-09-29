@@ -9,6 +9,8 @@ export interface ColumnDef<T> {
   sortable?: boolean;
   align?: 'right' | 'left' | 'center';
   width?: string;
+  nowrap?: boolean;
+  className?: string;
   render?: (row: T, index: number) => React.ReactNode;
 }
 
@@ -26,6 +28,9 @@ export interface TableProps<T> {
   isLoading?: boolean;
   emptyMessage?: string;
   onRowClick?: (row: T) => void;
+  stickyHeader?: boolean;
+  maxHeight?: string;
+  ariaLabel?: string;
 }
 
 export function Table<T>({
@@ -42,6 +47,9 @@ export function Table<T>({
   isLoading = false,
   emptyMessage = 'هیچ موردی جهت نمایش یافت نشد.',
   onRowClick,
+  stickyHeader = false,
+  maxHeight,
+  ariaLabel = 'جدول داده‌های سامانه',
 }: TableProps<T>) {
   const isAllSelected = selectedIds && data.length > 0 && data.every((row, i) => selectedIds.includes(keyExtractor(row, i)));
   const isIndeterminate = selectedIds && selectedIds.length > 0 && !isAllSelected;
@@ -50,11 +58,11 @@ export function Table<T>({
   const headerPadding = density === 'compact' ? 'py-2.5 px-3.5 text-xs' : 'py-3 px-4 text-xs';
 
   return (
-    <div className="w-full overflow-hidden border border-white/10 rounded-2xl bg-[#131211]">
-      <div className="overflow-x-auto">
-        <table className="w-full text-right border-collapse select-text">
-          <thead>
-            <tr className="border-b border-white/10 bg-white/[0.02]">
+    <div className="w-full overflow-hidden border border-white/10 rounded-2xl bg-[#131211] shadow-md">
+      <div className="overflow-x-auto scrollbar-thin scrollbar-thumb-white/10" style={maxHeight ? { maxHeight, overflowY: 'auto' } : undefined}>
+        <table className="w-full text-right border-collapse select-text" aria-label={ariaLabel}>
+          <thead className={stickyHeader ? 'sticky top-0 z-10 bg-[#161413] shadow-sm' : 'bg-[#161413]'}>
+            <tr className="border-b border-white/10">
               {onSelectAll && (
                 <th scope="col" className={`w-10 text-center ${headerPadding}`}>
                   <input
@@ -73,19 +81,20 @@ export function Table<T>({
                 const isSorted = sortColumn === col.key;
                 const alignClass =
                   col.align === 'left' ? 'text-left' : col.align === 'center' ? 'text-center' : 'text-right';
+                const nowrapClass = col.nowrap !== false ? 'whitespace-nowrap' : '';
 
                 return (
                   <th
                     key={col.key}
                     scope="col"
                     style={{ width: col.width }}
-                    className={`font-semibold text-gray-300 ${alignClass} ${headerPadding}`}
+                    className={`font-semibold text-gray-300 ${alignClass} ${headerPadding} ${nowrapClass} ${col.className || ''}`}
                   >
                     {col.sortable && onSort ? (
                       <button
                         type="button"
                         onClick={() => onSort(col.key)}
-                        className="inline-flex items-center gap-1.5 hover:text-white transition-colors cursor-pointer group"
+                        className="inline-flex items-center gap-1.5 hover:text-white transition-colors cursor-pointer group focus:outline-none focus-visible:ring-1 focus-visible:ring-[#ba8d3d] rounded"
                       >
                         <span>{col.header}</span>
                         <span className="text-gray-500 group-hover:text-gray-300">
@@ -141,10 +150,17 @@ export function Table<T>({
                 return (
                   <tr
                     key={rowKey}
+                    tabIndex={onRowClick ? 0 : undefined}
                     onClick={() => onRowClick?.(row)}
+                    onKeyDown={(e) => {
+                      if (onRowClick && (e.key === 'Enter' || e.key === ' ')) {
+                        e.preventDefault();
+                        onRowClick(row);
+                      }
+                    }}
                     className={`transition-colors hover:bg-white/[0.03] ${
                       isSelected ? 'bg-white/[0.05]' : ''
-                    } ${onRowClick ? 'cursor-pointer' : ''}`}
+                    } ${onRowClick ? 'cursor-pointer focus:outline-none focus-visible:bg-white/[0.06] focus-visible:ring-1 focus-visible:ring-[#ba8d3d]/50' : ''}`}
                   >
                     {onSelectRow && (
                       <td
@@ -163,9 +179,10 @@ export function Table<T>({
                     {columns.map((col) => {
                       const alignClass =
                         col.align === 'left' ? 'text-left' : col.align === 'center' ? 'text-center' : 'text-right';
+                      const nowrapClass = col.nowrap ? 'whitespace-nowrap' : '';
 
                       return (
-                        <td key={col.key} className={`text-gray-300 font-sans ${alignClass} ${rowPadding}`}>
+                        <td key={col.key} className={`text-gray-300 font-sans ${alignClass} ${rowPadding} ${nowrapClass} ${col.className || ''}`}>
                           {col.render ? col.render(row, idx) : (row as any)[col.key]}
                         </td>
                       );

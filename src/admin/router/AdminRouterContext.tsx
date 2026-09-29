@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
 import { AdminNavGroupDef, AdminRouteDef, RouterState } from './types';
-import { ADMIN_GROUPS, ALL_ADMIN_ROUTES, DEFAULT_ADMIN_ROUTE, findRouteByPath } from './routes';
+import { ADMIN_GROUPS, ALL_ADMIN_ROUTES, DEFAULT_ADMIN_ROUTE, findRouteByPath, matchRoute } from './routes';
 
 const AdminRouterContext = createContext<RouterState | null>(null);
 
@@ -11,20 +11,20 @@ function resolveInitialPath(): string {
   const hash = window.location.hash;
 
   // Check pathname first
-  if (pathname.startsWith('/admin')) {
+  if (pathname.startsWith('/admin') || pathname.startsWith('/orders')) {
     const clean = pathname.replace(/\/+$/, '');
     if (clean === '/admin' || clean === '') {
       return DEFAULT_ADMIN_ROUTE.path;
     }
     const matched = findRouteByPath(clean);
-    return matched ? matched.path : DEFAULT_ADMIN_ROUTE.path;
+    return matched ? clean : DEFAULT_ADMIN_ROUTE.path;
   }
 
   // Check hash fallback e.g. #/admin/sales/orders or #admin/sales/orders
-  if (hash.startsWith('#/admin') || hash.startsWith('#admin')) {
+  if (hash.startsWith('#/admin') || hash.startsWith('#admin') || hash.startsWith('#/orders')) {
     const rawSub = hash.replace(/^#\/?/, '/');
     const matched = findRouteByPath(rawSub);
-    return matched ? matched.path : DEFAULT_ADMIN_ROUTE.path;
+    return matched ? rawSub : DEFAULT_ADMIN_ROUTE.path;
   }
 
   return DEFAULT_ADMIN_ROUTE.path;
@@ -41,9 +41,17 @@ export const AdminRouterProvider: React.FC<AdminRouterProviderProps> = ({
 }) => {
   const [currentPath, setCurrentPath] = useState<string>(() => resolveInitialPath());
 
-  const activeRoute: AdminRouteDef | null = useMemo(() => {
-    return findRouteByPath(currentPath) || DEFAULT_ADMIN_ROUTE;
+  const matchResult = useMemo(() => {
+    return matchRoute(currentPath);
   }, [currentPath]);
+
+  const activeRoute: AdminRouteDef | null = useMemo(() => {
+    return matchResult?.route || DEFAULT_ADMIN_ROUTE;
+  }, [matchResult]);
+
+  const params: Record<string, string> = useMemo(() => {
+    return matchResult?.params || {};
+  }, [matchResult]);
 
   const activeGroup: AdminNavGroupDef | null = useMemo(() => {
     if (!activeRoute) return ADMIN_GROUPS[0];
@@ -116,6 +124,7 @@ export const AdminRouterProvider: React.FC<AdminRouterProviderProps> = ({
         currentPath,
         activeGroup,
         activeRoute,
+        params,
         navigate,
         goBackToStore,
       }}

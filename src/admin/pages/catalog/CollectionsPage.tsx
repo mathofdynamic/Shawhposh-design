@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { Sparkles, Plus, Edit2, Trash2, Calendar, Tag, ExternalLink, AlertCircle } from 'lucide-react';
 import { AdminPageHeader } from '../../components/shell/AdminPageHeader';
-import { Table, ColumnDef, Badge, Button, SearchInput } from '../../components/ui';
+import { Table, ColumnDef, Badge, Button, SearchInput, useToast } from '../../components/ui';
 import { useAdminRepository } from '../../domain/useAdminRepository';
 import { AdminCollection } from '../../domain/types';
 import { toFaDigits } from '../../utils/formatters';
@@ -14,6 +14,7 @@ export const CollectionsPage: React.FC = () => {
     updateCollection,
     deleteCollection,
   } = useAdminRepository();
+  const { addToast } = useToast();
 
   const collections = getCollections();
   const [search, setSearch] = useState('');
@@ -82,7 +83,17 @@ export const CollectionsPage: React.FC = () => {
 
     const res = deleteCollection(id);
     if (!res.success) {
-      alert(res.error || 'خطا در حذف کلکسیون.');
+      addToast({
+        title: 'عدم امکان حذف کلکسیون',
+        description: res.error || 'خطا در حذف کلکسیون.',
+        type: 'error',
+      });
+    } else {
+      addToast({
+        title: 'کلکسیون حذف شد',
+        description: `کلکسیون «${title}» با موفقیت حذف گردید.`,
+        type: 'success',
+      });
     }
   };
 

@@ -14,6 +14,7 @@ import { AdminGroupId, AdminNavGroupDef, AdminRouteDef } from '../../router/type
 import { useAdminRouter } from '../../router';
 import { useAdminRepository } from '../../domain/useAdminRepository';
 import { StaffRole } from '../../domain/types';
+import { RoleKey } from '../../domain/rbac';
 import { AdminIcon } from './AdminIcon';
 import { toFaDigits } from '../../utils/formatters';
 
@@ -34,6 +35,18 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
 }) => {
   const { currentPath, activeRoute, navigate, goBackToStore } = useAdminRouter();
   const { state } = useAdminRepository();
+
+  // Normalize legacy and modern roles for allowedRoles matching
+  const normalizedRole: RoleKey =
+    currentRole === 'super_admin'
+      ? 'owner'
+      : currentRole === 'designer_reviewer'
+      ? 'production'
+      : currentRole === 'production_operator'
+      ? 'production'
+      : currentRole === 'support_finance'
+      ? 'finance'
+      : (currentRole as RoleKey);
 
   // Collapsed group IDs state persisted in localStorage
   const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>(() => {
@@ -166,7 +179,11 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
                     const isActive = route.path === currentPath;
                     const badgeVal = getBadgeValue(route.badgeKey);
                     const isRestrictedForRole =
-                      route.allowedRoles && !route.allowedRoles.includes(currentRole);
+                      normalizedRole !== 'owner' &&
+                      currentRole !== 'super_admin' &&
+                      route.allowedRoles &&
+                      !route.allowedRoles.includes(currentRole) &&
+                      !route.allowedRoles.includes(normalizedRole as any);
 
                     return (
                       <button

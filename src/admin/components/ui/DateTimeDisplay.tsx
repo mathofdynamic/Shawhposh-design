@@ -43,7 +43,7 @@ export const DateTimeDisplay: React.FC<DateTimeDisplayProps> = ({
 export interface MoneyDisplayProps {
   amount: number;
   showUnit?: boolean;
-  size?: 'sm' | 'md' | 'lg';
+  size?: 'xs' | 'sm' | 'md' | 'lg' | 'xl';
   trend?: 'positive' | 'negative' | 'neutral';
   className?: string;
 }
@@ -55,29 +55,38 @@ export const MoneyDisplay: React.FC<MoneyDisplayProps> = ({
   trend,
   className = '',
 }) => {
-  const { formatted, raw } = formatTomans(amount);
+  const isNegative = amount < 0;
+  const absAmount = Math.abs(amount);
+  const { formatted, raw } = formatTomans(absAmount);
 
   const sizeClasses: Record<string, { value: string; unit: string }> = {
+    xs: { value: 'text-[11px] font-semibold', unit: 'text-[8px]' },
     sm: { value: 'text-xs font-semibold', unit: 'text-[9px]' },
     md: { value: 'text-sm font-bold', unit: 'text-[10px]' },
     lg: { value: 'text-xl md:text-2xl font-black', unit: 'text-xs font-sans' },
+    xl: { value: 'text-2xl md:text-3xl font-black', unit: 'text-sm font-sans' },
   };
+
+  const activeSize = sizeClasses[size] || sizeClasses.md;
 
   const trendColor =
     trend === 'positive'
       ? 'text-emerald-400'
-      : trend === 'negative'
+      : trend === 'negative' || isNegative
       ? 'text-rose-400'
       : 'text-white';
 
   return (
     <div
       className={`inline-flex items-baseline gap-1 font-fanum select-text ${className}`}
-      title={`${raw.toLocaleString('en-US')} Tomans`}
+      title={`${amount.toLocaleString('en-US')} Tomans`}
     >
-      <span className={`${sizeClasses[size].value} ${trendColor}`}>{formatted}</span>
+      <span className={`${activeSize.value} ${trendColor}`}>
+        {isNegative && <span className="ml-0.5">− </span>}
+        {formatted}
+      </span>
       {showUnit && (
-        <span className={`text-gray-400 font-sans font-normal ${sizeClasses[size].unit}`}>
+        <span className={`text-stone-400 font-sans font-normal ${activeSize.unit}`}>
           تومان
         </span>
       )}
