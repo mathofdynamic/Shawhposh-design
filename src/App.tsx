@@ -71,15 +71,25 @@ export default function App() {
     localStorage.removeItem('shahpoosh_user');
   };
 
-  // Sync theme to document element
+  // The storefront supports light/dark themes, but the admin workspace is intentionally
+  // dark-only. Keep the global `html.light` class out of admin routes so the storefront's
+  // light-theme CSS overrides cannot recolor admin surfaces and create a mixed theme.
+  const isAdminView =
+    activeTab === 'admin' ||
+    (typeof window !== 'undefined' &&
+      (window.location.pathname.startsWith('/admin') ||
+        window.location.hash.startsWith('#admin')));
+
+  // Sync the storefront theme to the document element while explicitly isolating admin.
+  // When the user leaves admin, this effect restores their persisted storefront theme.
   useEffect(() => {
-    if (theme === 'light') {
+    if (theme === 'light' && !isAdminView) {
       document.documentElement.classList.add('light');
     } else {
       document.documentElement.classList.remove('light');
     }
     localStorage.setItem('shahpoosh_theme', theme);
-  }, [theme]);
+  }, [theme, isAdminView]);
   
   const isDark = theme === 'dark';
 
@@ -165,7 +175,7 @@ export default function App() {
   });
 
   // Isolated Admin Environment Gate
-  if (activeTab === 'admin' || (typeof window !== 'undefined' && (window.location.pathname.startsWith('/admin') || window.location.hash.startsWith('#admin')))) {
+  if (isAdminView) {
     return (
       <ToastProvider>
         <AdminRouterProvider
