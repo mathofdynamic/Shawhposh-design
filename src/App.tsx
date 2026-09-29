@@ -27,6 +27,14 @@ export default function App() {
     }
     return 'home';
   });
+
+  // Reusable admin environment boolean flag
+  const isAdminView =
+    activeTab === 'admin' ||
+    (typeof window !== 'undefined' &&
+      (window.location.pathname.startsWith('/admin') ||
+        window.location.hash.startsWith('#admin')));
+
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
 
   // History & Hash listener for direct /admin/* and /#admin deep linking
@@ -71,15 +79,15 @@ export default function App() {
     localStorage.removeItem('shahpoosh_user');
   };
 
-  // Sync theme to document element
+  // Sync theme to document element - ensuring html.light is never active while admin environment is displayed
   useEffect(() => {
-    if (theme === 'light') {
+    if (theme === 'light' && !isAdminView) {
       document.documentElement.classList.add('light');
     } else {
       document.documentElement.classList.remove('light');
     }
     localStorage.setItem('shahpoosh_theme', theme);
-  }, [theme]);
+  }, [theme, isAdminView]);
   
   const isDark = theme === 'dark';
 
@@ -165,7 +173,7 @@ export default function App() {
   });
 
   // Isolated Admin Environment Gate
-  if (activeTab === 'admin' || (typeof window !== 'undefined' && (window.location.pathname.startsWith('/admin') || window.location.hash.startsWith('#admin')))) {
+  if (isAdminView) {
     return (
       <ToastProvider>
         <AdminRouterProvider

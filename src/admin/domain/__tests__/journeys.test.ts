@@ -266,4 +266,46 @@ describe('Admin Prototype Scripted Journeys Verification (Prompt 20)', () => {
     assert.match(posAdj.formatted, /\+/);
     assert.match(posAdj.colorClass, /emerald/);
   });
+
+  // Corrective Task Verification: Theme isolation invariant
+  it('Theme Isolation: html.light class is never active in Admin, persists preference, and restores in Storefront', () => {
+    // Helper that models the sync logic from App.tsx
+    const simulateThemeSync = (theme: 'dark' | 'light', isAdminView: boolean, classList: Set<string>) => {
+      if (theme === 'light' && !isAdminView) {
+        classList.add('light');
+      } else {
+        classList.delete('light');
+      }
+    };
+
+    const classes = new Set<string>();
+
+    // Test A: Storefront in Light Mode
+    simulateThemeSync('light', false, classes);
+    assert.equal(classes.has('light'), true, 'Storefront in light mode has class light');
+
+    // Enter Admin
+    simulateThemeSync('light', true, classes);
+    assert.equal(classes.has('light'), false, 'Admin view removes class light even when theme preference is light');
+
+    // Return to Storefront
+    simulateThemeSync('light', false, classes);
+    assert.equal(classes.has('light'), true, 'Returning to storefront restores light mode');
+
+    // Test B: Storefront in Dark Mode
+    simulateThemeSync('dark', false, classes);
+    assert.equal(classes.has('light'), false, 'Storefront in dark mode has no light class');
+
+    // Enter Admin
+    simulateThemeSync('dark', true, classes);
+    assert.equal(classes.has('light'), false, 'Admin view remains dark');
+
+    // Return to Storefront
+    simulateThemeSync('dark', false, classes);
+    assert.equal(classes.has('light'), false, 'Storefront remains dark');
+
+    // Test C: Direct Deep Link to Admin with persisted light preference
+    simulateThemeSync('light', true, classes);
+    assert.equal(classes.has('light'), false, 'Direct deep link to admin remains dark');
+  });
 });

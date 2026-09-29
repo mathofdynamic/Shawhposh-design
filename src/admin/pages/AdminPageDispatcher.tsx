@@ -237,6 +237,7 @@ export const AdminPageDispatcher: React.FC = () => {
       return <CollectionsPage />;
     case '/admin/catalog/media':
     case '/media':
+    case '/admin/media':
       return <MediaAssetsPage />;
     case '/admin/catalog/suppliers':
     case '/suppliers':
@@ -324,7 +325,6 @@ export const AdminPageDispatcher: React.FC = () => {
     case '/content/homepage':
     case '/homepage':
     case '/admin/homepage':
-    case '/admin/system/cms':
       return <HomepageCmsPage />;
     case '/admin/content/banners':
     case '/banners':
@@ -339,10 +339,6 @@ export const AdminPageDispatcher: React.FC = () => {
     case '/admin/seo':
     case '/admin/marketing/seo':
       return <SeoManagementPage />;
-    case '/admin/catalog/media':
-    case '/media':
-    case '/admin/media':
-      return <MediaAssetsPage />;
 
     // 7. Team
     case '/admin/team/tasks':

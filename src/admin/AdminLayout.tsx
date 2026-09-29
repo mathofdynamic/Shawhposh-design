@@ -64,6 +64,13 @@ export const AdminLayout: React.FC = () => {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
 
+  // Guarantee admin environment is dark-only
+  useEffect(() => {
+    if (typeof document !== 'undefined' && document.documentElement.classList.contains('light')) {
+      document.documentElement.classList.remove('light');
+    }
+  }, []);
+
   const handleReset = () => {
     resetToFixtures();
     setIsResetConfirmOpen(false);
