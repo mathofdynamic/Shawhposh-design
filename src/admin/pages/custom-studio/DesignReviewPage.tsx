@@ -566,7 +566,7 @@ export const DesignReviewPage: React.FC<DesignReviewPageProps> = ({ designIdProp
                   نسخه جاری (V{toFaDigits(design.revisionCount)})
                 </button>
 
-                {design.revisions.map((rev) => (
+                {(design.revisions || []).map((rev) => (
                   <button
                     key={rev.revisionNumber}
                     onClick={() => setCompareRevisionNumber(rev.revisionNumber)}

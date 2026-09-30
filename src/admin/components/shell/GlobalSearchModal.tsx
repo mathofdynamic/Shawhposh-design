@@ -57,9 +57,13 @@ export const GlobalSearchModal: React.FC<GlobalSearchModalProps> = ({ isOpen, on
   // Compute search results
   const results: SearchResultItem[] = useMemo(() => {
     const q = query.trim().toLowerCase();
+    const navRoutes = ALL_ADMIN_ROUTES.filter(
+      (r) => r.showInNav !== false && !r.isDetail && !r.path.includes(':') && !r.devOnly
+    );
+
     if (!q) {
       // Default recommended quick links
-      return ALL_ADMIN_ROUTES.slice(0, 6).map((r) => ({
+      return navRoutes.slice(0, 6).map((r) => ({
         id: `route-${r.id}`,
         type: 'route',
         title: r.titleFa,
@@ -73,7 +77,7 @@ export const GlobalSearchModal: React.FC<GlobalSearchModalProps> = ({ isOpen, on
     const items: SearchResultItem[] = [];
 
     // 1. Search in Routes
-    ALL_ADMIN_ROUTES.forEach((r) => {
+    navRoutes.forEach((r) => {
       const match =
         r.titleFa.toLowerCase().includes(q) ||
         r.titleEn.toLowerCase().includes(q) ||

@@ -50,6 +50,33 @@ export const WorkReportPage: React.FC = () => {
         </div>
       </div>
 
+      {/* Staff Quality & Efficiency Indicators (Integrated from Team Reports) */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div className="p-4 bg-[#131211] border border-white/10 rounded-2xl">
+          <span className="text-xs text-stone-400">میانگین زمان بررسی فایل در آتلیه</span>
+          <div className="text-2xl font-black text-emerald-400 mt-1 font-fanum">
+            {toFaDigits(12)} دقیقه
+          </div>
+          <span className="text-[10px] text-stone-400 mt-1 block">هدف کارگاه: زیر ۲۰ دقیقه (پایدار)</span>
+        </div>
+
+        <div className="p-4 bg-[#131211] border border-white/10 rounded-2xl">
+          <span className="text-xs text-stone-400">شاخص خطای چاپ (ضایعات پارچه)</span>
+          <div className="text-2xl font-black text-white mt-1 font-fanum">
+            {toFaDigits(0.4)}٪
+          </div>
+          <span className="text-[10px] text-emerald-400 mt-1 block">بسیار عالی (استاندارد جهانی: زیر ۲٪)</span>
+        </div>
+
+        <div className="p-4 bg-[#131211] border border-white/10 rounded-2xl">
+          <span className="text-xs text-stone-400">رضایت خریداران از کیفیت چاپ</span>
+          <div className="text-2xl font-black text-[#eed29d] mt-1 font-fanum">
+            ۹۸.۶٪
+          </div>
+          <span className="text-[10px] text-stone-400 mt-1 block">بر اساس نظرات ثبت‌شده خریداران</span>
+        </div>
+      </div>
+
       {/* Operators shift roster */}
       <div className="bg-[#131211] border border-white/10 rounded-2xl p-5">
         <h2 className="text-sm font-bold text-white mb-4">راندمان تیم کارگاه و آتلیه در شیفت جاری</h2>

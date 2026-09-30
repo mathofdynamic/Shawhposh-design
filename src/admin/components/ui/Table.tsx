@@ -34,8 +34,8 @@ export interface TableProps<T> {
 }
 
 export function Table<T>({
-  columns,
-  data,
+  columns = [],
+  data = [],
   keyExtractor,
   density = 'normal',
   sortColumn,
@@ -51,7 +51,9 @@ export function Table<T>({
   maxHeight,
   ariaLabel = 'جدول داده‌های سامانه',
 }: TableProps<T>) {
-  const isAllSelected = selectedIds && data.length > 0 && data.every((row, i) => selectedIds.includes(keyExtractor(row, i)));
+  const safeColumns = columns || [];
+  const safeData = data || [];
+  const isAllSelected = selectedIds && safeData.length > 0 && safeData.every((row, i) => selectedIds.includes(keyExtractor(row, i)));
   const isIndeterminate = selectedIds && selectedIds.length > 0 && !isAllSelected;
 
   const rowPadding = density === 'compact' ? 'py-2.5 px-3.5 text-xs' : 'py-3.5 px-4 text-xs md:text-sm';
@@ -77,7 +79,7 @@ export function Table<T>({
                   />
                 </th>
               )}
-              {columns.map((col) => {
+              {safeColumns.map((col) => {
                 const isSorted = sortColumn === col.key;
                 const alignClass =
                   col.align === 'left' ? 'text-left' : col.align === 'center' ? 'text-center' : 'text-right';
@@ -126,24 +128,24 @@ export function Table<T>({
                       <div className="w-4 h-4 mx-auto bg-white/10 rounded animate-pulse" />
                     </td>
                   )}
-                  {columns.map((col, cIdx) => (
+                  {safeColumns.map((col, cIdx) => (
                     <td key={cIdx} className={rowPadding}>
                       <div className="h-4 bg-white/10 rounded animate-pulse" style={{ width: `${60 + (cIdx * 15) % 40}%` }} />
                     </td>
                   ))}
                 </tr>
               ))
-            ) : data.length === 0 ? (
+            ) : safeData.length === 0 ? (
               <tr>
                 <td
-                  colSpan={columns.length + (onSelectAll ? 1 : 0)}
+                  colSpan={safeColumns.length + (onSelectAll ? 1 : 0)}
                   className="py-12 text-center text-gray-500 text-xs md:text-sm font-sans"
                 >
                   {emptyMessage}
                 </td>
               </tr>
             ) : (
-              data.map((row, idx) => {
+              safeData.map((row, idx) => {
                 const rowKey = keyExtractor(row, idx);
                 const isSelected = selectedIds?.includes(rowKey);
 
@@ -176,7 +178,7 @@ export function Table<T>({
                         />
                       </td>
                     )}
-                    {columns.map((col) => {
+                    {safeColumns.map((col) => {
                       const alignClass =
                         col.align === 'left' ? 'text-left' : col.align === 'center' ? 'text-center' : 'text-right';
                       const nowrapClass = col.nowrap ? 'whitespace-nowrap' : '';

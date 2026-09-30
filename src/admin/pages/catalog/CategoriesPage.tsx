@@ -5,8 +5,14 @@ import { Table, ColumnDef, Badge, Button, SearchInput, useToast } from '../../co
 import { useAdminRepository } from '../../domain/useAdminRepository';
 import { AdminCategory } from '../../domain/types';
 import { toFaDigits } from '../../utils/formatters';
+import { CollectionsPage } from './CollectionsPage';
 
-export const CategoriesPage: React.FC = () => {
+export interface CategoriesPageProps {
+  defaultTab?: 'categories' | 'collections';
+}
+
+export const CategoriesPage: React.FC<CategoriesPageProps> = ({ defaultTab = 'categories' }) => {
+  const [activeTab, setActiveTab] = useState<'categories' | 'collections'>(defaultTab);
   const {
     state,
     getCategories,
@@ -174,33 +180,67 @@ export const CategoriesPage: React.FC = () => {
   ];
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 max-w-7xl mx-auto">
       <AdminPageHeader
-        title="دسته‌بندی‌ها و معماری کاتالوگ"
-        description="ساماندهی شاخه‌های محصولات، مدیریت تگ‌های کالیگرافی، مینیمال و هویت بصری فروشگاه."
+        title="ساختار کاتالوگ"
+        description="ساماندهی شاخه‌های محصولات، مدیریت تگ‌های کالیگرافی، کلکسیون‌های فصلی و معماری دسته‌بندی‌ها."
         actions={
-          <Button variant="brass" size="sm" onClick={handleOpenNew}>
-            <Plus size={13} className="ml-1" />
-            افزودن دسته‌بندی جدید
-          </Button>
+          activeTab === 'categories' ? (
+            <Button variant="brass" size="sm" onClick={handleOpenNew}>
+              <Plus size={13} className="ml-1" />
+              افزودن دسته‌بندی جدید
+            </Button>
+          ) : undefined
         }
       />
 
-      <div className="flex items-center justify-between gap-4">
-        <div className="w-72">
-          <SearchInput
-            placeholder="جستجوی دسته‌بندی..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-          />
-        </div>
+      {/* Workspace Tabs */}
+      <div className="flex items-center gap-2 border-b border-white/10 pb-px overflow-x-auto scrollbar-none">
+        <button
+          type="button"
+          onClick={() => setActiveTab('categories')}
+          className={`flex items-center gap-2 px-4 py-2.5 text-xs md:text-sm font-semibold border-b-2 transition-all cursor-pointer whitespace-nowrap ${
+            activeTab === 'categories'
+              ? 'border-[#ba8d3d] text-[#eed29d] bg-white/[0.03] rounded-t-lg'
+              : 'border-transparent text-stone-400 hover:text-stone-200 hover:border-stone-700'
+          }`}
+        >
+          <FolderTree size={16} className={activeTab === 'categories' ? 'text-[#ba8d3d]' : 'text-stone-500'} />
+          <span>دسته‌بندی‌ها و شاخه‌ها</span>
+        </button>
+        <button
+          type="button"
+          onClick={() => setActiveTab('collections')}
+          className={`flex items-center gap-2 px-4 py-2.5 text-xs md:text-sm font-semibold border-b-2 transition-all cursor-pointer whitespace-nowrap ${
+            activeTab === 'collections'
+              ? 'border-[#ba8d3d] text-[#eed29d] bg-white/[0.03] rounded-t-lg'
+              : 'border-transparent text-stone-400 hover:text-stone-200 hover:border-stone-700'
+          }`}
+        >
+          <Sparkles size={16} className={activeTab === 'collections' ? 'text-[#ba8d3d]' : 'text-stone-500'} />
+          <span>کلکسیون‌ها و دراپ‌ها</span>
+        </button>
       </div>
 
-      <Table
-        data={filteredCategories}
-        columns={columns}
-        keyExtractor={(c) => c.id}
-      />
+      {activeTab === 'collections' ? (
+        <CollectionsPage />
+      ) : (
+        <>
+          <div className="flex items-center justify-between gap-4">
+            <div className="w-72">
+              <SearchInput
+                placeholder="جستجوی دسته‌بندی..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+              />
+            </div>
+          </div>
+
+          <Table
+            data={filteredCategories}
+            columns={columns}
+            keyExtractor={(c) => c.id}
+          />
 
       {/* Modal */}
       {isModalOpen && editingCategory && (
@@ -312,6 +352,8 @@ export const CategoriesPage: React.FC = () => {
             </div>
           </div>
         </div>
+      )}
+        </>
       )}
     </div>
   );

@@ -28,6 +28,10 @@ export interface AdminRouteDef {
     label: string;
     actionKey: string;
   };
+  showInNav?: boolean; // When false, hidden from sidebar navigation
+  devOnly?: boolean; // When true, only available for developer debugging
+  isDetail?: boolean; // When true, contextual detail route
+  redirectTo?: string; // Redirect legacy/consolidated path to canonical destination
 }
 
 export interface AdminNavGroupDef {

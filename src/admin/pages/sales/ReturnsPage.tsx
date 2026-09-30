@@ -18,6 +18,7 @@ import {
   FileText,
   User,
   ExternalLink,
+  CreditCard,
 } from 'lucide-react';
 import { AdminPageHeader } from '../../components/shell/AdminPageHeader';
 import { Table, ColumnDef, Badge, Button, MoneyDisplay, useToast } from '../../components/ui';
@@ -30,8 +31,14 @@ import {
   ReturnResolution,
 } from '../../domain/types';
 import { toFaDigits } from '../../utils/formatters';
+import { RefundsPage } from './RefundsPage';
 
-export const ReturnsPage: React.FC = () => {
+export interface ReturnsPageProps {
+  defaultTab?: 'returns' | 'refunds';
+}
+
+export const ReturnsPage: React.FC<ReturnsPageProps> = ({ defaultTab = 'returns' }) => {
+  const [activeTab, setActiveTab] = useState<'returns' | 'refunds'>(defaultTab);
   const {
     state,
     getReturnRequests,
@@ -279,13 +286,45 @@ export const ReturnsPage: React.FC = () => {
   ];
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 max-w-7xl mx-auto">
       <AdminPageHeader
-        title="مرجوعی‌ها، تعویض کالا و استرداد وجه"
+        title="مرجوعی کالا و استرداد وجه"
         description="ساماندهی درخواست‌های بازگشت کالا، کنترل فیزیکی عدم آسیب به پارچه، انطباق با سیاست‌های قراردادی البسه سفارشی و صدور سند معکوس مالی."
       />
 
-      {/* KPI Cards */}
+      {/* Workspace Tabs */}
+      <div className="flex items-center gap-2 border-b border-white/10 pb-px overflow-x-auto scrollbar-none">
+        <button
+          type="button"
+          onClick={() => setActiveTab('returns')}
+          className={`flex items-center gap-2 px-4 py-2.5 text-xs md:text-sm font-semibold border-b-2 transition-all cursor-pointer whitespace-nowrap ${
+            activeTab === 'returns'
+              ? 'border-[#ba8d3d] text-[#eed29d] bg-white/[0.03] rounded-t-lg'
+              : 'border-transparent text-stone-400 hover:text-stone-200 hover:border-stone-700'
+          }`}
+        >
+          <RotateCcw size={16} className={activeTab === 'returns' ? 'text-[#ba8d3d]' : 'text-stone-500'} />
+          <span>مرجوعی کالا و تعویض</span>
+        </button>
+        <button
+          type="button"
+          onClick={() => setActiveTab('refunds')}
+          className={`flex items-center gap-2 px-4 py-2.5 text-xs md:text-sm font-semibold border-b-2 transition-all cursor-pointer whitespace-nowrap ${
+            activeTab === 'refunds'
+              ? 'border-[#ba8d3d] text-[#eed29d] bg-white/[0.03] rounded-t-lg'
+              : 'border-transparent text-stone-400 hover:text-stone-200 hover:border-stone-700'
+          }`}
+        >
+          <CreditCard size={16} className={activeTab === 'refunds' ? 'text-[#ba8d3d]' : 'text-stone-500'} />
+          <span>استرداد مالی و تسویه پایا</span>
+        </button>
+      </div>
+
+      {activeTab === 'refunds' ? (
+        <RefundsPage />
+      ) : (
+        <>
+          {/* KPI Cards */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
         <div className="p-4 bg-[#131211] border border-white/10 rounded-2xl">
           <span className="text-xs text-stone-400">کل پرونده‌ها</span>
@@ -734,6 +773,8 @@ export const ReturnsPage: React.FC = () => {
             </div>
           </div>
         </div>
+      )}
+        </>
       )}
     </div>
   );

@@ -40,8 +40,14 @@ import {
   validateDesignStructuredRules,
   getUnsupportedFeatureNotice,
 } from '../../domain/customStudio';
+import { SubmissionsPage } from './SubmissionsPage';
 
-export const ApprovalPage: React.FC = () => {
+export interface ApprovalPageProps {
+  defaultTab?: 'cockpit' | 'submissions';
+}
+
+export const ApprovalPage: React.FC<ApprovalPageProps> = ({ defaultTab = 'cockpit' }) => {
+  const [activeTab, setActiveTab] = useState<'cockpit' | 'submissions'>(defaultTab);
   const { state, approveCustomDesign, rejectCustomDesign, requestDesignRevision } = useAdminRepository();
   const { navigate } = useAdminRouter();
   const { addToast } = useToast();
@@ -114,7 +120,7 @@ export const ApprovalPage: React.FC = () => {
   return (
     <div className="space-y-6 select-text font-sans pb-16" dir="rtl">
       <AdminPageHeader
-        title="داوری فوری آتلیه و اعتبارسنجی چاپ (Approval Queue)"
+        title="داوری فنی و تایید طرح‌های آتلیه"
         description="میز کارشناس گرافیک و ناظر چاپخانه: اعتبارسنجی رزولوشن ۳۰۰ DPI، بررسی کادر ایمن روی بافت لباس و نظارت بر مهلت SLA."
         actions={
           <div className="flex items-center gap-2">
@@ -125,23 +131,54 @@ export const ApprovalPage: React.FC = () => {
               icon={Sliders}
               className="text-xs"
             >
-              مقررات چاپ صنعتی
-            </Button>
-            <Button
-              variant="secondary"
-              size="sm"
-              onClick={() => navigate('/admin/custom-studio/submissions')}
-              icon={Eye}
-              className="text-xs"
-            >
-              همه درخواست‌ها ({toFaDigits(state.customDesigns.length)})
+              مقررات فنی چاپ
             </Button>
           </div>
         }
       />
 
-      {/* Pending Reviews Queue */}
-      <div className="space-y-4">
+      {/* Workspace Tabs */}
+      <div className="flex items-center gap-2 border-b border-white/10 pb-px overflow-x-auto scrollbar-none">
+        <button
+          type="button"
+          onClick={() => setActiveTab('cockpit')}
+          className={`flex items-center gap-2 px-4 py-2.5 text-xs md:text-sm font-semibold border-b-2 transition-all cursor-pointer whitespace-nowrap ${
+            activeTab === 'cockpit'
+              ? 'border-[#ba8d3d] text-[#eed29d] bg-white/[0.03] rounded-t-lg'
+              : 'border-transparent text-stone-400 hover:text-stone-200 hover:border-stone-700'
+          }`}
+        >
+          <FileCheck size={16} className={activeTab === 'cockpit' ? 'text-[#ba8d3d]' : 'text-stone-500'} />
+          <span>پیش‌خوان داوری سریع</span>
+          {pendingDesigns.length > 0 && (
+            <span className="bg-amber-500/20 text-amber-300 font-mono text-[10px] px-2 py-0.5 rounded-full font-bold">
+              {toFaDigits(pendingDesigns.length)}
+            </span>
+          )}
+        </button>
+        <button
+          type="button"
+          onClick={() => setActiveTab('submissions')}
+          className={`flex items-center gap-2 px-4 py-2.5 text-xs md:text-sm font-semibold border-b-2 transition-all cursor-pointer whitespace-nowrap ${
+            activeTab === 'submissions'
+              ? 'border-[#ba8d3d] text-[#eed29d] bg-white/[0.03] rounded-t-lg'
+              : 'border-transparent text-stone-400 hover:text-stone-200 hover:border-stone-700'
+          }`}
+        >
+          <Layers size={16} className={activeTab === 'submissions' ? 'text-[#ba8d3d]' : 'text-stone-500'} />
+          <span>جدول کل طرح‌ها و سوابق</span>
+          <span className="bg-white/10 text-stone-300 font-mono text-[10px] px-2 py-0.5 rounded-full">
+            {toFaDigits(state.customDesigns.length)}
+          </span>
+        </button>
+      </div>
+
+      {activeTab === 'submissions' ? (
+        <SubmissionsPage />
+      ) : (
+        <>
+          {/* Pending Reviews Queue */}
+          <div className="space-y-4">
         <div className="flex items-center justify-between">
           <h2 className="text-sm font-bold text-white flex items-center gap-2">
             <span className="w-2.5 h-2.5 rounded-full bg-amber-400 animate-pulse" />
@@ -351,6 +388,8 @@ export const ApprovalPage: React.FC = () => {
           ))}
         </div>
       </div>
+      </>
+      )}
 
       {/* Reject Modal */}
       <Modal

@@ -9,6 +9,7 @@ import { adminRepository } from '../repository';
 import { canTransitionOrderStatus } from '../orderStateMachine';
 import { hasPermission } from '../rbac';
 import { maskPhoneNumber, maskEmail, formatFinancialAdjustment } from '../../utils/formatters';
+import { ADMIN_GROUPS, ALL_ADMIN_ROUTES, matchRoute } from '../../router/routes';
 
 describe('Admin Prototype Scripted Journeys Verification (Prompt 20)', () => {
   beforeEach(() => {
@@ -307,5 +308,70 @@ describe('Admin Prototype Scripted Journeys Verification (Prompt 20)', () => {
     // Test C: Direct Deep Link to Admin with persisted light preference
     simulateThemeSync('light', true, classes);
     assert.equal(classes.has('light'), false, 'Direct deep link to admin remains dark');
+  });
+
+  // Navigation Architecture & Consolidation Verification
+  it('Navigation Architecture: detail routes are excluded from navigation and consolidated routes redirect properly', () => {
+    // 1. Verify no detail routes appear in sidebar navigation
+    ADMIN_GROUPS.forEach((group) => {
+      const navRoutes = group.routes.filter(
+        (r) => r.showInNav !== false && !r.isDetail && !r.path.includes(':') && !r.devOnly
+      );
+      navRoutes.forEach((route) => {
+        assert.equal(route.isDetail, undefined, `Nav route ${route.id} must not be a detail route`);
+        assert.equal(route.path.includes(':'), false, `Nav route ${route.path} must not contain parameter tokens`);
+      });
+    });
+
+    // 2. Verify all detail routes have isDetail: true and showInNav: false
+    const detailRouteIds = ['order-detail', 'payment-detail', 'shipment-detail', 'design-detail', 'job-detail', 'customer-detail'];
+    detailRouteIds.forEach((id) => {
+      const r = ALL_ADMIN_ROUTES.find((item) => item.id === id);
+      assert.ok(r, `Detail route ${id} exists in route registry`);
+      assert.equal(r.isDetail, true, `Route ${id} must have isDetail: true`);
+      assert.equal(r.showInNav, false, `Route ${id} must have showInNav: false`);
+    });
+
+    // 3. Verify consolidated routes redirect to canonical destinations
+    const consolidatedChecks: Array<{ path: string; expectedCanonicalPath: string }> = [
+      { path: '/admin/sales/refunds', expectedCanonicalPath: '/admin/sales/returns' },
+      { path: '/admin/sales/analytics', expectedCanonicalPath: '/admin/analytics/sales' },
+      { path: '/admin/catalog/variants', expectedCanonicalPath: '/admin/catalog/inventory' },
+      { path: '/admin/catalog/stock-movements', expectedCanonicalPath: '/admin/catalog/inventory' },
+      { path: '/admin/catalog/collections', expectedCanonicalPath: '/admin/catalog/categories' },
+      { path: '/admin/catalog/suppliers', expectedCanonicalPath: '/admin/catalog/purchase-orders' },
+      { path: '/admin/custom-studio/submissions', expectedCanonicalPath: '/admin/custom-studio/approval' },
+      { path: '/admin/customers/profiles', expectedCanonicalPath: '/admin/customers/directory' },
+      { path: '/admin/analytics/campaigns', expectedCanonicalPath: '/admin/marketing/campaigns' },
+      { path: '/admin/marketing/funnels', expectedCanonicalPath: '/admin/analytics/conversion' },
+      { path: '/admin/team/reports', expectedCanonicalPath: '/admin/overview/work-report' },
+      { path: '/admin/system/cms', expectedCanonicalPath: '/admin/content/homepage' },
+    ];
+
+    consolidatedChecks.forEach(({ path, expectedCanonicalPath }) => {
+      const matched = matchRoute(path);
+      assert.ok(matched, `Route ${path} matches`);
+      assert.equal(
+        matched.route.path,
+        expectedCanonicalPath,
+        `Visiting ${path} must route to canonical ${expectedCanonicalPath}`
+      );
+    });
+
+    // 4. Verify literal :id fallback guards redirect safely away from broken screens
+    const placeholderGuards: Array<{ path: string; expectedId: string }> = [
+      { path: '/admin/custom-studio/designs/:id', expectedId: 'approval' },
+      { path: '/admin/custom-studio/jobs/:id', expectedId: 'production' },
+      { path: '/admin/sales/orders/:id', expectedId: 'orders' },
+      { path: '/admin/sales/payments/:id', expectedId: 'payments' },
+      { path: '/admin/sales/shipping/:id', expectedId: 'shipping' },
+      { path: '/admin/customers/profiles/:id', expectedId: 'directory' },
+    ];
+
+    placeholderGuards.forEach(({ path, expectedId }) => {
+      const matched = matchRoute(path);
+      assert.ok(matched, `Literal placeholder path ${path} must be safely matched`);
+      assert.equal(matched.route.id, expectedId, `Literal placeholder ${path} must fallback to ${expectedId}`);
+    });
   });
 });

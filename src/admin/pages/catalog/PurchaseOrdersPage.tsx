@@ -33,8 +33,14 @@ import { useAdminRepository } from '../../domain/useAdminRepository';
 import { PurchaseOrder, PurchaseOrderStatus, PurchaseOrderLineItem } from '../../domain/types';
 import { toFaDigits, formatPriceTomans, formatPersianDate } from '../../utils/formatters';
 import { useAdminRouter } from '../../router';
+import { SuppliersPage } from './SuppliersPage';
 
-export const PurchaseOrdersPage: React.FC = () => {
+export interface PurchaseOrdersPageProps {
+  defaultTab?: 'purchase_orders' | 'suppliers';
+}
+
+export const PurchaseOrdersPage: React.FC<PurchaseOrdersPageProps> = ({ defaultTab = 'purchase_orders' }) => {
+  const [procurementTab, setProcurementTab] = useState<'purchase_orders' | 'suppliers'>(defaultTab);
   const {
     state,
     createPurchaseOrder,
@@ -132,7 +138,7 @@ export const PurchaseOrdersPage: React.FC = () => {
     e.preventDefault();
     if (!receivingPo) return;
 
-    const itemsToUpdate = receivingPo.items.map((item) => {
+    const itemsToUpdate = (receivingPo.items || []).map((item) => {
       const addedQty = parseInt(receivedInputs[item.id] || '0', 10);
       const newTotalReceived = Math.min(
         item.orderedQuantity,
@@ -393,36 +399,70 @@ export const PurchaseOrdersPage: React.FC = () => {
   ];
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 max-w-7xl mx-auto">
       {/* Header */}
       <AdminPageHeader
-        title="سفارش‌های خرید و رسید انبار (Purchase Orders)"
-        description="مدیریت فرآیند سفارش‌گذاری به کارخانجات نساجی و ورود محموله‌ها به موجودی فیزیکی سوله مرکزی با بروزرسانی بلادرنگ کاردکس."
+        title="تأمین و خرید"
+        description="سفارش‌های خرید مواد اولیه، پارچه‌های خام و ملزومات چاپ از تأمین‌کنندگان رسمی کارگاه."
         actions={
-          <div className="flex items-center gap-2">
-            <Button
-              variant="secondary"
-              size="md"
-              onClick={() => navigate('/admin/catalog/inventory')}
-              className="flex items-center gap-2"
-            >
-              <Box size={16} />
-              موجودی انبار
-            </Button>
-            <Button
-              variant="brass"
-              size="md"
-              onClick={() => setIsCreateModalOpen(true)}
-              className="flex items-center gap-2"
-            >
-              <Plus size={16} />
-              صدور سفارش خرید جدید
-            </Button>
-          </div>
+          procurementTab === 'purchase_orders' ? (
+            <div className="flex items-center gap-2">
+              <Button
+                variant="secondary"
+                size="md"
+                onClick={() => navigate('/admin/catalog/inventory')}
+                className="flex items-center gap-2"
+              >
+                <Box size={16} />
+                موجودی انبار
+              </Button>
+              <Button
+                variant="brass"
+                size="md"
+                onClick={() => setIsCreateModalOpen(true)}
+                className="flex items-center gap-2"
+              >
+                <Plus size={16} />
+                صدور سفارش خرید جدید
+              </Button>
+            </div>
+          ) : undefined
         }
       />
 
-      {/* KPI Stats */}
+      {/* Workspace Tabs */}
+      <div className="flex items-center gap-2 border-b border-white/10 pb-px overflow-x-auto scrollbar-none">
+        <button
+          type="button"
+          onClick={() => setProcurementTab('purchase_orders')}
+          className={`flex items-center gap-2 px-4 py-2.5 text-xs md:text-sm font-semibold border-b-2 transition-all cursor-pointer whitespace-nowrap ${
+            procurementTab === 'purchase_orders'
+              ? 'border-[#ba8d3d] text-[#eed29d] bg-white/[0.03] rounded-t-lg'
+              : 'border-transparent text-stone-400 hover:text-stone-200 hover:border-stone-700'
+          }`}
+        >
+          <FileText size={16} className={procurementTab === 'purchase_orders' ? 'text-[#ba8d3d]' : 'text-stone-500'} />
+          <span>سفارش‌های خرید (PO)</span>
+        </button>
+        <button
+          type="button"
+          onClick={() => setProcurementTab('suppliers')}
+          className={`flex items-center gap-2 px-4 py-2.5 text-xs md:text-sm font-semibold border-b-2 transition-all cursor-pointer whitespace-nowrap ${
+            procurementTab === 'suppliers'
+              ? 'border-[#ba8d3d] text-[#eed29d] bg-white/[0.03] rounded-t-lg'
+              : 'border-transparent text-stone-400 hover:text-stone-200 hover:border-stone-700'
+          }`}
+        >
+          <Truck size={16} className={procurementTab === 'suppliers' ? 'text-[#ba8d3d]' : 'text-stone-500'} />
+          <span>تأمین‌کنندگان کارگاه</span>
+        </button>
+      </div>
+
+      {procurementTab === 'suppliers' ? (
+        <SuppliersPage />
+      ) : (
+        <>
+          {/* KPI Stats */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <div className="p-4 bg-[#141211] border border-white/10 rounded-2xl">
           <span className="text-xs text-stone-400 block mb-1">کل سفارشات خرید</span>
@@ -538,7 +578,7 @@ export const PurchaseOrdersPage: React.FC = () => {
 
             <form onSubmit={handleSubmitReceiving} className="space-y-4">
               <div className="space-y-3">
-                {receivingPo.items.map((item) => {
+                {(receivingPo.items || []).map((item) => {
                   const remaining = Math.max(0, item.orderedQuantity - item.receivedQuantity);
                   return (
                     <div
@@ -795,6 +835,8 @@ export const PurchaseOrdersPage: React.FC = () => {
             </form>
           </div>
         </div>
+      )}
+        </>
       )}
     </div>
   );

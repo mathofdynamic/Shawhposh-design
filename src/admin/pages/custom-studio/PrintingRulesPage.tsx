@@ -181,7 +181,7 @@ export const PrintingRulesPage: React.FC = () => {
 
           <div className="flex items-center gap-2 self-start sm:self-center">
             <span className="text-xs text-stone-400">فرمت‌های مجاز:</span>
-            {activeZone.allowedFormats.map((fmt) => (
+            {(activeZone.allowedFormats || []).map((fmt) => (
               <span key={fmt} className="px-2 py-0.5 rounded bg-stone-900 border border-white/10 text-[11px] font-mono text-white">
                 {fmt}
               </span>
@@ -220,7 +220,7 @@ export const PrintingRulesPage: React.FC = () => {
           <div className="space-y-3">
             <h4 className="font-bold text-stone-200">محدودیت‌ها و خطوط قرمز کارگاه (Restrictions):</h4>
             <div className="p-4 bg-stone-900/40 rounded-xl border border-white/5 space-y-2.5">
-              {activeZone.restrictions.map((res, idx) => (
+              {(activeZone.restrictions || []).map((res, idx) => (
                 <div key={idx} className="flex items-start gap-2.5 text-xs text-stone-300 leading-relaxed">
                   <span className="w-1.5 h-1.5 rounded-full bg-amber-400 mt-1.5 shrink-0" />
                   <span>{res}</span>

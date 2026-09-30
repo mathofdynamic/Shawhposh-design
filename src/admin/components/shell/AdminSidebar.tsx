@@ -137,8 +137,20 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
       {/* Navigation Groups List */}
       <nav className="flex-1 overflow-y-auto px-2 py-3 space-y-4 focus:outline-none">
         {ADMIN_GROUPS.map((group) => {
+          const navRoutes = group.routes.filter(
+            (r) => r.showInNav !== false && !r.isDetail && !r.path.includes(':') && !r.devOnly
+          );
+          if (navRoutes.length === 0) return null;
+
           const isGroupCollapsed = Boolean(collapsedGroups[group.id]) && !isCompact;
-          const hasActiveChild = group.routes.some((r) => r.path === currentPath);
+          const hasActiveChild = group.routes.some((r) => {
+            if (r.path === currentPath) return true;
+            if (r.path.includes(':')) {
+              const prefix = r.path.split('/:')[0];
+              return currentPath.startsWith(prefix);
+            }
+            return false;
+          });
 
           return (
             <div key={group.id} className="space-y-1">
@@ -175,8 +187,11 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
               {/* Group Routes */}
               {(!isGroupCollapsed || isCompact) && (
                 <div className="space-y-0.5">
-                  {group.routes.map((route) => {
-                    const isActive = route.path === currentPath;
+                  {navRoutes.map((route) => {
+                    const isActive =
+                      route.path === currentPath ||
+                      (currentPath.startsWith(route.path + '/') &&
+                        !navRoutes.some((other) => other !== route && other.path === currentPath));
                     const badgeVal = getBadgeValue(route.badgeKey);
                     const isRestrictedForRole =
                       normalizedRole !== 'owner' &&

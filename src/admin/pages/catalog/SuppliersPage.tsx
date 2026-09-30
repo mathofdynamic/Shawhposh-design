@@ -83,7 +83,7 @@ export const SuppliersPage: React.FC = () => {
         const matchesName = s.name.toLowerCase().includes(q);
         const matchesPerson = s.contactPerson.toLowerCase().includes(q);
         const matchesCity = s.city.toLowerCase().includes(q);
-        const matchesMaterials = s.suppliedMaterials.some((m) => m.toLowerCase().includes(q));
+        const matchesMaterials = (s.suppliedMaterials || []).some((m) => m.toLowerCase().includes(q));
         if (!matchesName && !matchesPerson && !matchesCity && !matchesMaterials) return false;
       }
       return true;
@@ -126,7 +126,7 @@ export const SuppliersPage: React.FC = () => {
     setLeadTimeDays(String(sup.leadTimeDays));
     setMinOrderQty(String(sup.minOrderQty));
     setQualityRating(sup.qualityRating);
-    setSuppliedMaterialsInput(sup.suppliedMaterials.join('، '));
+    setSuppliedMaterialsInput((sup.suppliedMaterials || []).join('، '));
   };
 
   // Submit Create
@@ -229,7 +229,7 @@ export const SuppliersPage: React.FC = () => {
       header: 'اقلام و متریال تامین‌شده',
       render: (row) => (
         <div className="flex flex-wrap gap-1 max-w-xs">
-          {row.suppliedMaterials.map((mat, i) => (
+          {(row.suppliedMaterials || []).map((mat, i) => (
             <span
               key={i}
               className="text-[10px] bg-stone-900 text-stone-300 px-2 py-0.5 rounded border border-white/5 font-sans"

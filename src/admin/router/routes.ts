@@ -70,6 +70,8 @@ export const ADMIN_GROUPS: AdminNavGroupDef[] = [
         shortTitleFa: 'جزئیات سفارش',
         descriptionFa: 'اطلاعات کامل فاکتور، خط تولید، پیش‌نمایش طرح سفارشی، مرسوله و سوابق تغییرات',
         iconName: 'FileText',
+        isDetail: true,
+        showInNav: false,
       },
       {
         id: 'payments',
@@ -93,6 +95,8 @@ export const ADMIN_GROUPS: AdminNavGroupDef[] = [
         descriptionFa: 'اطلاعات کامل درگاه PSP، شماره پیگیری، RRN، سوابق استرداد و لاگ فنی استعلام',
         iconName: 'Receipt',
         allowedRoles: ['super_admin', 'support_finance'],
+        isDetail: true,
+        showInNav: false,
       },
       {
         id: 'refunds',
@@ -104,6 +108,8 @@ export const ADMIN_GROUPS: AdminNavGroupDef[] = [
         descriptionFa: 'بررسی درخواست‌های مرجوعی، کنترل سقف مبلغ استرداد، تایید کارشناسی و تسویه پایا',
         iconName: 'RotateCcw',
         allowedRoles: ['super_admin', 'support_finance'],
+        showInNav: false,
+        redirectTo: '/admin/sales/returns',
       },
       {
         id: 'shipping',
@@ -125,13 +131,15 @@ export const ADMIN_GROUPS: AdminNavGroupDef[] = [
         shortTitleFa: 'جزئیات مرسوله',
         descriptionFa: 'لیست اقلام بسته، انتخاب ناوگان، وضعیت QC، رویدادهای اصلاح نشانی و پیگیری بارنامه',
         iconName: 'Package',
+        isDetail: true,
+        showInNav: false,
       },
       {
         id: 'returns',
         path: '/admin/sales/returns',
         groupId: 'sales',
         titleFa: 'مرجوعی‌ها و استرداد وجه فاکتور',
-        titleEn: 'Returns',
+        titleEn: 'Returns & Refunds',
         shortTitleFa: 'مرجوعی و استرداد',
         descriptionFa: 'مدیریت پرونده‌های مرجوعی، بازگشت کالا به انبار و صدور سند مالی بستانکار',
         iconName: 'RotateCcw',
@@ -146,6 +154,8 @@ export const ADMIN_GROUPS: AdminNavGroupDef[] = [
         shortTitleFa: 'تحلیل فروش',
         descriptionFa: 'نمودارهای مقایسه‌ای درآمد، میانگین ارزش فاکتور (AOV) و پرفروش‌ترین سایزها',
         iconName: 'TrendingUp',
+        showInNav: false,
+        redirectTo: '/admin/analytics/sales',
       },
     ],
   },
@@ -166,6 +176,18 @@ export const ADMIN_GROUPS: AdminNavGroupDef[] = [
         iconName: 'Tag',
       },
       {
+        id: 'inventory',
+        path: '/admin/catalog/inventory',
+        groupId: 'catalog',
+        titleFa: 'موجودی انبار، تنوع‌ها و ملزومات کارگاه',
+        titleEn: 'Inventory & SKUs',
+        shortTitleFa: 'موجودی و تنوع‌ها (SKU)',
+        descriptionFa: 'ماتریس تنوع‌ها، موجودی فیزیکی و آزاد، ثبت کسری و گردش انبار',
+        iconName: 'Box',
+        badgeKey: 'lowStock',
+        allowedRoles: ['super_admin', 'production_operator'],
+      },
+      {
         id: 'variants',
         path: '/admin/catalog/variants',
         groupId: 'catalog',
@@ -174,27 +196,17 @@ export const ADMIN_GROUPS: AdminNavGroupDef[] = [
         shortTitleFa: 'تنوع‌ها (SKU)',
         descriptionFa: 'تفکیک ماتریس ۱۶۸ کد محصول بر اساس رنگ‌بندی، سایزبندی و آرت‌نامبر انبارداری',
         iconName: 'Grid',
-      },
-      {
-        id: 'inventory',
-        path: '/admin/catalog/inventory',
-        groupId: 'catalog',
-        titleFa: 'موجودی انبار، رزروها و انبارگردانی',
-        titleEn: 'Inventory',
-        shortTitleFa: 'انبار و کسری',
-        descriptionFa: 'تنظیم دستی موجودی با رعایت گارد ناوردایی نامنفی و هشدارهای شارژ مجدد',
-        iconName: 'Box',
-        badgeKey: 'lowStock',
-        allowedRoles: ['super_admin', 'production_operator'],
+        showInNav: false,
+        redirectTo: '/admin/catalog/inventory',
       },
       {
         id: 'categories',
         path: '/admin/catalog/categories',
         groupId: 'catalog',
-        titleFa: 'دسته‌بندی‌ها و شاخه‌ها',
-        titleEn: 'Categories',
-        shortTitleFa: 'دسته‌بندی‌ها',
-        descriptionFa: 'مدیریت تگ‌های کالیگرافی، مینیمال، تایپوگرافی معاصر و معماری کاتالوگ',
+        titleFa: 'ساختار کاتالوگ، دسته‌بندی‌ها و کلکسیون‌ها',
+        titleEn: 'Catalog Structure',
+        shortTitleFa: 'ساختار کاتالوگ',
+        descriptionFa: 'مدیریت شاخه‌ها، دسته‌بندی‌ها، دراپ‌های فصلی و کلکسیون‌های اختصاصی شاه‌پوش',
         iconName: 'FolderTree',
       },
       {
@@ -206,27 +218,19 @@ export const ADMIN_GROUPS: AdminNavGroupDef[] = [
         shortTitleFa: 'کلکسیون‌ها',
         descriptionFa: 'کلکسیون اختصاصی شاه‌نشین، دراپ پاییزه دماوند و مجموعه‌های لیمیتد ادیشن',
         iconName: 'Sparkles',
+        showInNav: false,
+        redirectTo: '/admin/catalog/categories',
       },
       {
-        id: 'media',
-        path: '/admin/catalog/media',
+        id: 'purchase-orders',
+        path: '/admin/catalog/purchase-orders',
         groupId: 'catalog',
-        titleFa: 'کتابخانه رسانه‌ها و تصاویر استودیو',
-        titleEn: 'Media Library',
-        shortTitleFa: 'رسانه‌ها',
-        descriptionFa: 'مدیریت شات‌های استودیویی، تصاویر بافت پارچه، موکاپ‌ها و متادیتاهای سئو',
-        iconName: 'Image',
-      },
-      {
-        id: 'stock-movements',
-        path: '/admin/catalog/stock-movements',
-        groupId: 'catalog',
-        titleFa: 'دفتر روزنامه گردش انبار و رخدادها',
-        titleEn: 'Stock Movements',
-        shortTitleFa: 'گردش انبار',
-        descriptionFa: 'ثبت و حسابرسی تمامی ورودی‌ها، حواله‌های سفارش، ضایعات و انبارگردانی',
-        iconName: 'History',
-        allowedRoles: ['super_admin', 'production_operator'],
+        titleFa: 'تأمین، خرید و تأمین‌کنندگان (PO)',
+        titleEn: 'Procurement & Suppliers',
+        shortTitleFa: 'تأمین و خرید',
+        descriptionFa: 'مدیریت سفارش‌های خرید، رسید انبار، انطباق با کسری مواد و کارخانجات بافندگی',
+        iconName: 'Receipt',
+        allowedRoles: ['super_admin', 'production_operator', 'support_finance'],
       },
       {
         id: 'suppliers',
@@ -238,17 +242,31 @@ export const ADMIN_GROUPS: AdminNavGroupDef[] = [
         descriptionFa: 'کارخانجات بافندگی پنبه اصفهان، واردکنندگان جوهر برادر (Brother) و کاغذ ترانسفر',
         iconName: 'Factory',
         allowedRoles: ['super_admin', 'production_operator'],
+        showInNav: false,
+        redirectTo: '/admin/catalog/purchase-orders',
       },
       {
-        id: 'purchase-orders',
-        path: '/admin/catalog/purchase-orders',
+        id: 'stock-movements',
+        path: '/admin/catalog/stock-movements',
         groupId: 'catalog',
-        titleFa: 'سفارش‌های خرید و رسید انبار (PO)',
-        titleEn: 'Purchase Orders',
-        shortTitleFa: 'سفارش‌های خرید',
-        descriptionFa: 'مدیریت پیش‌نویس، تایید خرید، صدور رسید انبار و انطباق با کسری مواد',
-        iconName: 'Receipt',
-        allowedRoles: ['super_admin', 'production_operator', 'support_finance'],
+        titleFa: 'دفتر روزنامه گردش انبار و رخدادها',
+        titleEn: 'Stock Movements',
+        shortTitleFa: 'گردش انبار',
+        descriptionFa: 'ثبت و حسابرسی تمامی ورودی‌ها، حواله‌های سفارش، ضایعات و انبارگردانی',
+        iconName: 'History',
+        allowedRoles: ['super_admin', 'production_operator'],
+        showInNav: false,
+        redirectTo: '/admin/catalog/inventory',
+      },
+      {
+        id: 'media',
+        path: '/admin/catalog/media',
+        groupId: 'catalog',
+        titleFa: 'کتابخانه رسانه‌ها و تصاویر استودیو',
+        titleEn: 'Media Library',
+        shortTitleFa: 'رسانه‌ها',
+        descriptionFa: 'مدیریت شات‌های استودیویی، تصاویر بافت پارچه، موکاپ‌ها و متادیتاهای سئو',
+        iconName: 'Image',
       },
     ],
   },
@@ -259,6 +277,18 @@ export const ADMIN_GROUPS: AdminNavGroupDef[] = [
     iconName: 'Palette',
     routes: [
       {
+        id: 'approval',
+        path: '/admin/custom-studio/approval',
+        groupId: 'custom_studio',
+        titleFa: 'داوری فنی و تایید طرح‌های آتلیه',
+        titleEn: 'Approval',
+        shortTitleFa: 'داوری و تایید طرح',
+        descriptionFa: 'بررسی DPI، ترانسپارنسی، حاشیه برش و ارسال طرح به صف پرینتر مستقیم صنعتی',
+        iconName: 'FileCheck',
+        allowedRoles: ['super_admin', 'designer_reviewer'],
+        badgeKey: 'pendingDesigns',
+      },
+      {
         id: 'submissions',
         path: '/admin/custom-studio/submissions',
         groupId: 'custom_studio',
@@ -268,28 +298,8 @@ export const ADMIN_GROUPS: AdminNavGroupDef[] = [
         descriptionFa: 'طرح‌های بارگذاری شده توسط خریداران، کالیگرافی‌های اختصاصی و فایل‌های خام',
         iconName: 'UploadCloud',
         badgeKey: 'pendingDesigns',
-      },
-      {
-        id: 'approval',
-        path: '/admin/custom-studio/approval',
-        groupId: 'custom_studio',
-        titleFa: 'داوری فنی آتلیه و اعتبارسنجی رزولوشن',
-        titleEn: 'Approval',
-        shortTitleFa: 'داوری و تایید طرح',
-        descriptionFa: 'بررسی DPI، ترانسپارنسی، حاشیه برش و ارسال طرح به صف پرینتر مستقیم صنعتی',
-        iconName: 'FileCheck',
-        allowedRoles: ['super_admin', 'designer_reviewer'],
-        badgeKey: 'pendingDesigns',
-      },
-      {
-        id: 'artwork',
-        path: '/admin/custom-studio/artwork',
-        groupId: 'custom_studio',
-        titleFa: 'آرشیو فایل‌های برداری و موکاپ‌ها',
-        titleEn: 'Artwork',
-        shortTitleFa: 'آرشیو آرت‌ورک',
-        descriptionFa: 'کتابخانه تایپوگرافی‌های نستعلیق و شکسته، موکاپ‌های نوری و پالت‌های رنگی CMYK',
-        iconName: 'Image',
+        showInNav: false,
+        redirectTo: '/admin/custom-studio/approval',
       },
       {
         id: 'production',
@@ -314,6 +324,16 @@ export const ADMIN_GROUPS: AdminNavGroupDef[] = [
         allowedRoles: ['super_admin', 'production_operator'],
       },
       {
+        id: 'artwork',
+        path: '/admin/custom-studio/artwork',
+        groupId: 'custom_studio',
+        titleFa: 'آرشیو فایل‌های برداری و موکاپ‌ها',
+        titleEn: 'Artwork',
+        shortTitleFa: 'آرشیو آرت‌ورک',
+        descriptionFa: 'کتابخانه تایپوگرافی‌های نستعلیق و شکسته، موکاپ‌های نوری و پالت‌های رنگی CMYK',
+        iconName: 'Image',
+      },
+      {
         id: 'printing-rules',
         path: '/admin/custom-studio/printing-rules',
         groupId: 'custom_studio',
@@ -332,6 +352,8 @@ export const ADMIN_GROUPS: AdminNavGroupDef[] = [
         shortTitleFa: 'داوری طرح',
         descriptionFa: 'موکاپ سه‌بعدی روی بافت لباس، کادربندی ایمن چاپ و تاریخچه نسخه‌های اصلاحی',
         iconName: 'Palette',
+        isDetail: true,
+        showInNav: false,
       },
       {
         id: 'job-detail',
@@ -342,6 +364,8 @@ export const ADMIN_GROUPS: AdminNavGroupDef[] = [
         shortTitleFa: 'دستور کار چاپ',
         descriptionFa: 'مشخصات فنی چاپ DTG، مواد مصرفی، چک‌لیست ۵ گانه QC و رخدادهای کارگاه',
         iconName: 'Printer',
+        isDetail: true,
+        showInNav: false,
       },
     ],
   },
@@ -356,8 +380,8 @@ export const ADMIN_GROUPS: AdminNavGroupDef[] = [
         path: '/admin/customers/directory',
         groupId: 'customers',
         titleFa: 'فهرست خریداران و باشگاه مشتریان',
-        titleEn: 'Directory',
-        shortTitleFa: 'فهرست مشتریان',
+        titleEn: 'Customers Directory',
+        shortTitleFa: 'مشتریان',
         descriptionFa: 'پایگاه مشتریان ثبت‌شده، رده‌های طلایی، نقره‌ای و میزان خریدهای تجمعی',
         iconName: 'Contact2',
       },
@@ -370,6 +394,8 @@ export const ADMIN_GROUPS: AdminNavGroupDef[] = [
         shortTitleFa: 'پرونده مشتری',
         descriptionFa: 'تاریخچه سبدهای خرید، طرح‌های سفارشی ذخیره شده و نشانی‌های ارسال پستی',
         iconName: 'UserCheck',
+        showInNav: false,
+        redirectTo: '/admin/customers/directory',
       },
       {
         id: 'customer-detail',
@@ -380,6 +406,8 @@ export const ADMIN_GROUPS: AdminNavGroupDef[] = [
         shortTitleFa: 'پرونده مشتری',
         descriptionFa: 'پایش سفارشات، مبالغ پرداختی تاییدشده منهای استردادها (LTV)، طرح‌های اختصاصی، تیکت‌ها و یادداشت‌های پرسنل',
         iconName: 'UserCheck',
+        isDetail: true,
+        showInNav: false,
       },
       {
         id: 'support',
@@ -416,9 +444,19 @@ export const ADMIN_GROUPS: AdminNavGroupDef[] = [
         groupId: 'analytics',
         titleFa: 'تحلیل مالی، درآمد و شاخص‌های اقتصادی فروش',
         titleEn: 'Sales & Financials',
-        shortTitleFa: 'تحلیل مالی و فروش',
+        shortTitleFa: 'فروش و عملکرد مالی',
         descriptionFa: 'پایش تفکیکی فروش ناخالص، خالص، تخفیف‌ها، استردادها، بهای تمام‌شده و حاشیه سود',
         iconName: 'TrendingUp',
+      },
+      {
+        id: 'conversion',
+        path: '/admin/analytics/conversion',
+        groupId: 'analytics',
+        titleFa: 'قیف نرخ تبدیل (Funnel Conversion)',
+        titleEn: 'Conversion',
+        shortTitleFa: 'قیف تبدیل',
+        descriptionFa: 'رهگیری مسیر کاربر از بازدید صفحه، ورود به طراح سفارشی، افزودن به سبد تا تسویه',
+        iconName: 'Filter',
       },
       {
         id: 'traffic',
@@ -451,16 +489,6 @@ export const ADMIN_GROUPS: AdminNavGroupDef[] = [
         iconName: 'Share2',
       },
       {
-        id: 'conversion',
-        path: '/admin/analytics/conversion',
-        groupId: 'analytics',
-        titleFa: 'قیف نرخ تبدیل (Funnel Conversion)',
-        titleEn: 'Conversion',
-        shortTitleFa: 'قیف تبدیل',
-        descriptionFa: 'رهگیری مسیر کاربر از بازدید صفحه، ورود به طراح سفارشی، افزودن به سبد تا تسویه',
-        iconName: 'Filter',
-      },
-      {
         id: 'campaigns',
         path: '/admin/analytics/campaigns',
         groupId: 'analytics',
@@ -469,6 +497,8 @@ export const ADMIN_GROUPS: AdminNavGroupDef[] = [
         shortTitleFa: 'کمپین‌های تخفیف',
         descriptionFa: 'نرخ استفاده از کدهای تخفیف جشن‌های پاییزه و بازدهی فروش فلاش‌سیل (Flash Sale)',
         iconName: 'Sparkles',
+        showInNav: false,
+        redirectTo: '/admin/marketing/campaigns',
       },
     ],
   },
@@ -507,6 +537,8 @@ export const ADMIN_GROUPS: AdminNavGroupDef[] = [
         shortTitleFa: 'قیف تبدیل',
         descriptionFa: 'مسیر کاربر از ویترین تا استودیو DTG، آرت‌ورک، سبد، تسویه و پرداخت قطعی شاپرک',
         iconName: 'Filter',
+        showInNav: false,
+        redirectTo: '/admin/analytics/conversion',
       },
     ],
   },
@@ -576,17 +608,6 @@ export const ADMIN_GROUPS: AdminNavGroupDef[] = [
         badgeKey: 'openTasks',
       },
       {
-        id: 'reports',
-        path: '/admin/team/reports',
-        groupId: 'team',
-        titleFa: 'گزارش راندمان کاری و شیفت‌های آتلیه',
-        titleEn: 'Reports',
-        shortTitleFa: 'گزارش راندمان',
-        descriptionFa: 'تعداد طرح‌های تاییدشده به تفکیک همکار، سرعت پاسخگویی و خطای چاپ صفر',
-        iconName: 'LineChart',
-        allowedRoles: ['super_admin'],
-      },
-      {
         id: 'administrators',
         path: '/admin/team/administrators',
         groupId: 'team',
@@ -619,6 +640,19 @@ export const ADMIN_GROUPS: AdminNavGroupDef[] = [
         iconName: 'History',
         allowedRoles: ['super_admin'],
       },
+      {
+        id: 'reports',
+        path: '/admin/team/reports',
+        groupId: 'team',
+        titleFa: 'گزارش راندمان کاری و شیفت‌های آتلیه',
+        titleEn: 'Reports',
+        shortTitleFa: 'گزارش راندمان',
+        descriptionFa: 'تعداد طرح‌های تاییدشده به تفکیک همکار، سرعت پاسخگویی و خطای چاپ صفر',
+        iconName: 'LineChart',
+        allowedRoles: ['super_admin'],
+        showInNav: false,
+        redirectTo: '/admin/overview/work-report',
+      },
     ],
   },
   {
@@ -627,17 +661,6 @@ export const ADMIN_GROUPS: AdminNavGroupDef[] = [
     titleEn: 'System',
     iconName: 'Sliders',
     routes: [
-      {
-        id: 'cms',
-        path: '/admin/system/cms',
-        groupId: 'system',
-        titleFa: 'مدیریت محتوا، بنرها و متن‌های ویترین',
-        titleEn: 'CMS',
-        shortTitleFa: 'مدیریت محتوا (CMS)',
-        descriptionFa: 'ویرایش بنر هدر، متون تیتر کالکشن‌ها، قوانین ارسال و راهنمای سایزبندی فروشگاه',
-        iconName: 'FileText',
-        allowedRoles: ['super_admin'],
-      },
       {
         id: 'settings',
         path: '/admin/system/settings',
@@ -659,6 +682,16 @@ export const ADMIN_GROUPS: AdminNavGroupDef[] = [
         descriptionFa: 'تنظیمات درگاه سامان/به‌پرداخت، وب‌سرویس پیامکی کاوه‌نگار و وب‌هوک چاپخانه',
         iconName: 'Cpu',
         allowedRoles: ['super_admin'],
+      },
+      {
+        id: 'notifications',
+        path: '/admin/system/notifications',
+        groupId: 'system',
+        titleFa: 'قالب‌های پیامک و شبیه‌ساز اعلان‌ها',
+        titleEn: 'Notifications',
+        shortTitleFa: 'قالب‌های پیامک',
+        descriptionFa: 'پیش‌نمایش پیامک‌های ثبت سفارش، تایید طرح، صدور بارنامه، استرداد و لاگ شبیه‌ساز دمو',
+        iconName: 'Bell',
       },
       {
         id: 'health',
@@ -683,17 +716,6 @@ export const ADMIN_GROUPS: AdminNavGroupDef[] = [
         allowedRoles: ['super_admin'],
       },
       {
-        id: 'data-explorer',
-        path: '/admin/system/data-explorer',
-        groupId: 'system',
-        titleFa: 'جستجوگر خام داده‌ها (Read-only Data Explorer)',
-        titleEn: 'Read-only Data Explorer',
-        shortTitleFa: 'جستجوگر خام داده',
-        descriptionFa: 'مشاهده مستقیم آبجکت‌های شبیه‌سازی شده، کلیدهای حافظه محلی و استخراج JSON',
-        iconName: 'Database',
-        allowedRoles: ['super_admin'],
-      },
-      {
         id: 'security',
         path: '/admin/system/security',
         groupId: 'system',
@@ -705,6 +727,32 @@ export const ADMIN_GROUPS: AdminNavGroupDef[] = [
         allowedRoles: ['super_admin'],
       },
       {
+        id: 'cms',
+        path: '/admin/system/cms',
+        groupId: 'system',
+        titleFa: 'مدیریت محتوا، بنرها و متن‌های ویترین',
+        titleEn: 'CMS',
+        shortTitleFa: 'مدیریت محتوا (CMS)',
+        descriptionFa: 'ویرایش بنر هدر، متون تیتر کالکشن‌ها، قوانین ارسال و راهنمای سایزبندی فروشگاه',
+        iconName: 'FileText',
+        allowedRoles: ['super_admin'],
+        showInNav: false,
+        redirectTo: '/admin/content/homepage',
+      },
+      {
+        id: 'data-explorer',
+        path: '/admin/system/data-explorer',
+        groupId: 'system',
+        titleFa: 'جستجوگر خام داده‌ها (Read-only Data Explorer)',
+        titleEn: 'Read-only Data Explorer',
+        shortTitleFa: 'جستجوگر خام داده',
+        descriptionFa: 'مشاهده مستقیم آبجکت‌های شبیه‌سازی شده، کلیدهای حافظه محلی و استخراج JSON',
+        iconName: 'Database',
+        allowedRoles: ['super_admin'],
+        showInNav: false,
+        devOnly: true,
+      },
+      {
         id: 'style-gallery',
         path: '/admin/system/style-gallery',
         groupId: 'system',
@@ -714,16 +762,8 @@ export const ADMIN_GROUPS: AdminNavGroupDef[] = [
         descriptionFa: 'بررسی بصری تمامی توکن‌ها، فونت، جداول، فیلدها و رفتارهای واکنشی پنل مدیریت',
         iconName: 'Palette',
         allowedRoles: ['super_admin'],
-      },
-      {
-        id: 'notifications',
-        path: '/admin/system/notifications',
-        groupId: 'system',
-        titleFa: 'قالب‌های پیامک و شبیه‌ساز اعلان‌ها',
-        titleEn: 'Notifications',
-        shortTitleFa: 'قالب‌های پیامک',
-        descriptionFa: 'پیش‌نمایش پیامک‌های ثبت سفارش، تایید طرح، صدور بارنامه، استرداد و لاگ شبیه‌ساز دمو',
-        iconName: 'Bell',
+        showInNav: false,
+        devOnly: true,
       },
     ],
   },
@@ -737,9 +777,43 @@ export const DEFAULT_ADMIN_ROUTE = ALL_ADMIN_ROUTES[0]; // '/admin/overview/dash
 export function matchRoute(path: string): { route: AdminRouteDef; params: Record<string, string> } | undefined {
   const cleanPath = path.split('?')[0].split('#')[0].replace(/\/+$/, '') || '/admin/overview/dashboard';
 
-  // 1. Direct exact match
+  // 1. Literal :id placeholder guard (prevents opening broken detail screen without an actual ID)
+  if (cleanPath.endsWith('/:id') || cleanPath.includes('/:') || cleanPath.endsWith('/profiles')) {
+    if (cleanPath.includes('/custom-studio/designs')) {
+      const target = ALL_ADMIN_ROUTES.find((r) => r.id === 'approval');
+      if (target) return { route: target, params: {} };
+    }
+    if (cleanPath.includes('/custom-studio/jobs')) {
+      const target = ALL_ADMIN_ROUTES.find((r) => r.id === 'production');
+      if (target) return { route: target, params: {} };
+    }
+    if (cleanPath.includes('/sales/orders') || cleanPath.includes('/orders')) {
+      const target = ALL_ADMIN_ROUTES.find((r) => r.id === 'orders');
+      if (target) return { route: target, params: {} };
+    }
+    if (cleanPath.includes('/sales/payments') || cleanPath.includes('/payments')) {
+      const target = ALL_ADMIN_ROUTES.find((r) => r.id === 'payments');
+      if (target) return { route: target, params: {} };
+    }
+    if (cleanPath.includes('/sales/shipping') || cleanPath.includes('/shipping')) {
+      const target = ALL_ADMIN_ROUTES.find((r) => r.id === 'shipping');
+      if (target) return { route: target, params: {} };
+    }
+    if (cleanPath.includes('/customers/profiles') || cleanPath.includes('/customers')) {
+      const target = ALL_ADMIN_ROUTES.find((r) => r.id === 'directory');
+      if (target) return { route: target, params: {} };
+    }
+  }
+
+  // 2. Direct exact match
   const direct = ALL_ADMIN_ROUTES.find((r) => r.path === cleanPath);
-  if (direct) return { route: direct, params: {} };
+  if (direct) {
+    if (direct.redirectTo) {
+      const redirectedRoute = ALL_ADMIN_ROUTES.find((r) => r.path === direct.redirectTo);
+      if (redirectedRoute) return { route: redirectedRoute, params: {} };
+    }
+    return { route: direct, params: {} };
+  }
 
   // 2. Common root aliases
   if (cleanPath === '/orders') {
@@ -1035,6 +1109,10 @@ export function matchRoute(path: string): { route: AdminRouteDef; params: Record
       }
     }
     if (matched) {
+      const hasLiteralPlaceholder = Object.values(params).some((val) => val === ':id' || !val);
+      if (hasLiteralPlaceholder) {
+        continue;
+      }
       return { route, params };
     }
   }

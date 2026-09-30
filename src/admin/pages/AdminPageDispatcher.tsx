@@ -103,58 +103,70 @@ export const AdminPageDispatcher: React.FC = () => {
   // Dynamic order details routes (/admin/sales/orders/:id and /orders/:id)
   if (currentPath.startsWith('/admin/sales/orders/') && currentPath !== '/admin/sales/orders') {
     const oId = currentPath.replace('/admin/sales/orders/', '');
+    if (oId === ':id' || !oId) return <OrdersPage />;
     return <OrderDetailPage orderIdProp={oId} />;
   }
   if (currentPath.startsWith('/orders/') && currentPath !== '/orders') {
     const oId = currentPath.replace('/orders/', '');
+    if (oId === ':id' || !oId) return <OrdersPage />;
     return <OrderDetailPage orderIdProp={oId} />;
   }
 
   // Dynamic payment details routes (/admin/sales/payments/:id and /payments/:id)
   if (currentPath.startsWith('/admin/sales/payments/') && currentPath !== '/admin/sales/payments') {
     const pId = currentPath.replace('/admin/sales/payments/', '');
+    if (pId === ':id' || !pId) return <PaymentsPage />;
     return <PaymentDetailPage paymentIdProp={pId} />;
   }
   if (currentPath.startsWith('/payments/') && currentPath !== '/payments') {
     const pId = currentPath.replace('/payments/', '');
+    if (pId === ':id' || !pId) return <PaymentsPage />;
     return <PaymentDetailPage paymentIdProp={pId} />;
   }
 
   // Dynamic design review routes (/designs/:id, /admin/studio/designs/:id, /admin/custom-studio/designs/:id)
   if (currentPath.startsWith('/designs/') && currentPath !== '/designs') {
     const dId = currentPath.replace('/designs/', '');
+    if (dId === ':id' || !dId) return <ApprovalPage />;
     return <DesignReviewPage designIdProp={dId} />;
   }
   if (currentPath.startsWith('/admin/studio/designs/') && currentPath !== '/admin/studio/designs') {
     const dId = currentPath.replace('/admin/studio/designs/', '');
+    if (dId === ':id' || !dId) return <ApprovalPage />;
     return <DesignReviewPage designIdProp={dId} />;
   }
   if (currentPath.startsWith('/admin/custom-studio/designs/') && currentPath !== '/admin/custom-studio/designs') {
     const dId = currentPath.replace('/admin/custom-studio/designs/', '');
+    if (dId === ':id' || !dId) return <ApprovalPage />;
     return <DesignReviewPage designIdProp={dId} />;
   }
 
   // Dynamic job details routes (/jobs/:id, /admin/studio/jobs/:id, /admin/custom-studio/jobs/:id)
   if (currentPath.startsWith('/jobs/') && currentPath !== '/jobs') {
     const jId = currentPath.replace('/jobs/', '');
+    if (jId === ':id' || !jId) return <ProductionPage />;
     return <JobDetailPage jobIdProp={jId} />;
   }
   if (currentPath.startsWith('/admin/studio/jobs/') && currentPath !== '/admin/studio/jobs') {
     const jId = currentPath.replace('/admin/studio/jobs/', '');
+    if (jId === ':id' || !jId) return <ProductionPage />;
     return <JobDetailPage jobIdProp={jId} />;
   }
   if (currentPath.startsWith('/admin/custom-studio/jobs/') && currentPath !== '/admin/custom-studio/jobs') {
     const jId = currentPath.replace('/admin/custom-studio/jobs/', '');
+    if (jId === ':id' || !jId) return <ProductionPage />;
     return <JobDetailPage jobIdProp={jId} />;
   }
 
   // Dynamic customer profile routes (/customers/:id, /admin/customers/profiles/:id, /admin/customers/:id)
   if (currentPath.startsWith('/customers/') && currentPath !== '/customers') {
     const cId = currentPath.replace('/customers/', '');
+    if (cId === ':id' || !cId) return <CustomerDirectoryPage />;
     return <CustomerProfilesPage customerIdProp={cId} />;
   }
   if (currentPath.startsWith('/admin/customers/profiles/') && currentPath !== '/admin/customers/profiles') {
     const cId = currentPath.replace('/admin/customers/profiles/', '');
+    if (cId === ':id' || !cId) return <CustomerDirectoryPage />;
     return <CustomerProfilesPage customerIdProp={cId} />;
   }
   if (
@@ -167,20 +179,24 @@ export const AdminPageDispatcher: React.FC = () => {
     currentPath !== '/admin/customers'
   ) {
     const cId = currentPath.replace('/admin/customers/', '');
+    if (cId === ':id' || !cId) return <CustomerDirectoryPage />;
     return <CustomerProfilesPage customerIdProp={cId} />;
   }
 
   // Dynamic shipment routes (/shipments/:id, /shipping/:id, /admin/sales/shipping/:id)
   if (currentPath.startsWith('/shipments/') && currentPath !== '/shipments') {
     const sId = currentPath.replace('/shipments/', '');
+    if (sId === ':id' || !sId) return <ShippingPage />;
     return <ShipmentDetailPage shipmentIdProp={sId} />;
   }
   if (currentPath.startsWith('/shipping/') && currentPath !== '/shipping') {
     const sId = currentPath.replace('/shipping/', '');
+    if (sId === ':id' || !sId) return <ShippingPage />;
     return <ShipmentDetailPage shipmentIdProp={sId} />;
   }
   if (currentPath.startsWith('/admin/sales/shipping/') && currentPath !== '/admin/sales/shipping') {
     const sId = currentPath.replace('/admin/sales/shipping/', '');
+    if (sId === ':id' || !sId) return <ShippingPage />;
     return <ShipmentDetailPage shipmentIdProp={sId} />;
   }
 
@@ -204,7 +220,7 @@ export const AdminPageDispatcher: React.FC = () => {
       return <PaymentsPage />;
     case '/admin/sales/refunds':
     case '/refunds':
-      return <RefundsPage />;
+      return <ReturnsPage defaultTab="refunds" />;
     case '/admin/sales/shipping':
     case '/shipping':
     case '/shipments':
@@ -212,7 +228,7 @@ export const AdminPageDispatcher: React.FC = () => {
     case '/admin/sales/returns':
     case '/returns':
     case '/admin/returns':
-      return <ReturnsPage />;
+      return <ReturnsPage defaultTab="returns" />;
     case '/admin/sales/analytics':
       return <SalesAnalyticsPage />;
 
@@ -231,30 +247,30 @@ export const AdminPageDispatcher: React.FC = () => {
       return <StockMovementsPage />;
     case '/admin/catalog/categories':
     case '/categories':
-      return <CategoriesPage />;
+      return <CategoriesPage defaultTab="categories" />;
     case '/admin/catalog/collections':
     case '/collections':
-      return <CollectionsPage />;
+      return <CategoriesPage defaultTab="collections" />;
     case '/admin/catalog/media':
     case '/media':
     case '/admin/media':
       return <MediaAssetsPage />;
     case '/admin/catalog/suppliers':
     case '/suppliers':
-      return <SuppliersPage />;
+      return <PurchaseOrdersPage defaultTab="suppliers" />;
     case '/admin/catalog/purchase-orders':
     case '/purchase-orders':
-      return <PurchaseOrdersPage />;
+      return <PurchaseOrdersPage defaultTab="purchase_orders" />;
 
     // 4. Custom Studio
     case '/admin/custom-studio/submissions':
     case '/admin/studio/designs':
     case '/designs':
-      return <SubmissionsPage />;
+      return <ApprovalPage defaultTab="submissions" />;
     case '/admin/custom-studio/approval':
     case '/approval':
     case '/admin/studio/approval':
-      return <ApprovalPage />;
+      return <ApprovalPage defaultTab="cockpit" />;
     case '/admin/custom-studio/artwork':
     case '/artwork':
     case '/admin/studio/artwork':
@@ -282,7 +298,7 @@ export const AdminPageDispatcher: React.FC = () => {
     case '/admin/customers/segments':
       return <CustomerDirectoryPage />;
     case '/admin/customers/profiles':
-      return <CustomerProfilesPage />;
+      return <CustomerDirectoryPage />;
     case '/admin/customers/support':
     case '/support':
     case '/support/tickets':
@@ -307,7 +323,7 @@ export const AdminPageDispatcher: React.FC = () => {
     case '/admin/marketing/funnels':
     case '/funnels':
     case '/admin/funnels':
-      return <FunnelsPage />;
+      return <ConversionPage />;
     case '/admin/analytics/campaigns':
     case '/admin/marketing/campaigns':
     case '/campaigns':
@@ -344,7 +360,7 @@ export const AdminPageDispatcher: React.FC = () => {
     case '/admin/team/tasks':
       return <TasksPage />;
     case '/admin/team/reports':
-      return <ReportsPage />;
+      return <WorkReportPage />;
     case '/admin/team/administrators':
       return <AdministratorsPage />;
     case '/admin/team/permissions':
@@ -354,7 +370,7 @@ export const AdminPageDispatcher: React.FC = () => {
 
     // 8. System (Prompt 18: health, logs, data, settings, integrations, security)
     case '/admin/system/cms':
-      return <CmsPage />;
+      return <HomepageCmsPage />;
     case '/settings':
     case '/admin/settings':
     case '/admin/system/settings':

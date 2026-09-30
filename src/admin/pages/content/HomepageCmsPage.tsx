@@ -294,7 +294,7 @@ export const HomepageCmsPage: React.FC = () => {
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {formData.heroSlides.map((slide, idx) => (
+              {(formData.heroSlides || []).map((slide, idx) => (
                 <div
                   key={slide.id}
                   className="bg-[#0c0b0a] border border-white/10 rounded-2xl p-4 space-y-3 relative overflow-hidden"
