@@ -26,21 +26,21 @@ export const PermissionsPage: React.FC = () => {
   return (
     <div className="space-y-6">
       <AdminPageHeader
-        title="ماتریس نقش‌ها و مجوزهای دسترسی (RBAC)"
+        title="دسترسی‌ها"
         description="تفکیک وظایف و سطوح دسترسی هر نقش شغلی در کارگاه جهت حفظ امنیت اطلاعات مالی و حریم خصوصی مشتریان."
       />
 
-      <div className="p-4 bg-amber-500/10 border border-amber-500/30 rounded-2xl flex items-center justify-between text-xs text-amber-300">
+      <div className="p-4 bg-amber-500/10 border border-amber-500/30 rounded-xl flex items-center justify-between text-xs text-amber-300">
         <div className="flex items-center gap-2">
           <Info size={18} className="text-amber-400 shrink-0" />
           <span>
-            <strong>نکته فنی پیاده‌سازی:</strong> سوییچر نقش در هدر پنل جنبه نمایشی (Demo Simulation) دارد؛ اعمال قطعی محدودیت‌ها و سشن‌های امنیتی بر اساس توکن در بک‌اند پیاده‌سازی خواهد شد.
+            <strong>نکته امنیتی:</strong> سوییچر نقش در منوی حساب کاربری فعال است و جهت آزمون سطوح اختیارات پرسنل کاربرد دارد.
           </span>
         </div>
       </div>
 
-      <div className="bg-[#131211] border border-white/10 rounded-2xl overflow-x-auto">
-        <table className="w-full text-xs text-right border-collapse">
+      <div className="bg-[#131211] border border-white/10 rounded-xl overflow-x-auto">
+        <table className="w-full text-xs sm:text-[13px] text-right border-collapse">
           <thead>
             <tr className="border-b border-white/10 bg-white/5">
               <th className="p-4 text-stone-300 font-bold">بخش و قابلیت اجرایی</th>

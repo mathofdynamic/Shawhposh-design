@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Table as TableIcon, BarChart2 } from 'lucide-react';
+import { Table as TableIcon, BarChart2, Info } from 'lucide-react';
 import { DateRangeSelector, DateRangePreset } from './DateRangeSelector';
 import { EmptyState } from './EmptyState';
 import { Button } from './Button';
@@ -7,7 +7,7 @@ import { Button } from './Button';
 export interface ChartSeriesLegendItem {
   label: string;
   color: string;
-  markerSymbol?: string; // e.g. '●', '▲', '■' to avoid color-only differentiation
+  markerSymbol?: string;
   value?: string | number;
 }
 
@@ -30,7 +30,7 @@ export interface ChartContainerProps {
 export const ChartContainer: React.FC<ChartContainerProps> = ({
   title,
   subtitle,
-  sourceMode = 'شبیه‌سازی دترمینستیک',
+  sourceMode,
   timeframe,
   onTimeframeChange,
   isLoading = false,
@@ -45,15 +45,21 @@ export const ChartContainer: React.FC<ChartContainerProps> = ({
   const [showTableFallback, setShowTableFallback] = useState(false);
 
   return (
-    <div className={`bg-[#131211] border border-white/10 rounded-2xl p-4 sm:p-5 md:p-6 flex flex-col shadow-sm ${className}`}>
+    <div className={`bg-[#131211] border border-white/10 rounded-xl p-4 sm:p-5 flex flex-col shadow-sm ${className}`}>
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4 pb-4 border-b border-white/5">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4 pb-3 border-b border-white/5">
         <div className="space-y-1 text-right">
           <div className="flex items-center gap-2">
-            <h3 className="text-sm md:text-base font-bold text-white leading-snug">{title}</h3>
-            <span className="text-[10px] text-stone-400 bg-white/5 px-2 py-0.5 rounded font-mono">
-              {sourceMode}
-            </span>
+            <h3 className="text-sm sm:text-base font-bold text-white leading-snug">{title}</h3>
+            {sourceMode && (
+              <span
+                title={`منبع داده: ${sourceMode}`}
+                className="text-stone-500 hover:text-stone-300 cursor-help"
+                aria-label={sourceMode}
+              >
+                <Info size={13} />
+              </span>
+            )}
           </div>
           {subtitle && <p className="text-xs text-stone-400 font-sans">{subtitle}</p>}
         </div>
@@ -89,7 +95,7 @@ export const ChartContainer: React.FC<ChartContainerProps> = ({
         </div>
       </div>
 
-      {/* Series Legend (if provided, with distinct shapes/symbols not color alone) */}
+      {/* Series Legend (if provided, with distinct markers not color alone) */}
       {seriesLegend && seriesLegend.length > 0 && !showTableFallback && (
         <div className="flex flex-wrap items-center gap-4 mb-3 text-xs text-stone-300 font-sans" dir="rtl">
           {seriesLegend.map((s, idx) => (

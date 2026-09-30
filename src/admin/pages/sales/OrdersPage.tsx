@@ -447,7 +447,7 @@ export const OrdersPage: React.FC = () => {
     <div className="space-y-6 font-sans text-right" dir="rtl">
       {/* Page Header */}
       <AdminPageHeader
-        title="مدیریت و پردازش سفارش‌ها (Orders Operations Center)"
+        title="مدیریت و پردازش سفارش‌ها"
         description="میز کار عملیاتی جهت بررسی فاکتورها، انطباق مالی شاپرک، تایید طرح‌های آتلیه، خط تولید DTG و رسیدگی به استثناها."
         badge={toFaDigits(stats.totalOrders)}
         badgeVariant="brass"
@@ -469,79 +469,79 @@ export const OrdersPage: React.FC = () => {
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
         <div
           onClick={() => setActivePreset('all')}
-          className={`p-3.5 rounded-2xl border transition-all cursor-pointer ${
+          className={`p-3.5 rounded-xl border transition-all cursor-pointer ${
             activePreset === 'all'
-              ? 'bg-[#1e1b18] border-[#ba8d3d] shadow-lg'
+              ? 'bg-[#1e1b18] border-[#ba8d3d] shadow-sm'
               : 'bg-[#141211] border-white/10 hover:border-white/20'
           }`}
         >
-          <span className="text-[11px] text-stone-400 block mb-1">کل سفارش‌های ثبت‌شده</span>
+          <span className="text-[12px] text-stone-400 block mb-1">کل سفارش‌های ثبت‌شده</span>
           <span className="text-xl font-bold font-fanum text-white block">
             {toFaDigits(stats.totalOrders)}
           </span>
-          <span className="text-[10px] text-stone-500 mt-1 block">
+          <span className="text-[11px] text-stone-500 mt-1 block">
             ارزش: {formatPriceTomans(stats.totalVolumeTomans)}
           </span>
         </div>
 
         <div
           onClick={() => setActivePreset('pending')}
-          className={`p-3.5 rounded-2xl border transition-all cursor-pointer ${
+          className={`p-3.5 rounded-xl border transition-all cursor-pointer ${
             activePreset === 'pending'
-              ? 'bg-[#1e1b18] border-amber-500 shadow-lg'
+              ? 'bg-[#1e1b18] border-amber-500 shadow-sm'
               : 'bg-[#141211] border-white/10 hover:border-white/20'
           }`}
         >
-          <span className="text-[11px] text-amber-300/80 block mb-1">معلق پرداخت / بازبینی</span>
+          <span className="text-[12px] text-amber-300/80 block mb-1">معلق پرداخت / بازبینی</span>
           <span className="text-xl font-bold font-fanum text-amber-400 block">
             {toFaDigits(stats.pendingCount)}
           </span>
-          <span className="text-[10px] text-stone-500 mt-1 block">نیازمند پیگیری مالی</span>
+          <span className="text-[11px] text-stone-500 mt-1 block">نیازمند پیگیری مالی</span>
         </div>
 
         <div
           onClick={() => setActivePreset('custom_approval')}
-          className={`p-3.5 rounded-2xl border transition-all cursor-pointer ${
+          className={`p-3.5 rounded-xl border transition-all cursor-pointer ${
             activePreset === 'custom_approval'
-              ? 'bg-[#1e1b18] border-[#ba8d3d] shadow-lg'
+              ? 'bg-[#1e1b18] border-[#ba8d3d] shadow-sm'
               : 'bg-[#141211] border-white/10 hover:border-white/20'
           }`}
         >
-          <span className="text-[11px] text-[#eed29d] block mb-1">نیازمند تایید طرح آتلیه</span>
+          <span className="text-[12px] text-[#eed29d] block mb-1">نیازمند تایید طرح آتلیه</span>
           <span className="text-xl font-bold font-fanum text-[#eed29d] block">
             {toFaDigits(stats.customApprovalCount)}
           </span>
-          <span className="text-[10px] text-stone-500 mt-1 block">پیش از ورود به خط چاپ</span>
+          <span className="text-[11px] text-stone-500 mt-1 block">پیش از ورود به خط چاپ</span>
         </div>
 
         <div
           onClick={() => setActivePreset('processing')}
-          className={`p-3.5 rounded-2xl border transition-all cursor-pointer ${
+          className={`p-3.5 rounded-xl border transition-all cursor-pointer ${
             activePreset === 'processing'
-              ? 'bg-[#1e1b18] border-sky-500 shadow-lg'
+              ? 'bg-[#1e1b18] border-sky-500 shadow-sm'
               : 'bg-[#141211] border-white/10 hover:border-white/20'
           }`}
         >
-          <span className="text-[11px] text-sky-300/80 block mb-1">در چرخه کارگاه و QC</span>
+          <span className="text-[12px] text-sky-300/80 block mb-1">در چرخه کارگاه و QC</span>
           <span className="text-xl font-bold font-fanum text-sky-400 block">
             {toFaDigits(stats.processingCount)}
           </span>
-          <span className="text-[10px] text-stone-500 mt-1 block">چاپ DTG و بسته‌بندی</span>
+          <span className="text-[11px] text-stone-500 mt-1 block">چاپ DTG و بسته‌بندی</span>
         </div>
 
         <div
           onClick={() => setActivePreset('exceptions')}
-          className={`p-3.5 rounded-2xl border transition-all cursor-pointer col-span-2 lg:col-span-1 ${
+          className={`p-3.5 rounded-xl border transition-all cursor-pointer col-span-2 lg:col-span-1 ${
             activePreset === 'exceptions'
-              ? 'bg-rose-950/40 border-rose-500 shadow-lg'
+              ? 'bg-rose-950/40 border-rose-500 shadow-sm'
               : 'bg-[#141211] border-white/10 hover:border-white/20'
           }`}
         >
-          <span className="text-[11px] text-rose-300 block mb-1">صف استثناها و هشدارها</span>
+          <span className="text-[12px] text-rose-300 block mb-1">صف استثناها و هشدارها</span>
           <span className="text-xl font-bold font-fanum text-rose-400 block">
             {toFaDigits(stats.totalExceptionsCount)}
           </span>
-          <span className="text-[10px] text-rose-400/80 mt-1 block">اقدام فوری کارشناسی</span>
+          <span className="text-[11px] text-rose-400/80 mt-1 block">اقدام فوری کارشناسی</span>
         </div>
       </div>
 
@@ -620,7 +620,7 @@ export const OrdersPage: React.FC = () => {
       </div>
 
       {/* Dense Filter Bar */}
-      <div className="p-4 bg-[#141211] border border-white/10 rounded-2xl space-y-3">
+      <div className="p-4 bg-[#141211] border border-white/10 rounded-xl space-y-3">
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-3 items-center">
           {/* Search Box */}
           <div className="lg:col-span-4">
@@ -642,7 +642,7 @@ export const OrdersPage: React.FC = () => {
                 setStatusFilter(e.target.value);
                 setCurrentPage(1);
               }}
-              className="w-full bg-[#181614] border border-white/10 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-[#ba8d3d]"
+              className="w-full h-[42px] bg-[#181614] border border-white/10 rounded-xl px-3 py-2 text-[13px] text-white focus:outline-none focus:border-[#ba8d3d]"
             >
               <option value="all">تمام وضعیت‌های سفارش</option>
               <option value="pending_payment">معلق پرداخت</option>
@@ -665,7 +665,7 @@ export const OrdersPage: React.FC = () => {
                 setPaymentFilter(e.target.value);
                 setCurrentPage(1);
               }}
-              className="w-full bg-[#181614] border border-white/10 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-[#ba8d3d]"
+              className="w-full h-[42px] bg-[#181614] border border-white/10 rounded-xl px-3 py-2 text-[13px] text-white focus:outline-none focus:border-[#ba8d3d]"
             >
               <option value="all">تمام وضعیت‌های پرداخت</option>
               <option value="verified_paid">پرداخت تاییدشده</option>

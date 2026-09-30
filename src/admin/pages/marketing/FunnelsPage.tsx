@@ -32,12 +32,12 @@ export const FunnelsPage: React.FC = () => {
   return (
     <div className="space-y-6">
       <AdminPageHeader
-        title="قیف تبدیل رفتار خریدار (Funnel Analysis)"
+        title="قیف تبدیل"
         description="ردیابی ۶ مرحله‌ای تبدیل کاربر از بازدید ویترین، ورود به آتلیه چاپ مستقیم نساجی، آرت‌ورک، سبد خرید تا تسویه موفق شاپرک."
       />
 
       {/* Consent & Privacy Notice Banner */}
-      <div className="p-4 rounded-2xl bg-[#1c1a17] border border-white/10 flex items-start gap-3">
+      <div className="p-4 rounded-xl bg-[#1c1a17] border border-white/10 flex items-start gap-3">
         <ShieldAlert size={18} className="text-[#eed29d] shrink-0 mt-0.5" />
         <div className="text-xs text-stone-300 leading-relaxed">
           <span className="font-bold text-white">ضمانت حریم خصوصی و عدم ادعای شناسایی هویت:</span>{' '}

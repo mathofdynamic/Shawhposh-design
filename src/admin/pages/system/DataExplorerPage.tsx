@@ -40,7 +40,11 @@ interface EntityCatalogDef {
   descriptionFa: string;
 }
 
-export const DataExplorerPage: React.FC = () => {
+export interface DataExplorerPageProps {
+  embedded?: boolean;
+}
+
+export const DataExplorerPage: React.FC<DataExplorerPageProps> = ({ embedded = false }) => {
   const { state } = useAdminRepository();
   const { addToast } = useToast();
 
@@ -519,22 +523,24 @@ export const DataExplorerPage: React.FC = () => {
 
   return (
     <div className="space-y-6" dir="rtl">
-      <AdminPageHeader
-        title="کاوشگر پایگاه‌داده و کاتالوگ موجودیت‌ها (Restricted Data Explorer)"
-        description="محیط بازرسی فقط‌خواندنی جهت دیباگ ساختار ۸ جدول مجاز دامنه با حفاظت هوشمند PII و امکان خروجی کنترل‌شده."
-        actions={
-          <div className="flex items-center gap-2">
-            <Button
-              variant="brass"
-              size="sm"
-              onClick={() => setIsExportModalOpen(true)}
-            >
-              <Download size={13} className="ml-1" />
-              خروجی امن (Safe Export)
-            </Button>
-          </div>
-        }
-      />
+      {!embedded && (
+        <AdminPageHeader
+          title="کاوشگر پایگاه‌داده و کاتالوگ موجودیت‌ها (Restricted Data Explorer)"
+          description="محیط بازرسی فقط‌خواندنی جهت دیباگ ساختار ۸ جدول مجاز دامنه با حفاظت هوشمند PII و امکان خروجی کنترل‌شده."
+          actions={
+            <div className="flex items-center gap-2">
+              <Button
+                variant="brass"
+                size="sm"
+                onClick={() => setIsExportModalOpen(true)}
+              >
+                <Download size={13} className="ml-1" />
+                خروجی امن (Safe Export)
+              </Button>
+            </div>
+          }
+        />
+      )}
 
       {/* STRICT READ-ONLY SECURITY DISCLAIMER BANNER */}
       <div className="p-4 bg-white/5 border border-white/10 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs text-stone-300">

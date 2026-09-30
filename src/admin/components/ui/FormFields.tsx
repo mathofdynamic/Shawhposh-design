@@ -22,16 +22,16 @@ export const FormField: React.FC<FormFieldProps> = ({
   return (
     <div className={`space-y-1.5 text-right ${className}`}>
       {label && (
-        <label htmlFor={htmlFor} className="block text-xs font-semibold text-gray-200">
+        <label htmlFor={htmlFor} className="block text-[13px] sm:text-sm font-semibold text-stone-200">
           {label}
           {required && <span className="text-rose-400 mr-1">*</span>}
         </label>
       )}
       {children}
       {error ? (
-        <p className="text-[11px] text-rose-400 font-medium font-sans mt-1">{error}</p>
+        <p className="text-xs text-rose-400 font-medium font-sans mt-1.5">{error}</p>
       ) : hint ? (
-        <p className="text-[11px] text-gray-500 font-sans mt-1">{hint}</p>
+        <p className="text-xs text-stone-400 font-sans mt-1.5 leading-relaxed">{hint}</p>
       ) : null}
     </div>
   );
@@ -46,23 +46,23 @@ export interface InputProps extends React.InputHTMLAttributes<HTMLInputElement> 
 export const Input = React.forwardRef<HTMLInputElement, InputProps>(
   ({ error, leftAddon, rightAddon, className = '', ...props }, ref) => {
     return (
-      <div className="relative flex items-center">
+      <div className="relative flex items-center w-full">
         {rightAddon && (
-          <div className="absolute right-3 text-gray-500 pointer-events-none text-xs">
+          <div className="absolute right-3.5 text-stone-400 pointer-events-none text-xs sm:text-sm shrink-0">
             {rightAddon}
           </div>
         )}
         <input
           ref={ref}
-          className={`w-full bg-[#181716] border rounded-xl py-2.5 text-xs text-white placeholder:text-gray-500 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#ba8d3d] ${
+          className={`w-full min-h-[42px] bg-[#181716] border rounded-xl py-2 text-[13px] sm:text-sm text-white placeholder:text-stone-500 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#ba8d3d]/50 ${
             error
               ? 'border-rose-500/50 focus-visible:ring-rose-500'
-              : 'border-white/10 hover:border-white/20 focus:border-[#ba8d3d]'
-          } ${rightAddon ? 'pr-9' : 'px-3.5'} ${leftAddon ? 'pl-9' : 'px-3.5'} ${className}`}
+              : 'border-white/10 hover:border-white/20 focus-visible:border-[#ba8d3d]'
+          } ${rightAddon ? 'pr-10' : 'px-3.5'} ${leftAddon ? 'pl-10' : 'px-3.5'} ${className}`}
           {...props}
         />
         {leftAddon && (
-          <div className="absolute left-3 text-gray-500 pointer-events-none text-xs">
+          <div className="absolute left-3.5 text-stone-400 pointer-events-none text-xs sm:text-sm shrink-0">
             {leftAddon}
           </div>
         )}
@@ -81,10 +81,10 @@ export const Textarea = React.forwardRef<HTMLTextAreaElement, TextareaProps>(
     return (
       <textarea
         ref={ref}
-        className={`w-full bg-[#181716] border rounded-xl p-3 text-xs text-white placeholder:text-gray-500 transition-colors resize-none leading-relaxed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#ba8d3d] ${
+        className={`w-full min-h-[96px] bg-[#181716] border rounded-xl p-3 text-[13px] sm:text-sm text-white placeholder:text-stone-500 transition-colors resize-none leading-relaxed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#ba8d3d]/50 ${
           error
             ? 'border-rose-500/50 focus-visible:ring-rose-500'
-            : 'border-white/10 hover:border-white/20 focus:border-[#ba8d3d]'
+            : 'border-white/10 hover:border-white/20 focus-visible:border-[#ba8d3d]'
         } ${className}`}
         {...props}
       />
@@ -100,19 +100,19 @@ export interface SelectProps extends React.SelectHTMLAttributes<HTMLSelectElemen
 export const Select = React.forwardRef<HTMLSelectElement, SelectProps>(
   ({ error, children, className = '', ...props }, ref) => {
     return (
-      <div className="relative">
+      <div className="relative w-full">
         <select
           ref={ref}
-          className={`w-full bg-[#181716] border rounded-xl py-2.5 px-3.5 text-xs text-white transition-colors appearance-none cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#ba8d3d] ${
+          className={`w-full min-h-[42px] bg-[#181716] border rounded-xl py-2 px-3.5 pl-8 text-[13px] sm:text-sm text-white transition-colors appearance-none cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#ba8d3d]/50 ${
             error
               ? 'border-rose-500/50 focus-visible:ring-rose-500'
-              : 'border-white/10 hover:border-white/20 focus:border-[#ba8d3d]'
+              : 'border-white/10 hover:border-white/20 focus-visible:border-[#ba8d3d]'
           } ${className}`}
           {...props}
         >
           {children}
         </select>
-        <div className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none text-gray-500 text-xs">
+        <div className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none text-stone-400 text-xs">
           ▼
         </div>
       </div>
@@ -138,8 +138,8 @@ export const Checkbox = React.forwardRef<HTMLInputElement, CheckboxProps>(
         />
         {(label || description) && (
           <div className="text-right">
-            {label && <span className="text-xs text-gray-200 font-medium block">{label}</span>}
-            {description && <span className="text-[11px] text-gray-500 block">{description}</span>}
+            {label && <span className="text-[13px] sm:text-sm text-stone-200 font-medium block">{label}</span>}
+            {description && <span className="text-xs text-stone-400 block mt-0.5 leading-relaxed">{description}</span>}
           </div>
         )}
       </label>
@@ -167,8 +167,8 @@ export const Switch: React.FC<SwitchProps> = ({
     <div className="flex items-center justify-between gap-4">
       {(label || description) && (
         <div className="text-right">
-          {label && <span className="text-xs text-gray-200 font-medium block">{label}</span>}
-          {description && <span className="text-[11px] text-gray-500 block">{description}</span>}
+          {label && <span className="text-[13px] sm:text-sm text-stone-200 font-medium block">{label}</span>}
+          {description && <span className="text-xs text-stone-400 block mt-0.5 leading-relaxed">{description}</span>}
         </div>
       )}
       <button

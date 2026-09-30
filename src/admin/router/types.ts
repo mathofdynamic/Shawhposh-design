@@ -32,6 +32,7 @@ export interface AdminRouteDef {
   devOnly?: boolean; // When true, only available for developer debugging
   isDetail?: boolean; // When true, contextual detail route
   redirectTo?: string; // Redirect legacy/consolidated path to canonical destination
+  layoutWidth?: 'wide' | 'standard' | 'narrow'; // Page container max-width preset
 }
 
 export interface AdminNavGroupDef {

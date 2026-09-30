@@ -242,7 +242,7 @@ export const QcPage: React.FC = () => {
   return (
     <div className="space-y-6 select-text font-sans pb-16" dir="rtl">
       <AdminPageHeader
-        title="آزمون کنترل کیفیت نهایی و ثبات شستشو (Quality Control)"
+        title="کنترل کیفیت"
         description="میز کارشناس کنترل کیفی کارگاه: تست کشش پیگمنت چاپ، یکنواختی زیرلایه سفید، دوخت یقه و ثبت ضایعات بازچاپ."
         actions={
           <div className="flex items-center gap-2">

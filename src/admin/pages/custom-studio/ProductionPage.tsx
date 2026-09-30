@@ -506,11 +506,11 @@ export const ProductionPage: React.FC = () => {
 
       {/* RENDER VIEW: KANBAN OR TABLE LIST */}
       {viewMode === 'kanban' ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 items-start">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-3.5 items-start">
           {kanbanColumns.map((col) => (
             <div
               key={col.id}
-              className="bg-[#121110] border border-white/10 rounded-2xl p-3.5 space-y-3 min-h-[460px] flex flex-col justify-start"
+              className="bg-[#121110] border border-white/10 rounded-xl p-3.5 space-y-3 min-h-[460px] flex flex-col justify-start"
             >
               {/* Column Header */}
               <div className="flex items-center justify-between pb-2 border-b border-white/10">

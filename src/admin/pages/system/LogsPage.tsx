@@ -51,7 +51,11 @@ export interface SystemLogEntry {
   headersSanitized: Record<string, string>;
 }
 
-export const LogsPage: React.FC = () => {
+export interface LogsPageProps {
+  embedded?: boolean;
+}
+
+export const LogsPage: React.FC<LogsPageProps> = ({ embedded = false }) => {
   const { state } = useAdminRepository();
   const { addToast } = useToast();
 
@@ -316,23 +320,25 @@ export const LogsPage: React.FC = () => {
 
   return (
     <div className="space-y-6" dir="rtl">
-      <AdminPageHeader
-        title="دفتر لاگ‌های فنی، رویدادها و وب‌هوک‌ها"
-        description="نظارت لحظه‌ای بر وقایع سوئیچ‌های پرداخت، ارسال پیامک، صف کارگران و رهگیری رخدادهای حساس با فیلترینگ چندبعدی."
-        actions={
-          <div className="flex items-center gap-2">
-            <span className="text-[11px] text-stone-400">نقش شبیه‌ساز:</span>
-            <select
-              value={simulatedRole}
-              onChange={(e) => setSimulatedRole(e.target.value as any)}
-              className="bg-[#1a1817] border border-white/10 rounded-xl px-2.5 py-1.5 text-xs text-[#eed29d] font-bold focus:outline-none focus:border-[#ba8d3d]"
-            >
-              <option value="super_admin">مدیر ارشد (دسترسی کامل به لاگ‌های امنیتی)</option>
-              <option value="production_operator">اپراتور کارگاه (دسترسی محدود)</option>
-            </select>
-          </div>
-        }
-      />
+      {!embedded && (
+        <AdminPageHeader
+          title="دفتر لاگ‌های فنی، رویدادها و وب‌هوک‌ها"
+          description="نظارت لحظه‌ای بر وقایع سوئیچ‌های پرداخت، ارسال پیامک، صف کارگران و رهگیری رخدادهای حساس با فیلترینگ چندبعدی."
+          actions={
+            <div className="flex items-center gap-2">
+              <span className="text-[11px] text-stone-400">نقش شبیه‌ساز:</span>
+              <select
+                value={simulatedRole}
+                onChange={(e) => setSimulatedRole(e.target.value as any)}
+                className="bg-[#1a1817] border border-white/10 rounded-xl px-2.5 py-1.5 text-xs text-[#eed29d] font-bold focus:outline-none focus:border-[#ba8d3d]"
+              >
+                <option value="super_admin">مدیر ارشد (دسترسی کامل به لاگ‌های امنیتی)</option>
+                <option value="production_operator">اپراتور کارگاه (دسترسی محدود)</option>
+              </select>
+            </div>
+          }
+        />
+      )}
 
       {/* Security & Masking Guarantee Banner */}
       <div className="p-4 bg-emerald-500/10 border border-emerald-500/20 rounded-2xl flex items-center justify-between gap-3 text-xs text-stone-300">

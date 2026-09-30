@@ -56,11 +56,17 @@ export function Table<T>({
   const isAllSelected = selectedIds && safeData.length > 0 && safeData.every((row, i) => selectedIds.includes(keyExtractor(row, i)));
   const isIndeterminate = selectedIds && selectedIds.length > 0 && !isAllSelected;
 
-  const rowPadding = density === 'compact' ? 'py-2.5 px-3.5 text-xs' : 'py-3.5 px-4 text-xs md:text-sm';
-  const headerPadding = density === 'compact' ? 'py-2.5 px-3.5 text-xs' : 'py-3 px-4 text-xs';
+  const rowPadding =
+    density === 'compact'
+      ? 'py-2.5 px-3.5 text-xs sm:text-[13px]'
+      : 'py-3.5 px-4 text-[13px] sm:text-sm';
+  const headerPadding =
+    density === 'compact'
+      ? 'py-2.5 px-3.5 text-xs font-semibold'
+      : 'py-3 px-4 text-xs sm:text-[13px] font-semibold';
 
   return (
-    <div className="w-full overflow-hidden border border-white/10 rounded-2xl bg-[#131211] shadow-md">
+    <div className="w-full overflow-hidden border border-white/10 rounded-xl bg-[#131211] shadow-sm">
       <div className="overflow-x-auto scrollbar-thin scrollbar-thumb-white/10" style={maxHeight ? { maxHeight, overflowY: 'auto' } : undefined}>
         <table className="w-full text-right border-collapse select-text" aria-label={ariaLabel}>
           <thead className={stickyHeader ? 'sticky top-0 z-10 bg-[#161413] shadow-sm' : 'bg-[#161413]'}>
@@ -90,7 +96,7 @@ export function Table<T>({
                     key={col.key}
                     scope="col"
                     style={{ width: col.width }}
-                    className={`font-semibold text-gray-300 ${alignClass} ${headerPadding} ${nowrapClass} ${col.className || ''}`}
+                    className={`text-stone-300 ${alignClass} ${headerPadding} ${nowrapClass} ${col.className || ''}`}
                   >
                     {col.sortable && onSort ? (
                       <button

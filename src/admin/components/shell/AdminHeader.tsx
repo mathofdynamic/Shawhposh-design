@@ -1,20 +1,12 @@
 import React from 'react';
-import {
-  Menu,
-  Search,
-  CheckCircle2,
-  Calendar,
-  Clock,
-  ExternalLink,
-  ShieldCheck,
-} from 'lucide-react';
+import { Menu, Search } from 'lucide-react';
 import { useAdminRouter } from '../../router';
 import { StaffRole } from '../../domain/types';
 import { Breadcrumb } from '../ui/Breadcrumb';
 import { QuickActionsMenu } from './QuickActionsMenu';
 import { NotificationsPopover } from './NotificationsPopover';
+import { DemoBadgePopover } from './DemoBadgePopover';
 import { AccountRoleMenu } from './AccountRoleMenu';
-import { toFaDigits } from '../../utils/formatters';
 
 export interface AdminHeaderProps {
   currentRole: StaffRole;
@@ -33,7 +25,7 @@ export const AdminHeader: React.FC<AdminHeaderProps> = ({
   onOpenInvariantsModal,
   onOpenResetConfirm,
 }) => {
-  const { activeGroup, activeRoute, navigate, goBackToStore } = useAdminRouter();
+  const { activeGroup, activeRoute, navigate } = useAdminRouter();
 
   // Breadcrumb items
   const breadcrumbItems = [
@@ -57,7 +49,7 @@ export const AdminHeader: React.FC<AdminHeaderProps> = ({
 
   return (
     <header className="h-16 bg-[#141210]/95 backdrop-blur-md border-b border-white/10 px-4 sm:px-6 flex items-center justify-between gap-3 shrink-0 z-30 font-sans">
-      {/* Left side (in RTL: Right side): Mobile Toggle + Breadcrumbs */}
+      {/* START / RIGHT: Mobile Toggle + Breadcrumbs / Current Context */}
       <div className="flex items-center gap-3 min-w-0">
         <button
           type="button"
@@ -80,17 +72,17 @@ export const AdminHeader: React.FC<AdminHeaderProps> = ({
         </div>
       </div>
 
-      {/* Center: Global Search trigger button */}
+      {/* CENTER: Global Search Trigger */}
       <div className="flex-1 max-w-md mx-2 hidden md:block">
         <button
           type="button"
           onClick={onOpenSearch}
-          className="w-full flex items-center justify-between px-3 py-1.5 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-stone-400 hover:text-stone-200 transition-colors text-xs cursor-pointer group"
+          className="w-full flex items-center justify-between px-3 py-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-stone-400 hover:text-stone-200 transition-colors text-xs cursor-pointer group"
           aria-label="جستجوی همه‌جانبه در پنل"
         >
           <div className="flex items-center gap-2">
             <Search size={14} className="text-[#ba8d3d]" />
-            <span>جستجو در صفحات، سفارش‌ها، محصولات و مشتریان...</span>
+            <span className="text-[13px]">جستجو در صفحات، سفارش‌ها، محصولات و مشتریان...</span>
           </div>
           <kbd className="text-[10px] font-mono bg-white/5 border border-white/10 px-1.5 py-0.5 rounded text-stone-400 group-hover:text-stone-200">
             ⌘K
@@ -98,7 +90,7 @@ export const AdminHeader: React.FC<AdminHeaderProps> = ({
         </button>
       </div>
 
-      {/* Right side (in RTL: Left side controls): Invariants button, Quick Actions, Notifications, Role, Clock */}
+      {/* END / LEFT: Quick Action, Notifications, Demo Badge, Account Menu */}
       <div className="flex items-center gap-2 sm:gap-2.5 shrink-0">
         {/* Mobile search icon */}
         <button
@@ -110,35 +102,22 @@ export const AdminHeader: React.FC<AdminHeaderProps> = ({
           <Search size={16} />
         </button>
 
-        {/* Invariant Health Audit Button */}
-        <button
-          type="button"
-          onClick={onOpenInvariantsModal}
-          className="hidden xl:flex items-center gap-1.5 px-2.5 py-1.5 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 text-emerald-400 rounded-xl text-xs font-semibold transition-colors cursor-pointer"
-          title="بررسی و مانیتورینگ زنده ناوردایی‌های هشت‌گانه دامنه شاه‌پوش"
-        >
-          <ShieldCheck size={14} />
-          <span>ناوردایی‌ها: ۱۰۰٪ سالم</span>
-        </button>
-
         {/* Quick Actions Dropdown */}
         <QuickActionsMenu onOpenResetConfirm={onOpenResetConfirm} />
 
         {/* Notifications Popover */}
         <NotificationsPopover />
 
-        {/* Vertical divider */}
-        <div className="w-[1px] h-6 bg-white/10 hidden sm:block" />
+        {/* Compact Demo Badge Popover */}
+        <DemoBadgePopover
+          onOpenResetConfirm={onOpenResetConfirm}
+          onOpenInvariantsModal={onOpenInvariantsModal}
+        />
 
-        {/* Jalali Date Badge */}
-        <div className="hidden 2xl:flex items-center gap-1.5 text-[11px] text-stone-400 bg-white/5 px-2.5 py-1 rounded-xl border border-white/5">
-          <Calendar size={13} className="text-[#ba8d3d]" />
-          <span>۲ مهر ۱۴۰۵ · ۱۲:۰۰</span>
-        </div>
-
-        {/* Account / Role Menu */}
+        {/* Account / Role Simulation Menu */}
         <AccountRoleMenu currentRole={currentRole} onRoleChange={onRoleChange} />
       </div>
     </header>
   );
 };
+

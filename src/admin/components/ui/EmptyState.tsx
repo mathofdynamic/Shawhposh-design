@@ -22,13 +22,13 @@ export const EmptyState: React.FC<EmptyStateProps> = ({
 }) => {
   return (
     <div
-      className={`w-full flex flex-col items-center justify-center text-center p-8 md:p-12 border border-dashed border-white/10 rounded-2xl bg-[#131211]/50 ${className}`}
+      className={`w-full flex flex-col items-center justify-center text-center py-6 px-4 sm:py-8 sm:px-6 border border-white/10 rounded-xl bg-[#131211]/60 ${className}`}
     >
-      <div className="w-12 h-12 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-center text-[#eed29d] mb-4">
-        {icon || <PackageOpen size={24} />}
+      <div className="w-10 h-10 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center text-[#eed29d] mb-3">
+        {icon || <PackageOpen size={20} />}
       </div>
-      <h3 className="text-sm md:text-base font-bold text-white mb-1.5">{title}</h3>
-      <p className="text-xs text-gray-400 max-w-[45ch] leading-relaxed mb-6 font-sans">
+      <h3 className="text-sm font-bold text-white mb-1">{title}</h3>
+      <p className="text-xs text-stone-400 max-w-[45ch] leading-relaxed mb-3.5 font-sans">
         {description}
       </p>
       {action && (

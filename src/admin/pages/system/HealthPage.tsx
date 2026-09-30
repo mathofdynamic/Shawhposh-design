@@ -53,7 +53,11 @@ interface SimulatedErrorItem {
   resolved: boolean;
 }
 
-export const HealthPage: React.FC = () => {
+export interface HealthPageProps {
+  embedded?: boolean;
+}
+
+export const HealthPage: React.FC<HealthPageProps> = ({ embedded = false }) => {
   const { state, resetToFixtures, demoClock } = useAdminRepository();
   const { addToast } = useToast();
 
@@ -230,10 +234,12 @@ export const HealthPage: React.FC = () => {
 
   return (
     <div className="space-y-6" dir="rtl">
-      <AdminPageHeader
-        title="سلامت سامانه، حافظه و الگوهای عیب‌یابی"
-        description="نظارت جامع بر وضعیت زیرسیستم‌های شبیه‌سازی‌شده، ناوردایی‌های معماری دامنه و آمادگی عملیاتی پیش از استقرار."
-      />
+      {!embedded && (
+        <AdminPageHeader
+          title="سلامت سامانه، حافظه و الگوهای عیب‌یابی"
+          description="نظارت جامع بر وضعیت زیرسیستم‌های شبیه‌سازی‌شده، ناوردایی‌های معماری دامنه و آمادگی عملیاتی پیش از استقرار."
+        />
+      )}
 
       {/* CRITICAL NOTICE: Simulated Illustrations in Design Mode */}
       <div className="p-4 bg-amber-500/10 border-2 border-amber-500/30 rounded-2xl flex items-start gap-3 text-amber-200">

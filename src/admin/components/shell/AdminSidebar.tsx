@@ -33,7 +33,7 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
   onCloseMobileDrawer,
   isMobileDrawer = false,
 }) => {
-  const { currentPath, activeRoute, navigate, goBackToStore } = useAdminRouter();
+  const { currentPath, activeRoute, activeGroup, navigate, goBackToStore } = useAdminRouter();
   const { state } = useAdminRepository();
 
   // Normalize legacy and modern roles for allowedRoles matching
@@ -48,21 +48,62 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
       ? 'finance'
       : (currentRole as RoleKey);
 
-  // Collapsed group IDs state persisted in localStorage
-  const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>(() => {
+  // User manual expansion preferences: Record<groupId, boolean>
+  const [userToggledGroups, setUserToggledGroups] = useState<Record<string, boolean>>(() => {
     try {
-      const saved = localStorage.getItem('shahpoosh_admin_collapsed_groups');
+      const saved = localStorage.getItem('shahpoosh_admin_sidebar_expanded_groups');
       return saved ? JSON.parse(saved) : {};
     } catch {
       return {};
     }
   });
 
+  // Find active group including parent group for detail routes
+  const currentActiveGroupId = useMemo(() => {
+    if (activeRoute?.groupId) return activeRoute.groupId;
+    if (activeGroup?.id) return activeGroup.id;
+    for (const g of ADMIN_GROUPS) {
+      if (
+        g.routes.some((r) => {
+          if (r.path === currentPath) return true;
+          if (r.path.includes(':')) {
+            const prefix = r.path.split('/:')[0];
+            return currentPath.startsWith(prefix);
+          }
+          if (currentPath.startsWith(r.path + '/')) return true;
+          return false;
+        })
+      ) {
+        return g.id;
+      }
+    }
+    return 'overview';
+  }, [activeGroup, activeRoute, currentPath]);
+
+  // Ensure active group is always visible upon route navigation
+  useEffect(() => {
+    if (currentActiveGroupId) {
+      setUserToggledGroups((prev) => {
+        if (prev[currentActiveGroupId] === false) {
+          const updated = { ...prev };
+          delete updated[currentActiveGroupId];
+          try {
+            localStorage.setItem('shahpoosh_admin_sidebar_expanded_groups', JSON.stringify(updated));
+          } catch {}
+          return updated;
+        }
+        return prev;
+      });
+    }
+  }, [currentActiveGroupId]);
+
   const toggleGroup = (groupId: AdminGroupId) => {
-    setCollapsedGroups((prev) => {
-      const next = { ...prev, [groupId]: !prev[groupId] };
+    setUserToggledGroups((prev) => {
+      const currentlyExpanded =
+        prev[groupId] !== undefined ? prev[groupId] : groupId === currentActiveGroupId;
+      const next = { ...prev, [groupId]: !currentlyExpanded };
       try {
-        localStorage.setItem('shahpoosh_admin_collapsed_groups', JSON.stringify(next));
+        localStorage.setItem('shahpoosh_admin_sidebar_expanded_groups', JSON.stringify(next));
       } catch {}
       return next;
     });
@@ -142,15 +183,13 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
           );
           if (navRoutes.length === 0) return null;
 
-          const isGroupCollapsed = Boolean(collapsedGroups[group.id]) && !isCompact;
-          const hasActiveChild = group.routes.some((r) => {
-            if (r.path === currentPath) return true;
-            if (r.path.includes(':')) {
-              const prefix = r.path.split('/:')[0];
-              return currentPath.startsWith(prefix);
-            }
-            return false;
-          });
+          const isCurrentGroupActive = group.id === currentActiveGroupId;
+          const isGroupExpanded = isCompact
+            ? false
+            : userToggledGroups[group.id] !== undefined
+            ? userToggledGroups[group.id]
+            : isCurrentGroupActive;
+          const isGroupCollapsed = !isGroupExpanded && !isCompact;
 
           return (
             <div key={group.id} className="space-y-1">
@@ -159,14 +198,14 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
                 <button
                   type="button"
                   onClick={() => toggleGroup(group.id)}
-                  className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs font-bold transition-colors cursor-pointer ${
-                    hasActiveChild ? 'text-[#eed29d]' : 'text-stone-400 hover:text-stone-200'
+                  className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs sm:text-[13px] font-bold transition-colors cursor-pointer ${
+                    isCurrentGroupActive ? 'text-[#eed29d]' : 'text-stone-400 hover:text-stone-200'
                   }`}
                   aria-expanded={!isGroupCollapsed}
                 >
                   <div className="flex items-center gap-2">
                     <AdminIcon name={group.iconName} size={15} className="text-[#ba8d3d]" />
-                    <span className="text-[11px] font-semibold">{group.titleFa}</span>
+                    <span className="text-xs sm:text-[13px] font-semibold">{group.titleFa}</span>
                   </div>
                   <ChevronDown
                     size={13}
@@ -220,7 +259,7 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
                         className={`w-full group flex items-center justify-between rounded-xl text-right transition-all cursor-pointer relative ${
                           isCompact && !isMobileDrawer
                             ? 'px-0 py-2.5 justify-center'
-                            : 'px-3 py-2 text-xs'
+                            : 'px-3 py-2 text-xs sm:text-[13px]'
                         } ${
                           isActive
                             ? 'bg-[#ba8d3d]/20 text-white font-bold border border-[#ba8d3d]/40 shadow-sm'

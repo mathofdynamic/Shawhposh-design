@@ -56,13 +56,13 @@ export const AuditPage: React.FC = () => {
     {
       key: 'description',
       header: 'شرح تغییرات و مستندات',
-      render: (row) => <span className="text-xs text-stone-300">{row.description}</span>,
+      render: (row) => <span className="text-xs sm:text-[13px] text-stone-300 leading-relaxed">{row.description}</span>,
     },
     {
       key: 'entityId',
       header: 'موجودیت مرتبط',
       render: (row) => (
-        <span className="font-mono text-[11px] text-[#eed29d]" dir="ltr">
+        <span className="font-mono text-xs text-[#eed29d]" dir="ltr">
           {row.entityType}:{row.entityId}
         </span>
       ),
@@ -72,20 +72,20 @@ export const AuditPage: React.FC = () => {
   return (
     <div className="space-y-6">
       <AdminPageHeader
-        title="دفتر کل وقایع و لاگ‌های امنیتی (Audit Trail)"
+        title="حسابرسی"
         description="ثبت غیرقابل دستکاری کلیه جهش‌ها، تایید یا رد طرح‌های آتلیه، تغییرات دستی انبار و استرداد وجوه."
       />
 
-      <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 bg-[#131211] p-3 rounded-2xl border border-white/10">
+      <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 bg-[#131211] p-3 rounded-xl border border-white/10">
         <div className="flex-1 max-w-sm">
           <SearchInput
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            onChange={(val) => setSearch(typeof val === 'string' ? val : (val as any).target.value)}
             placeholder="جستجو در شرح تغییرات، نوع رویداد یا کد..."
           />
         </div>
 
-        <div className="text-xs text-stone-400 font-fanum">
+        <div className="text-xs sm:text-[13px] text-stone-400 font-fanum">
           تعداد رکوردهای لاگ: {filteredLogs.length} رویداد
         </div>
       </div>

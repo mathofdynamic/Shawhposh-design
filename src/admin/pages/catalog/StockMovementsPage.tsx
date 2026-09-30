@@ -216,7 +216,7 @@ export const StockMovementsPage: React.FC = () => {
     <div className="space-y-6">
       {/* Header */}
       <AdminPageHeader
-        title="دفتر روزنامه گردش انبار و رخدادها"
+        title="گردش انبار"
         description="حسابرسی کامل و ردگیری بلادرنگ تمامی ورودی‌های کالا، خروج به ازای فاکتورها، رزرو سبد، ضایعات و مرجوعی‌ها."
         actions={
           <Button

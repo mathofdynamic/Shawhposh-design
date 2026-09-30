@@ -11,6 +11,9 @@ export interface AdminPageHeaderProps {
   currentRole?: StaffRole;
 }
 
+// Allowed technical English terms per design specification
+const ALLOWED_TECHNICAL_TERMS = new Set(['SKU', 'UTM', 'SEO', 'DTG', 'QC', 'MFA', 'API', 'POD', 'DPI']);
+
 export const AdminPageHeader: React.FC<AdminPageHeaderProps> = ({
   title,
   description,
@@ -40,6 +43,9 @@ export const AdminPageHeader: React.FC<AdminPageHeaderProps> = ({
     !activeRoute.allowedRoles.includes(currentRole) &&
     !activeRoute.allowedRoles.includes(normalizedRole as any);
 
+  const shouldShowEnglishTerm =
+    activeRoute?.titleEn && ALLOWED_TECHNICAL_TERMS.has(activeRoute.titleEn.toUpperCase());
+
   return (
     <div className="border-b border-white/10 pb-5 mb-6 font-sans">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -54,9 +60,9 @@ export const AdminPageHeader: React.FC<AdminPageHeaderProps> = ({
                 <h1 className="text-xl sm:text-2xl font-black text-white tracking-tight">
                   {displayTitle}
                 </h1>
-                {activeRoute?.titleEn && (
-                  <span className="hidden sm:inline-block text-[11px] font-mono text-stone-500 bg-white/5 px-2 py-0.5 rounded border border-white/5">
-                    {activeRoute.titleEn}
+                {shouldShowEnglishTerm && (
+                  <span className="hidden sm:inline-block text-[11px] font-mono text-stone-400 bg-white/5 px-2 py-0.5 rounded border border-white/5">
+                    {activeRoute?.titleEn}
                   </span>
                 )}
               </div>
@@ -75,18 +81,15 @@ export const AdminPageHeader: React.FC<AdminPageHeaderProps> = ({
         )}
       </div>
 
-      {/* Role Restriction Banner if applicable */}
+      {/* Role Restriction Notice if applicable */}
       {isRestricted && (
         <div className="mt-4 p-3 bg-amber-500/10 border border-amber-500/30 rounded-xl text-xs text-amber-300 flex items-center justify-between gap-3">
           <div className="flex items-center gap-2">
             <ShieldAlert size={16} className="shrink-0 text-amber-400" />
             <span>
-              <strong>شبیه‌سازی مجوز (Demo Role):</strong> در نقش فعال شما دسترسی کامل به این بخش محدود شده است. اعمال قطعی محدودیت‌های امنیتی در لایه سرور پیاده خواهد شد.
+              <strong>دسترسی محدود:</strong> در نقش فعال شما دسترسی کامل به این بخش محدود شده است.
             </span>
           </div>
-          <span className="text-[10px] bg-amber-500/20 px-2 py-0.5 rounded font-mono shrink-0">
-            RBAC PROTOTYPE
-          </span>
         </div>
       )}
     </div>

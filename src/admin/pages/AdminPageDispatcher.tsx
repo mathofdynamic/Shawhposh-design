@@ -78,6 +78,7 @@ import { AuditPage } from './team/AuditPage';
 import { CmsPage } from './system/CmsPage';
 import { SettingsPage } from './system/SettingsPage';
 import { IntegrationsPage } from './system/IntegrationsPage';
+import { AdvancedToolsPage } from './system/AdvancedToolsPage';
 import { HealthPage } from './system/HealthPage';
 import { LogsPage } from './system/LogsPage';
 import { DataExplorerPage } from './system/DataExplorerPage';
@@ -379,19 +380,23 @@ export const AdminPageDispatcher: React.FC = () => {
     case '/admin/integrations':
     case '/admin/system/integrations':
       return <IntegrationsPage />;
+    case '/advanced-tools':
+    case '/admin/advanced-tools':
+    case '/admin/system/advanced-tools':
+      return <AdvancedToolsPage />;
     case '/health':
     case '/admin/health':
     case '/admin/system/health':
-      return <HealthPage />;
+      return <AdvancedToolsPage defaultTab="health" />;
     case '/logs':
     case '/admin/logs':
     case '/admin/system/logs':
-      return <LogsPage />;
+      return <AdvancedToolsPage defaultTab="logs" />;
     case '/data':
     case '/admin/data':
     case '/admin/system/data':
     case '/admin/system/data-explorer':
-      return <DataExplorerPage />;
+      return <AdvancedToolsPage defaultTab="data" />;
     case '/security':
     case '/admin/security':
     case '/admin/system/security':

@@ -13,15 +13,15 @@ export const AdvancedToolsPage: React.FC<AdvancedToolsPageProps> = ({ defaultTab
   const [activeTab, setActiveTab] = useState<'health' | 'logs' | 'data'>(defaultTab);
 
   const tabs = [
-    { id: 'health' as const, label: 'سلامت سرویس‌ها و پایش', icon: HeartPulse },
-    { id: 'logs' as const, label: 'لاگ‌های سیستم و حسابرسی فنی', icon: FileText },
-    { id: 'data' as const, label: 'جستجوگر داده‌های خام', icon: Database },
+    { id: 'health' as const, label: 'سلامت سرویس‌ها', icon: HeartPulse },
+    { id: 'logs' as const, label: 'لاگ‌های سیستم', icon: FileText },
+    { id: 'data' as const, label: 'داده‌ها', icon: Database },
   ];
 
   return (
-    <div className="space-y-6 max-w-7xl mx-auto">
+    <div className="space-y-6">
       <AdminPageHeader
-        title="ابزارهای پیشرفته سیستم"
+        title="ابزارهای پیشرفته"
         description="پایش سلامت زیرساخت، دفاتر لاگ‌های سیستمی و مشاهده امن ساختار داده‌های کارگاه."
       />
 
@@ -48,11 +48,11 @@ export const AdvancedToolsPage: React.FC<AdvancedToolsPageProps> = ({ defaultTab
         })}
       </div>
 
-      {/* Active Tab View */}
+      {/* Active Tab View (content-only embedded mode) */}
       <div className="pt-2">
-        {activeTab === 'health' && <HealthPage />}
-        {activeTab === 'logs' && <LogsPage />}
-        {activeTab === 'data' && <DataExplorerPage />}
+        {activeTab === 'health' && <HealthPage embedded />}
+        {activeTab === 'logs' && <LogsPage embedded />}
+        {activeTab === 'data' && <DataExplorerPage embedded />}
       </div>
     </div>
   );

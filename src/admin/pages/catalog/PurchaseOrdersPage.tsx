@@ -399,10 +399,10 @@ export const PurchaseOrdersPage: React.FC<PurchaseOrdersPageProps> = ({ defaultT
   ];
 
   return (
-    <div className="space-y-6 max-w-7xl mx-auto">
+    <div className="space-y-6">
       {/* Header */}
       <AdminPageHeader
-        title="تأمین و خرید"
+        title="سفارش‌های خرید"
         description="سفارش‌های خرید مواد اولیه، پارچه‌های خام و ملزومات چاپ از تأمین‌کنندگان رسمی کارگاه."
         actions={
           procurementTab === 'purchase_orders' ? (

@@ -20,7 +20,7 @@ import { ShieldCheck, CheckCircle2, RotateCcw, AlertTriangle } from 'lucide-reac
 import { toFaDigits } from './utils/formatters';
 
 export const AdminLayout: React.FC = () => {
-  const { goBackToStore } = useAdminRouter();
+  const { goBackToStore, activeRoute, currentPath } = useAdminRouter();
   const { state, resetToFixtures, demoClock } = useAdminRepository();
   const { addToast } = useToast();
 
@@ -83,37 +83,61 @@ export const AdminLayout: React.FC = () => {
 
   const invariantReport = verifyDomainInvariants(state);
 
+  // Dynamic layout max-width based on operational requirements
+  const getPageWidthClass = () => {
+    if (activeRoute?.layoutWidth === 'wide') return 'max-w-[1580px]';
+    if (activeRoute?.layoutWidth === 'narrow') return 'max-w-4xl';
+    if (activeRoute?.layoutWidth === 'standard') return 'max-w-6xl';
+
+    const p = currentPath.toLowerCase();
+    const id = activeRoute?.id || '';
+
+    // Narrow layout for settings and form-heavy configuration pages
+    if (
+      id === 'settings' ||
+      id === 'integrations' ||
+      id === 'notifications' ||
+      p.includes('/settings') ||
+      p.includes('/integrations') ||
+      p.includes('/notifications')
+    ) {
+      return 'max-w-4xl';
+    }
+
+    // Wide layout for large data tables and analytics dashboards
+    if (
+      id === 'orders' ||
+      id === 'products' ||
+      id === 'inventory' ||
+      id === 'variants' ||
+      id === 'customers' ||
+      id === 'directory' ||
+      id === 'payments' ||
+      id === 'production' ||
+      id === 'analytics' ||
+      id === 'traffic' ||
+      id === 'conversion' ||
+      id === 'logs' ||
+      id === 'returns' ||
+      id === 'advanced-tools' ||
+      p.includes('/orders') ||
+      p.includes('/products') ||
+      p.includes('/inventory') ||
+      p.includes('/customers') ||
+      p.includes('/payments') ||
+      p.includes('/production') ||
+      p.includes('/analytics') ||
+      p.includes('/logs')
+    ) {
+      return 'max-w-[1580px]';
+    }
+
+    // Standard layout for general dashboard/overview/reports
+    return 'max-w-6xl';
+  };
+
   return (
     <div className="min-h-screen bg-[#0d0c0b] text-stone-100 flex flex-col font-sans select-text overflow-x-hidden antialiased" dir="rtl">
-      {/* Top Demo Notice Bar */}
-      <div className="bg-[#ba8d3d]/15 border-b border-[#ba8d3d]/20 px-4 py-1.5 text-xs text-[#eed29d] flex items-center justify-between z-40 shrink-0">
-        <div className="flex items-center gap-2">
-          <span className="w-2 h-2 rounded-full bg-[#ba8d3d] animate-pulse" />
-          <span className="font-bold">محیط آزمایشی مدیریت شاه‌پوش (داده‌های نمایشی کارگاه)</span>
-          <span className="hidden md:inline text-[11px] text-stone-400">
-            · ساعت مرجع: {demoClock} (۲ مهر ۱۴۰۵)
-          </span>
-        </div>
-
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={() => setIsInvariantsModalOpen(true)}
-            className="text-[11px] bg-[#ba8d3d]/20 hover:bg-[#ba8d3d]/30 text-[#eed29d] px-2 py-0.5 rounded transition-colors cursor-pointer"
-          >
-            ناوردایی‌ها: {toFaDigits(invariantReport.results.length)} / {toFaDigits(invariantReport.results.length)} پاس
-          </button>
-          <button
-            type="button"
-            onClick={() => setIsResetConfirmOpen(true)}
-            className="text-[11px] text-stone-400 hover:text-white flex items-center gap-1 transition-colors cursor-pointer"
-          >
-            <RotateCcw size={11} />
-            <span>ریست داده</span>
-          </button>
-        </div>
-      </div>
-
       {/* Main Workspace Frame */}
       <div className="flex-1 flex min-h-0 relative">
         {/* Desktop Sidebar */}
@@ -142,7 +166,7 @@ export const AdminLayout: React.FC = () => {
           />
 
           {/* Page View Region */}
-          <main className="flex-1 p-4 sm:p-6 lg:p-8 pb-20 lg:pb-8 max-w-7xl w-full mx-auto">
+          <main className={`flex-1 p-4 sm:p-6 lg:p-8 pb-20 lg:pb-8 w-full mx-auto ${getPageWidthClass()}`}>
             <AdminPageDispatcher />
           </main>
         </div>
