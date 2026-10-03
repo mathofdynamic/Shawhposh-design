@@ -12,7 +12,7 @@ import {
 import { ADMIN_GROUPS, ALL_ADMIN_ROUTES } from '../../router/routes';
 import { AdminGroupId, AdminNavGroupDef, AdminRouteDef } from '../../router/types';
 import { useAdminRouter } from '../../router';
-import { useAdminRepository } from '../../domain/useAdminRepository';
+import { useCatalogAdmin } from '../../features/CatalogProvider';
 import { StaffRole } from '../../domain/types';
 import { RoleKey } from '../../domain/rbac';
 import { AdminIcon } from './AdminIcon';
@@ -34,7 +34,7 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
   isMobileDrawer = false,
 }) => {
   const { currentPath, activeRoute, activeGroup, navigate, goBackToStore } = useAdminRouter();
-  const { state } = useAdminRepository();
+  const { state } = useCatalogAdmin();
 
   // Normalize legacy and modern roles for allowedRoles matching
   const normalizedRole: RoleKey =

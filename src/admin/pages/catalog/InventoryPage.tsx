@@ -30,14 +30,14 @@ import {
   Badge,
   useToast,
 } from '../../components/ui';
-import { useAdminRepository } from '../../domain/useAdminRepository';
+import { useCatalogAdmin } from '../../features/CatalogProvider';
 import { ProductVariant, WorkshopMaterial } from '../../domain/types';
 import { toFaDigits, formatPriceTomans, formatPersianDate } from '../../utils/formatters';
 import { StockDetailsDrawer } from './StockDetailsDrawer';
 import { useAdminRouter } from '../../router';
 
 export const InventoryPage: React.FC = () => {
-  const { state, updateMaterialStock } = useAdminRepository();
+  const { state, updateMaterialStock } = useCatalogAdmin();
   const { navigate } = useAdminRouter();
   const { addToast } = useToast();
 
@@ -76,7 +76,7 @@ export const InventoryPage: React.FC = () => {
       }
 
       // Valuation based on variant retail price
-      estimatedValuationTomans += v.onHandStock * (v.priceTomans || 590000);
+      estimatedValuationTomans += v.onHandStock * ((v as ProductVariant & {priceTomans?:number}).priceTomans ?? state.products.find(p=>p.id===v.productId)?.basePriceTomans ?? 0);
     });
 
     return {
@@ -87,7 +87,7 @@ export const InventoryPage: React.FC = () => {
       outOfStockCount,
       estimatedValuationTomans,
     };
-  }, [state.variants]);
+  }, [state.variants,state.products]);
 
   // Extract unique warehouse locations for filter
   const warehouseLocations = useMemo(() => {
@@ -592,7 +592,7 @@ export const InventoryPage: React.FC = () => {
                 موجودی جوهر مستقیم نساجی، مواد پریکوت، هاردباکس و ملزومات کارگاه
               </strong>
               <span>
-                کنترل روزانه مواد مصرفی مانع از توقف خطوط تولید چاپ مستقیم Brother GTX و بسته‌بندی می‌گردد.
+                این بخش هنوز نمایشی است؛ تغییر مواد مصرفی فقط در مرورگر ذخیره می‌شود.
               </span>
             </div>
             <Button

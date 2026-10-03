@@ -1,3 +1,4 @@
+import { useStaff } from './features/StaffAuth';
 import React, { useState, useEffect } from 'react';
 import { useAdminRouter } from './router';
 import { StaffRole } from './domain/types';
@@ -24,8 +25,10 @@ export const AdminLayout: React.FC = () => {
   const { state, resetToFixtures, demoClock } = useAdminRepository();
   const { addToast } = useToast();
 
-  // Role simulation state
-  const [currentRole, setCurrentRole] = useState<StaffRole>('super_admin');
+  // Staff role from the authenticated server session
+  const staffSession = useStaff();
+  const currentRole = staffSession!.staff.role;
+  const setCurrentRole = (_role: StaffRole) => {};
 
   // Sidebar compact state persisted locally
   const [isCompact, setIsCompact] = useState<boolean>(() => {

@@ -63,26 +63,26 @@ export const AdminHeader: React.FC<AdminHeaderProps> = ({
         <Breadcrumb
           items={breadcrumbItems}
           onHomeClick={() => navigate('/admin/overview/dashboard')}
-          className="hidden sm:flex"
+          className="hidden lg:flex"
         />
 
         {/* Mobile current title */}
-        <div className="sm:hidden font-bold text-xs text-white truncate">
+        <div className="lg:hidden font-bold text-xs text-white truncate">
           {activeRoute?.shortTitleFa || 'میز مدیریت'}
         </div>
       </div>
 
       {/* CENTER: Global Search Trigger */}
-      <div className="flex-1 max-w-md mx-2 hidden md:block">
+      <div className="flex-1 min-w-0 max-w-md mx-2 hidden xl:block">
         <button
           type="button"
           onClick={onOpenSearch}
           className="w-full flex items-center justify-between px-3 py-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-stone-400 hover:text-stone-200 transition-colors text-xs cursor-pointer group"
           aria-label="جستجوی همه‌جانبه در پنل"
         >
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 min-w-0">
             <Search size={14} className="text-[#ba8d3d]" />
-            <span className="text-[13px]">جستجو در صفحات، سفارش‌ها، محصولات و مشتریان...</span>
+            <span className="text-[13px] truncate">جستجو در صفحات، سفارش‌ها، محصولات و مشتریان...</span>
           </div>
           <kbd className="text-[10px] font-mono bg-white/5 border border-white/10 px-1.5 py-0.5 rounded text-stone-400 group-hover:text-stone-200">
             ⌘K
@@ -96,7 +96,7 @@ export const AdminHeader: React.FC<AdminHeaderProps> = ({
         <button
           type="button"
           onClick={onOpenSearch}
-          className="md:hidden p-2 text-stone-400 hover:text-white hover:bg-white/5 rounded-xl transition-colors"
+          className="xl:hidden p-2 text-stone-400 hover:text-white hover:bg-white/5 rounded-xl transition-colors"
           aria-label="جستجو"
         >
           <Search size={16} />

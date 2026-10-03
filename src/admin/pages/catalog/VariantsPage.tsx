@@ -14,7 +14,7 @@ import {
 } from 'lucide-react';
 import { AdminPageHeader } from '../../components/shell/AdminPageHeader';
 import { Table, ColumnDef, Badge, Button, SearchInput, Pagination, MoneyDisplay, useToast } from '../../components/ui';
-import { useAdminRepository } from '../../domain/useAdminRepository';
+import { useCatalogAdmin } from '../../features/CatalogProvider';
 import { ProductVariant } from '../../domain/types';
 import { toFaDigits } from '../../utils/formatters';
 
@@ -26,7 +26,7 @@ export const VariantsPage: React.FC = () => {
     deleteVariant,
     createVariant,
     updateVariantStock,
-  } = useAdminRepository();
+  } = useCatalogAdmin();
   const { addToast } = useToast();
 
   const [search, setSearch] = useState('');
@@ -52,7 +52,7 @@ export const VariantsPage: React.FC = () => {
     colorHex: '#1C1A1A',
     fit: 'oversize',
     material: '۱۰۰٪ پنبه ارگانیک دو نخ ۲۴۰ گرم',
-    onHandStock: 15,
+    onHandStock: 0,
     minStockThreshold: 4,
     priceAdjustmentTomans: 0,
     isEnabled: true,
@@ -90,7 +90,7 @@ export const VariantsPage: React.FC = () => {
     setModalError(null);
   };
 
-  const handleSaveStock = () => {
+  const handleSaveStock = async () => {
     if (!stockModalVariant) return;
     if (newStockOnHand < 0) {
       setModalError('موجودی فیزیکی نمی‌تواند منفی باشد.');
@@ -104,7 +104,7 @@ export const VariantsPage: React.FC = () => {
     }
 
     const staffId = state.staff[0]?.id || 'staff-1';
-    const success = updateVariantStock(
+    const success = await updateVariantStock(
       stockModalVariant.sku,
       newStockOnHand,
       staffId,
@@ -118,13 +118,14 @@ export const VariantsPage: React.FC = () => {
     }
   };
 
-  const handleSaveNewVariant = () => {
+  const handleSaveNewVariant = async () => {
     if (!newVariant.sku?.trim()) {
       setModalError('کد تنوع انبار (SKU) الزامی است.');
       return;
     }
+    if(Number(newVariant.onHandStock)>0&&!initialStockReason.trim()){setModalError('دلیل ثبت موجودی را وارد کنید.');return;}
 
-    const res = createVariant({
+    const res = await createVariant({
       ...newVariant,
       productId: newVariant.productId || state.products[0]?.id,
       sku: newVariant.sku.trim().toUpperCase(),
@@ -137,6 +138,7 @@ export const VariantsPage: React.FC = () => {
       reservedStock: 0,
       minStockThreshold: Math.max(1, Number(newVariant.minStockThreshold) || 3),
       priceAdjustmentTomans: Number(newVariant.priceAdjustmentTomans) || 0,
+      ...(initialStockReason ? {inventoryReason:initialStockReason} : {}),
       isEnabled: true,
     } as ProductVariant);
 
@@ -148,13 +150,14 @@ export const VariantsPage: React.FC = () => {
     }
   };
 
-  const handleDelete = (sku: string) => {
+  const [initialStockReason,setInitialStockReason]=useState('');
+  const handleDelete = async (sku: string) => {
     const confirm = window.confirm(
       `آیا از حذف تنوع ${sku} اطمینان دارید؟ در صورت وجود سفارش ثبت‌شده با این SKU، حذف غیرمجاز خواهد بود.`
     );
     if (!confirm) return;
 
-    const res = deleteVariant(sku);
+    const res = await deleteVariant(sku);
     if (!res.success) {
       addToast({
         title: 'عدم امکان حذف تنوع',
@@ -442,6 +445,8 @@ export const VariantsPage: React.FC = () => {
         <Pagination
           currentPage={currentPage}
           totalPages={totalPages}
+          totalItems={filtered.length}
+          pageSize={pageSize}
           onPageChange={setCurrentPage}
         />
       </div>
@@ -642,6 +647,9 @@ export const VariantsPage: React.FC = () => {
               </div>
 
               <div className="grid grid-cols-3 gap-3">
+                <label className="col-span-3 block text-stone-300">دلیل ثبت موجودی
+                  <input value={initialStockReason} onChange={e=>setInitialStockReason(e.target.value)} className="block mt-2 w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-white" />
+                </label>
                 <div>
                   <label className="block font-bold text-stone-300 mb-1">موجودی فیزیکی</label>
                   <input

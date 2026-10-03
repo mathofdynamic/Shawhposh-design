@@ -26,13 +26,13 @@ import {
   Select,
   Badge,
 } from '../../components/ui';
-import { useAdminRepository } from '../../domain/useAdminRepository';
+import { useCatalogAdmin } from '../../features/CatalogProvider';
 import { StockMovement, StockMovementType } from '../../domain/types';
 import { toFaDigits, formatPersianDate } from '../../utils/formatters';
 import { useAdminRouter } from '../../router';
 
 export const StockMovementsPage: React.FC = () => {
-  const { state, getStockMovements } = useAdminRepository();
+  const { state, getStockMovements } = useCatalogAdmin();
   const { navigate } = useAdminRouter();
 
   const [searchQuery, setSearchQuery] = useState('');

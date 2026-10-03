@@ -519,12 +519,13 @@ export default function PodDesigner({ theme = 'dark', onAddToCart, initialProduc
 
               {/* Add Custom T-shirt button-in-button using custom premium GlassButton */}
               <GlassButton
-                onClick={handleAddToCart}
+                disabled
+                title="ثبت سفارش چاپ پس از اتصال سفارش‌ها و ذخیره‌سازی طرح فعال می‌شود."
                 glassColor={isDark ? "rgb(186, 141, 61)" : "rgb(238, 210, 157)"}
                 className="w-full md:w-auto flex-1 md:flex-initial group relative flex items-center justify-center gap-4 px-8 py-4 rounded-full text-xs font-bold transition-all duration-300 transform active:scale-95 cursor-pointer text-[#0e0d0c]"
               >
                 <ShoppingBag size={14} className="stroke-[2.5px]" />
-                <span>سفارش چاپ تیشرت انحصاری من</span>
+                <span>پیش‌نمایش طرح؛ ثبت سفارش هنوز فعال نیست</span>
                 {submitted && (
                   <span className="absolute -top-12 left-1/2 transform -translate-x-1/2 bg-[#4AF626]/15 border border-[#4AF626]/30 text-[#4AF626] font-semibold text-[10px] px-3 py-1.5 rounded-full shadow-lg block animate-fade-in whitespace-nowrap">
                     ✓ تیشرت سفارشی شما به سبد افزوده شد

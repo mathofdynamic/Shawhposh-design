@@ -185,7 +185,7 @@ export const ADMIN_GROUPS: AdminNavGroupDef[] = [
         descriptionFa: 'ماتریس تنوع‌ها، موجودی فیزیکی و آزاد، ثبت کسری و گردش انبار',
         iconName: 'Box',
         badgeKey: 'lowStock',
-        allowedRoles: ['super_admin', 'production_operator'],
+        allowedRoles: ['owner', 'store_manager', 'inventory'],
       },
       {
         id: 'variants',

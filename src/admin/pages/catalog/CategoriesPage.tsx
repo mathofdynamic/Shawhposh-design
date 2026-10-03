@@ -2,7 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { FolderTree, Plus, Edit2, Trash2, Sparkles, AlertCircle, Shirt } from 'lucide-react';
 import { AdminPageHeader } from '../../components/shell/AdminPageHeader';
 import { Table, ColumnDef, Badge, Button, SearchInput, useToast } from '../../components/ui';
-import { useAdminRepository } from '../../domain/useAdminRepository';
+import { useCatalogAdmin } from '../../features/CatalogProvider';
 import { AdminCategory } from '../../domain/types';
 import { toFaDigits } from '../../utils/formatters';
 import { CollectionsPage } from './CollectionsPage';
@@ -19,7 +19,7 @@ export const CategoriesPage: React.FC<CategoriesPageProps> = ({ defaultTab = 'ca
     createCategory,
     updateCategory,
     deleteCategory,
-  } = useAdminRepository();
+  } = useCatalogAdmin();
   const { addToast } = useToast();
 
   const categories = getCategories();
@@ -58,20 +58,20 @@ export const CategoriesPage: React.FC<CategoriesPageProps> = ({ defaultTab = 'ca
     setIsModalOpen(true);
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!editingCategory?.nameFa?.trim()) {
       setModalError('نام فارسی دسته‌بندی الزامی است.');
       return;
     }
 
     if (editingCategory.id) {
-      const res = updateCategory(editingCategory.id, editingCategory);
+      const res = await updateCategory(editingCategory.id, editingCategory);
       if (!res.success) {
         setModalError(res.error || 'خطا در ویرایش دسته‌بندی.');
         return;
       }
     } else {
-      const res = createCategory(editingCategory as any);
+      const res = await createCategory(editingCategory as any);
       if (!res.success) {
         setModalError(res.error || 'خطا در ایجاد دسته‌بندی.');
         return;
@@ -82,11 +82,11 @@ export const CategoriesPage: React.FC<CategoriesPageProps> = ({ defaultTab = 'ca
     setEditingCategory(null);
   };
 
-  const handleDelete = (id: string, name: string) => {
+  const handleDelete = async (id: string, name: string) => {
     const confirm = window.confirm(`آیا از حذف دسته‌بندی «${name}» اطمینان دارید؟ در صورت اتصال محصول، حذف ممنوع خواهد بود.`);
     if (!confirm) return;
 
-    const res = deleteCategory(id);
+    const res = await deleteCategory(id);
     if (!res.success) {
       addToast({
         title: 'عدم امکان حذف دسته‌بندی',
@@ -131,7 +131,7 @@ export const CategoriesPage: React.FC<CategoriesPageProps> = ({ defaultTab = 'ca
       key: 'productsCount',
       header: 'تعداد محصولات متصل',
       render: (row) => {
-        const count = state.products.filter((p) => p.category === row.id).length;
+        const count = state.products.filter((p) => p.category === row.slug).length;
         return (
           <span className="font-fanum text-xs text-stone-300 font-bold">
             {toFaDigits(count)} فرم لباس

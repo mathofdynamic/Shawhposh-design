@@ -32,7 +32,7 @@ import {
   Pagination,
   useToast,
 } from '../../components/ui';
-import { useAdminRepository } from '../../domain/useAdminRepository';
+import { useCatalogAdmin } from '../../features/CatalogProvider';
 import { AdminProduct } from '../../domain/types';
 import { toFaDigits } from '../../utils/formatters';
 import { ProductEditor } from './ProductEditor';
@@ -46,7 +46,7 @@ export const ProductsPage: React.FC = () => {
     deleteProduct,
     createProduct,
     importProductsCsv,
-  } = useAdminRepository();
+  } = useCatalogAdmin();
   const { addToast } = useToast();
 
   const categories = getCategories();
@@ -155,9 +155,9 @@ export const ProductsPage: React.FC = () => {
     }
   };
 
-  const handleBulkStatus = (newStatus: 'active' | 'draft' | 'archived') => {
+  const handleBulkStatus = async (newStatus: 'active' | 'draft' | 'archived') => {
     if (selectedProductIds.length === 0) return;
-    const res = bulkUpdateProductStatus(selectedProductIds, newStatus);
+    const res = await bulkUpdateProductStatus(selectedProductIds, newStatus);
     setBulkActionNotice(
       `وضعیت ${toFaDigits(res.updatedCount)} محصول با موفقیت به «${
         newStatus === 'active' ? 'عرضه فعال' : newStatus === 'draft' ? 'پیش‌نویس' : 'بایگانی'
@@ -168,13 +168,13 @@ export const ProductsPage: React.FC = () => {
   };
 
   // Delete handler
-  const handleDeleteProduct = (p: AdminProduct) => {
+  const handleDeleteProduct = async (p: AdminProduct) => {
     const confirm = window.confirm(
       `آیا از حذف محصول «${p.name}» (${p.id}) اطمینان دارید؟ در صورت ثبت سفارش با این محصول، حذف به منظور حفظ یکپارچگی سوابق مالی ممنوع است.`
     );
     if (!confirm) return;
 
-    const res = deleteProduct(p.id);
+    const res = await deleteProduct(p.id);
     if (!res.success) {
       addToast({
         title: 'خطا در حذف محصول',
@@ -191,19 +191,20 @@ export const ProductsPage: React.FC = () => {
   };
 
   // Duplicate Product
-  const handleDuplicateProduct = (p: AdminProduct) => {
+  const handleDuplicateProduct = async (p: AdminProduct) => {
     const newId = `sp-${100 + state.products.length + 1}`;
     const newSkuPrefix = `${newId.toUpperCase()}-TSH`;
 
     const duplicatedVariants = p.variants.map((v, i) => ({
       ...v,
+      id:undefined,
       productId: newId,
       sku: `${newSkuPrefix}-${v.size}-${i + 1}`,
-      onHandStock: 10,
+      onHandStock: 0,
       reservedStock: 0,
     }));
 
-    createProduct({
+    const result=await createProduct({
       ...p,
       id: newId,
       skuPrefix: newSkuPrefix,
@@ -214,6 +215,7 @@ export const ProductsPage: React.FC = () => {
       isLive: false,
       variants: duplicatedVariants,
     });
+    if(!result.success){addToast({title:'خطا در ایجاد رونوشت',description:result.error,type:'error'});return;}
     addToast({
       title: 'محصول کپی شد',
       description: `نسخه کپی از محصول «${p.name}» با شناسه ${newId} در وضعیت پیش‌نویس ایجاد شد.`,
@@ -271,7 +273,7 @@ export const ProductsPage: React.FC = () => {
   };
 
   // Import CSV
-  const handleImportCsv = () => {
+  const handleImportCsv = async () => {
     if (!csvText.trim()) return;
 
     const lines = csvText.trim().split('\n');
@@ -292,7 +294,7 @@ export const ProductsPage: React.FC = () => {
       rows.push(obj);
     }
 
-    const res = importProductsCsv(rows);
+    const res = await importProductsCsv(rows);
     setCsvImportResult(res);
     if (res.success) {
       setTimeout(() => {
@@ -685,6 +687,8 @@ export const ProductsPage: React.FC = () => {
         <Pagination
           currentPage={currentPage}
           totalPages={totalPages}
+          totalItems={filteredProducts.length}
+          pageSize={pageSize}
           onPageChange={setCurrentPage}
         />
       </div>

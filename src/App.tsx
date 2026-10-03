@@ -10,7 +10,10 @@ import Cart from './components/Cart';
 import Checkout from './components/Checkout';
 import ReviewScrollTicker from './components/ReviewScrollTicker';
 import InstagramFeed from './components/InstagramFeed';
-import { PRODUCTS } from './data';
+import { useCatalog } from './features/catalog/useCatalog';
+import { api, post } from './api/client';
+import { StaffAuth } from './admin/features/StaffAuth';
+import { CatalogProvider } from './admin/features/CatalogProvider';
 import { Product, CartItem, User as UserType } from './types';
 import Login from './components/Login';
 import Signup from './components/Signup';
@@ -35,7 +38,11 @@ export default function App() {
       (window.location.pathname.startsWith('/admin') ||
         window.location.hash.startsWith('#admin')));
 
+  const { products: PRODUCTS, categories:catalogCategories, loading: catalogLoading, error: catalogError } = useCatalog(!isAdminView);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
+  useEffect(() => {
+    setSelectedProduct(current => current ? PRODUCTS.find(p => p.id === current.id) || null : null);
+  }, [PRODUCTS]);
 
   // History & Hash listener for direct /admin/* and /#admin deep linking
   useEffect(() => {
@@ -62,21 +69,19 @@ export default function App() {
   });
 
   // User State with localStorage integration for persistent sessions
-  const [user, setUser] = useState<UserType | null>(() => {
-    const saved = localStorage.getItem('shahpoosh_user');
-    return saved ? JSON.parse(saved) : null;
-  });
+  const [user, setUser] = useState<UserType | null>(null);
+  const [authError,setAuthError]=useState('');
+  useEffect(() => { localStorage.removeItem('shahpoosh_user'); api<{user:UserType|null}>('/v1/auth/me').then(r=>setUser(r.user)).catch(()=>setUser(null)); }, []);
   const [authPage, setAuthPage] = useState<'login' | 'signup' | null>(null);
 
   const handleLogin = (loggedUser: UserType) => {
     setUser(loggedUser);
-    localStorage.setItem('shahpoosh_user', JSON.stringify(loggedUser));
     setAuthPage(null);
   };
 
-  const handleLogout = () => {
-    setUser(null);
-    localStorage.removeItem('shahpoosh_user');
+  const handleLogout = async () => {
+    try{await post('/v1/auth/logout', {});setUser(null);setAuthError('');localStorage.removeItem('shahpoosh_user');}
+    catch(e){setAuthError((e as Error).message);}
   };
 
   // Sync theme to document element - ensuring html.light is never active while admin environment is displayed
@@ -99,7 +104,7 @@ export default function App() {
   const [cartOpen, setCartOpen] = useState(false);
 
   // Shop state toggling
-  const [selectedCategory, setSelectedCategory] = useState<'all' | 'minimalist' | 'calligraphy' | 'graphic'>('all');
+  const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [sortBy, setSortBy] = useState<'default' | 'price-asc' | 'price-desc' | 'popular'>('default');
 
@@ -110,6 +115,10 @@ export default function App() {
 
   // Add Item to active cart
   const handleAddToCart = (newItem: Omit<CartItem, 'id'>) => {
+    const product=PRODUCTS.find(p=>p.id===newItem.productId);
+    const variant=product?.variants?.find(v=>v.id===newItem.variantId&&v.sku===newItem.sku);
+    if(!variant || newItem.quantity<1 || newItem.quantity>variant.available)return;
+    newItem={...newItem,price:variant.priceTomans??product!.price};
     const uniqueId = newItem.isCustom 
       ? newItem.productId // Already generated uniquely
       : `${newItem.productId}-${newItem.color.hex}-${newItem.size}`;
@@ -118,7 +127,7 @@ export default function App() {
       const existingIdx = prevCart.findIndex((item) => item.id === uniqueId);
       if (existingIdx > -1) {
         const updated = [...prevCart];
-        updated[existingIdx].quantity += newItem.quantity;
+        updated[existingIdx].quantity = Math.min(variant.available,updated[existingIdx].quantity+newItem.quantity);
         return updated;
       }
       return [...prevCart, { ...newItem, id: uniqueId }];
@@ -184,7 +193,7 @@ export default function App() {
             window.scrollTo({ top: 0, behavior: 'smooth' });
           }}
         >
-          <AdminLayout />
+          <StaffAuth><CatalogProvider><AdminLayout /></CatalogProvider></StaffAuth>
         </AdminRouterProvider>
       </ToastProvider>
     );
@@ -195,6 +204,9 @@ export default function App() {
       theme === 'dark' ? 'bg-[#0e0d0c] text-[#f5f2eb]' : 'bg-[#fafafa] text-[#1a1917]'
     }`}>
       {/* Floating Header */}
+      {catalogLoading && <div role="status" className="fixed bottom-4 left-4 z-40 rounded-xl bg-black/90 p-3 text-stone-200">در حال دریافت محصولات…</div>}
+      {catalogError && <div role="alert" className="fixed bottom-4 left-4 z-40 rounded-xl bg-black/90 p-3 text-red-300">{catalogError}</div>}
+      {authError && <div role="alert" className="fixed bottom-4 right-4 z-50 rounded-xl bg-black/90 p-3 text-red-300">{authError}<button onClick={()=>void handleLogout()} className="mr-3 underline">تلاش دوباره</button></div>}
       <Navbar 
         activeTab={activeTab} 
         setActiveTab={(tab) => {
@@ -390,9 +402,7 @@ export default function App() {
                 <div className="flex flex-wrap gap-2.5">
                   {[
                     { id: 'all', label: 'همه البسه' },
-                    { id: 'calligraphy', label: 'کالیگرافی و نستعلیق' },
-                    { id: 'graphic', label: 'بین‌المللی و کلاژ' },
-                    { id: 'minimalist', label: 'مینیمال ایرانی' }
+                    ...catalogCategories.map(c=>({id:c.slug,label:({calligraphy:'کالیگرافی و نستعلیق',graphic:'بین‌المللی و کلاژ',minimalist:'مینیمال ایرانی'} as Record<string,string>)[c.slug]||c.nameFa}))
                   ].map((cat) => (
                     <button
                       key={cat.id}
@@ -492,6 +502,7 @@ export default function App() {
           </div>
         )}
 
+        {activeTab==='detail'&&!selectedProduct&&<div role="status" className="p-12 text-center">این محصول دیگر در ویترین فعال نیست.<button onClick={()=>setActiveTab('shop')} className="block mx-auto mt-4 underline">بازگشت به محصولات</button></div>}
         {activeTab === 'designer' && (
           <div key={selectedProduct ? selectedProduct.id : 'new'} className="animate-fade-in animate-duration-500">
             <PodDesigner 

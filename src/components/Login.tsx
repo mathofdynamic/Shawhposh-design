@@ -1,3 +1,4 @@
+import { post } from '../api/client';
 import React, { useState } from 'react';
 import { Mail, Lock, Eye, EyeOff, ArrowLeft, ShieldCheck, ArrowRight, Sparkles } from 'lucide-react';
 import { User as UserType } from '../types';
@@ -19,52 +20,12 @@ export default function Login({ theme, onLogin, onClose, onNavigateToSignup }: L
   const [error, setError] = useState('');
   const [loading, setLoading] = useState<'idle' | 'loading' | 'success'>('idle');
 
-  const handleFormSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    setError('');
-
-    if (!email || !password) {
-      setError('لطفاً آدرس ایمیل و رمز عبور خود را وارد کنید.');
-      return;
-    }
-
-    if (password.length < 6) {
-      setError('رمز عبور باید حداقل شامل ۶ کاراکتر باشد.');
-      return;
-    }
-
-    setLoading('loading');
-
-    setTimeout(() => {
-      setLoading('success');
-      setTimeout(() => {
-        const loggedUser: UserType = {
-          id: 'usr-' + Math.random().toString(36).substr(2, 9),
-          name: email.split('@')[0] || 'شاه‌پوش گرامی',
-          email: email,
-        };
-        onLogin(loggedUser);
-      }, 1000);
-    }, 1400);
+  const handleFormSubmit = async (e: React.FormEvent) => {
+    e.preventDefault(); setError(''); setLoading('loading');
+    try { const result = await post<{user:UserType}>('/v1/auth/login', {identifier:email,password}); setLoading('success'); onLogin(result.user); }
+    catch(e) { setError((e as Error).message); setLoading('idle'); }
   };
-
-  const handleSocialSignIn = (provider: 'google' | 'apple') => {
-    setError('');
-    setLoading('loading');
-    
-    setTimeout(() => {
-      setLoading('success');
-      setTimeout(() => {
-        const loggedUser: UserType = {
-          id: 'usr-' + Math.random().toString(36).substr(2, 9),
-          name: provider === 'google' ? 'محمدرضا علوی' : 'کاربر اپل شهپوش',
-          email: provider === 'google' ? 'alavi.mr@gmail.com' : 'apple.user@shahpoosh.com',
-          avatarUrl: provider === 'google' ? 'https://picsum.photos/seed/useravatar/150/150' : undefined,
-        };
-        onLogin(loggedUser);
-      }, 1000);
-    }, 1400);
-  };
+  const handleSocialSignIn = (_provider: 'google' | 'apple') => { setError('ورود با این سرویس هنوز فعال نیست.'); };
 
   return (
     <div className="fixed inset-0 z-50 flex overflow-hidden bg-[#0e0d0c] font-sans antialiased" dir="rtl">
@@ -207,13 +168,13 @@ export default function Login({ theme, onLogin, onClose, onNavigateToSignup }: L
                   
                   {/* Email Field */}
                   <div className="space-y-1.5 text-right">
-                    <label className={`text-[10px] uppercase tracking-wider font-bold block ${isDark ? 'text-gray-400' : 'text-slate-600'}`}>آدرس پست الکترونیکی (ایمیل)</label>
+                    <label className={`text-[10px] uppercase tracking-wider font-bold block ${isDark ? 'text-gray-400' : 'text-slate-600'}`}>ایمیل یا شماره موبایل</label>
                     <div className="relative">
                       <input
-                        type="email"
+                        type="text" autoComplete="username" required
                         value={email}
                         onChange={(e) => setEmail(e.target.value)}
-                        placeholder="user@example.com"
+                        placeholder="user@example.com / 09123456789"
                         className="w-full text-xs pr-10 pl-4 py-3.5 rounded-xl border outline-none transition-all text-left font-sans text-right placeholder:text-right"
                         style={{
                           backgroundColor: isDark ? 'rgba(255, 255, 255, 0.03)' : '#fdfbfa',
@@ -267,7 +228,7 @@ export default function Login({ theme, onLogin, onClose, onNavigateToSignup }: L
                     
                     <button
                       type="button"
-                      onClick={() => setError('لینک بازیابی برای شما طراحی و ارسال خواهد شد. ایمیل خود را بررسی کنید.')}
+                      onClick={() => setError('بازیابی رمز عبور هنوز فعال نیست؛ با پشتیبانی تماس بگیرید.')}
                       className={`font-semibold hover:underline cursor-pointer ${isDark ? 'text-gray-400 hover:text-white' : 'text-slate-600 hover:text-slate-900'}`}
                     >
                       رمز عبور را فراموش کرده‌اید؟
@@ -297,7 +258,7 @@ export default function Login({ theme, onLogin, onClose, onNavigateToSignup }: L
                 <div className="grid grid-cols-2 gap-3">
                   <button
                     type="button"
-                    onClick={() => handleSocialSignIn('google')}
+                    disabled title="هنوز فعال نیست" onClick={() => handleSocialSignIn('google')}
                     className={`flex items-center justify-center gap-2 py-3 px-4 rounded-xl text-xs font-semibold border transition-all duration-300 cursor-pointer active:scale-95 ${
                       isDark
                         ? 'bg-[#1b1917] border-white/5 hover:bg-[#252220] hover:border-white/10 text-white'
@@ -315,7 +276,7 @@ export default function Login({ theme, onLogin, onClose, onNavigateToSignup }: L
 
                   <button
                     type="button"
-                    onClick={() => handleSocialSignIn('apple')}
+                    disabled title="هنوز فعال نیست" onClick={() => handleSocialSignIn('apple')}
                     className={`flex items-center justify-center gap-2 py-3 px-4 rounded-xl text-xs font-semibold border transition-all duration-300 cursor-pointer active:scale-95 ${
                       isDark
                         ? 'bg-white text-black border-white hover:bg-slate-100'

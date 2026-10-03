@@ -189,7 +189,7 @@ export default function ProductDetail({ theme = 'dark', product, onBack, onAddTo
   
   // State for gallery and color/size triggers
   const [selectedImageIndex, setSelectedImageIndex] = useState(0);
-  const [selectedColor, setSelectedColor] = useState(product.colors[0]);
+  const [selectedColor, setSelectedColor] = useState(product.colors[0] || {name:'—',hex:'#000000'});
   const [selectedSize, setSelectedSize] = useState(product.sizes[1] || product.sizes[0]);
   const [quantity, setQuantity] = useState(1);
   const [addedMessage, setAddedMessage] = useState(false);
@@ -215,7 +215,7 @@ export default function ProductDetail({ theme = 'dark', product, onBack, onAddTo
     const productComments = SEED_COMMENTS[product.id] || DEFAULT_COMMENTS;
     setComments(productComments);
     setSelectedImageIndex(0);
-    setSelectedColor(product.colors[0]);
+    setSelectedColor(product.colors[0] || {name:'—',hex:'#000000'});
     setSelectedSize(product.sizes[1] || product.sizes[0]);
     setQuantity(1);
     setShowCommentForm(false);
@@ -231,15 +231,25 @@ export default function ProductDetail({ theme = 'dark', product, onBack, onAddTo
       setLocalRating(product.rating);
       setLocalReviewsCount(product.reviewsCount);
     }
-  }, [product]);
+  }, [product.id]);
 
-  const formattedPrice = product.price.toLocaleString('fa-IR');
+  useEffect(()=>{
+    if(!product.colors.some(c=>c.hex===selectedColor.hex))setSelectedColor(product.colors[0]||{name:'—',hex:'#000000'});
+    if(!product.sizes.includes(selectedSize))setSelectedSize(product.sizes[0]);
+    if(selectedImageIndex>=product.images.length)setSelectedImageIndex(0);
+  },[product.colors,product.sizes,product.images,selectedColor.hex,selectedSize,selectedImageIndex]);
+  const formattedPrice = (product.variants?.find(v=>v.colorHex===selectedColor?.hex && v.size===selectedSize)?.priceTomans ?? product.price).toLocaleString('fa-IR');
 
+  const selectedVariant = product.variants?.find(v=>v.colorHex===selectedColor?.hex && v.size===selectedSize);
+  const available = selectedVariant?.available ?? 0;
   const handleAddToCart = () => {
+    if (!selectedVariant || quantity < 1 || available < 1 || quantity > available) return;
     onAddToCart({
       productId: product.id,
+      variantId: selectedVariant!.id,
+      sku: selectedVariant!.sku,
       productName: product.name,
-      price: product.price,
+      price: selectedVariant?.priceTomans ?? product.price,
       quantity,
       color: selectedColor,
       size: selectedSize,
@@ -624,7 +634,8 @@ export default function ProductDetail({ theme = 'dark', product, onBack, onAddTo
                 </span>
                 <motion.button
                   whileTap={{ scale: 0.9 }}
-                  onClick={() => setQuantity(quantity + 1)}
+                  disabled={quantity>=available}
+                  onClick={() => setQuantity(Math.max(1,Math.min(available, quantity + 1)))}
                   className={`w-8 h-8 rounded-full flex items-center justify-center cursor-pointer font-bold transition-colors ${
                     isDark ? 'bg-white/5 text-gray-400 hover:text-white' : 'bg-white text-slate-600 border border-slate-200 shadow-sm hover:bg-slate-50'
                   }`}
@@ -635,12 +646,13 @@ export default function ProductDetail({ theme = 'dark', product, onBack, onAddTo
 
               {/* Add To Cart Button-in-Button */}
               <GlassButton
+                disabled={!selectedVariant || available < 1 || quantity < 1 || available < quantity}
                 onClick={handleAddToCart}
                 glassColor={isDark ? "rgb(186, 141, 61)" : "rgb(238, 210, 157)"}
                 className="flex-1 group relative flex items-center justify-center gap-4 px-8 py-4 rounded-full text-xs font-bold shadow-lg transition-all duration-300 transform active:scale-95 cursor-pointer text-[#0e0d0c]"
               >
                 <ShoppingBag size={14} className="stroke-[2.5px]" />
-                <span>افزودن به سبد خرید</span>
+                <span>{available < 1 ? 'ناموجود' : 'افزودن به سبد خرید'}</span>
                 {addedMessage && (
                   <span className="absolute -top-12 left-1/2 transform -translate-x-1/2 bg-[#4AF626]/15 border border-[#4AF626]/20 text-[#2db312] dark:text-[#4AF626] font-bold text-[10px] px-3.5 py-1.5 rounded-full shadow-lg block animate-fade-in whitespace-nowrap">
                     ✓ با موفقیت به سبد خرید اضافه شد

@@ -1,5 +1,7 @@
 export interface Product {
   id: string;
+  slug?: string;
+  variants?: {id:string;sku:string;colorHex:string;size:string;priceTomans:number|null;available:number}[];
   name: string;
   price: number; // in Tomans (discounted price if discount is present)
   originalPrice?: number; // optional, before discount
@@ -30,6 +32,8 @@ export interface CustomDesign {
 export interface CartItem {
   id: string; // unique cart item id (product.id + color + size or custom design uuid)
   productId: string;
+  variantId?: string;
+  sku?: string;
   productName: string;
   price: number;
   quantity: number;

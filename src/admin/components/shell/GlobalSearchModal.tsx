@@ -3,7 +3,7 @@ import { Search, X, ChevronLeft, ArrowRight, CornerDownLeft, Sparkles } from 'lu
 import { useAdminRouter } from '../../router';
 import { ALL_ADMIN_ROUTES } from '../../router/routes';
 import { AdminRouteDef } from '../../router/types';
-import { useAdminRepository } from '../../domain/useAdminRepository';
+import { useCatalogAdmin } from '../../features/CatalogProvider';
 import { AdminIcon } from './AdminIcon';
 import { toFaDigits } from '../../utils/formatters';
 
@@ -25,7 +25,7 @@ interface SearchResultItem {
 
 export const GlobalSearchModal: React.FC<GlobalSearchModalProps> = ({ isOpen, onClose }) => {
   const { navigate } = useAdminRouter();
-  const { state } = useAdminRepository();
+  const { state } = useCatalogAdmin();
   const [query, setQuery] = useState('');
   const [selectedIndex, setSelectedIndex] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);

@@ -17,7 +17,7 @@ import {
   User,
 } from 'lucide-react';
 import { ProductVariant, StockMovement } from '../../domain/types';
-import { useAdminRepository } from '../../domain/useAdminRepository';
+import { useCatalogAdmin } from '../../features/CatalogProvider';
 import { Button, FormField, Input, Select, Badge, useToast } from '../../components/ui';
 import { toFaDigits, formatPriceTomans, formatPersianDate } from '../../utils/formatters';
 
@@ -32,7 +32,7 @@ export const StockDetailsDrawer: React.FC<StockDetailsDrawerProps> = ({
   onClose,
   onStockUpdated,
 }) => {
-  const { state, goodsReceipt, recordStockAdjustment, getStockMovements } = useAdminRepository();
+  const { state, goodsReceipt, recordStockAdjustment, getStockMovements } = useCatalogAdmin();
   const { addToast } = useToast();
 
   const [activeTab, setActiveTab] = useState<'info' | 'receipt' | 'adjustment' | 'movements'>('info');
@@ -73,7 +73,7 @@ export const StockDetailsDrawer: React.FC<StockDetailsDrawerProps> = ({
   const isOutOfStock = availableStock <= 0;
 
   // Handle Goods Receipt
-  const handleGoodsReceipt = (e: React.FormEvent) => {
+  const handleGoodsReceipt = async (e: React.FormEvent) => {
     e.preventDefault();
     const qty = parseInt(receiptQty, 10);
     if (isNaN(qty) || qty <= 0) {
@@ -86,7 +86,7 @@ export const StockDetailsDrawer: React.FC<StockDetailsDrawerProps> = ({
     }
 
     const currentStaff = state.staff[0];
-    const res = goodsReceipt(
+    const res = await goodsReceipt(
       variant.sku,
       qty,
       currentStaff.id,
@@ -113,7 +113,7 @@ export const StockDetailsDrawer: React.FC<StockDetailsDrawerProps> = ({
   };
 
   // Handle Adjustment
-  const handleAdjustment = (e: React.FormEvent) => {
+  const handleAdjustment = async (e: React.FormEvent) => {
     e.preventDefault();
     const delta = parseInt(adjustmentDelta, 10);
     if (isNaN(delta) || delta === 0) {
@@ -135,7 +135,7 @@ export const StockDetailsDrawer: React.FC<StockDetailsDrawerProps> = ({
     }
 
     const currentStaff = state.staff[0];
-    const res = recordStockAdjustment(
+    const res = await recordStockAdjustment(
       variant.sku,
       delta,
       currentStaff.id,
@@ -339,7 +339,7 @@ export const StockDetailsDrawer: React.FC<StockDetailsDrawerProps> = ({
                   <div>
                     <span className="text-stone-400 block mb-0.5">قیمت واحد فروش:</span>
                     <span className="font-fanum text-white font-bold">
-                      {formatPriceTomans(variant.priceTomans)}
+                      {formatPriceTomans((variant as ProductVariant & {priceTomans?:number}).priceTomans ?? product?.basePriceTomans ?? 0)}
                     </span>
                   </div>
                 </div>

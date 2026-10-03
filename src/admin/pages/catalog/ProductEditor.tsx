@@ -20,7 +20,7 @@ import {
   Check,
 } from 'lucide-react';
 import { AdminProduct, ProductVariant } from '../../domain/types';
-import { useAdminRepository } from '../../domain/useAdminRepository';
+import { useCatalogAdmin } from '../../features/CatalogProvider';
 import { useAdminRouter } from '../../router';
 import { Button, Badge, MoneyDisplay, useToast } from '../../components/ui';
 import { toFaDigits } from '../../utils/formatters';
@@ -43,7 +43,7 @@ export const ProductEditor: React.FC<ProductEditorProps> = ({ productId, onBack 
     createProduct,
     updateProduct,
     deleteProduct,
-  } = useAdminRepository();
+  } = useCatalogAdmin();
 
   const isNew = !productId || productId === 'new';
   const existingProduct = useMemo(() => {
@@ -158,7 +158,7 @@ export const ProductEditor: React.FC<ProductEditorProps> = ({ productId, onBack 
             colorHex: '#1C1A1A',
             fit: 'oversize',
             material: '۱۰۰٪ پنبه ارگانیک دو نخ',
-            onHandStock: 15,
+            onHandStock: 0,
             reservedStock: 0,
             minStockThreshold: 4,
             priceAdjustmentTomans: 0,
@@ -172,7 +172,7 @@ export const ProductEditor: React.FC<ProductEditorProps> = ({ productId, onBack 
             colorHex: '#1C1A1A',
             fit: 'oversize',
             material: '۱۰۰٪ پنبه ارگانیک دو نخ',
-            onHandStock: 25,
+            onHandStock: 0,
             reservedStock: 0,
             minStockThreshold: 5,
             priceAdjustmentTomans: 0,
@@ -186,7 +186,7 @@ export const ProductEditor: React.FC<ProductEditorProps> = ({ productId, onBack 
             colorHex: '#1C1A1A',
             fit: 'oversize',
             material: '۱۰۰٪ پنبه ارگانیک دو نخ',
-            onHandStock: 20,
+            onHandStock: 0,
             reservedStock: 0,
             minStockThreshold: 5,
             priceAdjustmentTomans: 0,
@@ -200,7 +200,7 @@ export const ProductEditor: React.FC<ProductEditorProps> = ({ productId, onBack 
             colorHex: '#1C1A1A',
             fit: 'oversize',
             material: '۱۰۰٪ پنبه ارگانیک دو نخ',
-            onHandStock: 10,
+            onHandStock: 0,
             reservedStock: 0,
             minStockThreshold: 4,
             priceAdjustmentTomans: 20000,
@@ -236,7 +236,8 @@ export const ProductEditor: React.FC<ProductEditorProps> = ({ productId, onBack 
   };
 
   // Save changes
-  const handleSave = () => {
+  const [inventoryReason,setInventoryReason]=useState('');
+  const handleSave = async () => {
     setErrorMessage(null);
     setSuccessMessage(null);
 
@@ -267,8 +268,10 @@ export const ProductEditor: React.FC<ProductEditorProps> = ({ productId, onBack 
       return;
     }
 
+    const stockChanged=(formData.variants||[]).some(v=>v.onHandStock!==(existingProduct?.variants.find(old=>old.sku===v.sku)?.onHandStock||0));
+    if(stockChanged&&!inventoryReason.trim()){setErrorMessage('دلیل تغییر موجودی را وارد کنید.');return;}
     if (isNew) {
-      const res = createProduct(formData);
+      const res = await createProduct({...formData,...(inventoryReason?{inventoryReason}:{})} as any);
       if (!res.success) {
         setErrorMessage(res.error || 'خطا در ثبت محصول جدید.');
       } else {
@@ -280,7 +283,7 @@ export const ProductEditor: React.FC<ProductEditorProps> = ({ productId, onBack 
         }, 800);
       }
     } else {
-      const res = updateProduct(productId!, formData);
+      const res = await updateProduct(productId!, {...formData,...(inventoryReason?{inventoryReason}:{})} as any);
       if (!res.success) {
         setErrorMessage(res.error || 'خطا در ذخیره تغییرات محصول.');
       } else {
@@ -292,14 +295,14 @@ export const ProductEditor: React.FC<ProductEditorProps> = ({ productId, onBack 
   };
 
   // Delete product with confirmation & invariant check
-  const handleDelete = () => {
+  const handleDelete = async () => {
     if (isNew || !productId) return;
     const confirm = window.confirm(
       `آیا از حذف محصول «${formData.name}» (${productId}) اطمینان دارید؟ در صورت وجود سفارش برای این محصول، حذف ممنوع خواهد بود.`
     );
     if (!confirm) return;
 
-    const res = deleteProduct(productId);
+    const res = await deleteProduct(productId);
     if (!res.success) {
       setErrorMessage(res.error || 'امکان حذف این محصول وجود ندارد.');
     } else {
@@ -358,7 +361,7 @@ export const ProductEditor: React.FC<ProductEditorProps> = ({ productId, onBack 
       colorHex: '#1C1A1A',
       fit: 'oversize',
       material: formData.fabricSpecs || '۱۰۰٪ پنبه ارگانیک دو نخ',
-      onHandStock: 10,
+      onHandStock: 0,
       reservedStock: 0,
       minStockThreshold: 4,
       priceAdjustmentTomans: 30000,
@@ -421,6 +424,9 @@ export const ProductEditor: React.FC<ProductEditorProps> = ({ productId, onBack 
 
   return (
     <div className="space-y-6">
+      <label className="block text-xs text-stone-300">دلیل تغییر موجودی (فقط هنگام تغییر تعداد)
+        <input value={inventoryReason} onChange={e=>setInventoryReason(e.target.value)} className="block mt-2 w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-white" />
+      </label>
       {/* Header Bar */}
       <div className="bg-[#131211] border border-white/10 rounded-2xl p-4 sm:p-5 flex flex-col md:flex-row md:items-center justify-between gap-4 sticky top-16 z-20 backdrop-blur-md bg-opacity-95 shadow-xl">
         <div className="flex items-center gap-3">

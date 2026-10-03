@@ -51,12 +51,12 @@ export const DemoBadgePopover: React.FC<DemoBadgePopoverProps> = ({
         type="button"
         onClick={() => setIsOpen((prev) => !prev)}
         className="flex items-center gap-1.5 px-2.5 py-1 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 text-[#eed29d] rounded-lg text-xs font-medium transition-colors cursor-pointer"
-        aria-label="اطلاعات محیط دمو و وضعیت داده‌ها"
+        aria-label="اطلاعات نسخه در حال اتصال و وضعیت داده‌ها"
         aria-haspopup="true"
         aria-expanded={isOpen}
       >
         <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
-        <span>محیط دمو</span>
+        <span className="hidden sm:inline">نسخه در حال اتصال</span><span className="sm:hidden">در حال اتصال</span>
       </button>
 
       {/* Popover Dropdown */}
@@ -66,7 +66,7 @@ export const DemoBadgePopover: React.FC<DemoBadgePopoverProps> = ({
           <div className="flex items-center justify-between pb-2 border-b border-white/10">
             <div className="flex items-center gap-2">
               <Sparkles size={16} className="text-[#ba8d3d]" />
-              <span className="text-xs font-bold text-white">محیط دمو و داده‌های شبیه‌سازی‌شده</span>
+              <span className="text-xs font-bold text-white">کاتالوگ و موجودی واقعی؛ سایر بخش‌ها دمو</span>
             </div>
             <span className="text-[10px] bg-amber-500/15 text-amber-300 border border-amber-500/25 px-1.5 py-0.5 rounded font-mono">
               SANDBOX
@@ -75,8 +75,8 @@ export const DemoBadgePopover: React.FC<DemoBadgePopoverProps> = ({
 
           {/* Description */}
           <p className="text-[12px] text-stone-300 leading-relaxed">
-            کلیه سفارش‌ها، تراکنش‌ها، فاکتورها و وضعیت‌های انبار در این محیط جنبه نمایشی و آزمایشی دارند و
-            تغییری روی سرورهای واقعی اعمال نمی‌شود.
+            محصولات، دسته‌بندی‌ها، تنوع‌های کالا و موجودی روی سرور ذخیره می‌شوند.
+            سفارش‌ها، پرداخت‌ها و سایر ماژول‌ها هنوز نمایشی هستند. بازنشانی دمو فقط داده‌های نمایشی مرورگر را تغییر می‌دهد.
           </p>
 
           {/* Reference Time */}

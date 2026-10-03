@@ -39,23 +39,7 @@ export default function Checkout({ cart, onBackToShop, onSubmitOrder }: Checkout
 
   const handlePlaceOrder = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!validateForm()) return;
-
-    // Simulate success
-    const generatedId = `SHP-1405-${Math.floor(100000 + Math.random() * 900000)}`;
-    setOrderId(generatedId);
-    
-    onSubmitOrder({
-      fullName,
-      phone,
-      email,
-      city,
-      address,
-      postalCode,
-      generatedId,
-    });
-
-    setIsSuccess(true);
+    setFormErrors({checkout:'ثبت سفارش و پرداخت هنوز فعال نیست. هیچ سفارشی ثبت نشده است.'});
   };
 
   if (isSuccess) {
@@ -232,8 +216,8 @@ export default function Checkout({ cart, onBackToShop, onSubmitOrder }: Checkout
                     <CreditCard size={14} />
                   </div>
                   <div className="text-right">
-                    <span className="text-xs text-white font-semibold block">کارت به کارت به حساب کارگاه (ثبت امن آنی)</span>
-                    <span className="text-[10px] text-gray-500">شماره حساب پس از تایید طراح پیامک می‌گردد</span>
+                    <span className="text-xs text-white font-semibold block">پیش‌نمایش تسویه‌حساب؛ پرداخت فعال نیست</span>
+                    <span className="text-[10px] text-gray-500">هیچ مبلغی دریافت و هیچ سفارش واقعی ثبت نمی‌شود</span>
                   </div>
                 </div>
                 <div className="w-4 h-4 rounded-full border-2 border-[#ba8d3d] flex items-center justify-center">
@@ -244,9 +228,10 @@ export default function Checkout({ cart, onBackToShop, onSubmitOrder }: Checkout
 
             <button
               type="submit"
+              disabled
               className="mt-8 w-full py-4 bg-gradient-to-r from-[#ba8d3d] to-[#e4bc71] hover:from-[#ba8d3d] hover:to-[#ba8d3d] text-[#0e0d0c] rounded-full text-xs font-bold transition-all duration-300 active:scale-95 cursor-pointer shadow-lg text-center"
             >
-              ثبت نهایی و صدور فاکتور شهپوش
+              ثبت سفارش و پرداخت هنوز فعال نیست
             </button>
 
           </form>

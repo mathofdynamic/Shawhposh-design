@@ -752,6 +752,8 @@ export const OrdersPage: React.FC = () => {
             <Pagination
               currentPage={currentPage}
               totalPages={totalPages}
+              totalItems={total}
+              pageSize={pageSize}
               onPageChange={setCurrentPage}
             />
           </div>
