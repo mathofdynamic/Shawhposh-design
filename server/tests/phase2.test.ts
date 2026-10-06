@@ -154,10 +154,13 @@ test('legacy cart migration is partial, safe, and idempotent', async () => {
 test('checkout creates one immutable awaiting-payment order, reserves stock, and cancellation releases it', async () => {
   const variant = catalogSnapshot().variants.find(item => item.sku === 'P2-TEST-M-BLK')!;
   const product = catalogSnapshot().products.find(item => item.slug === 'phase2-test-tee')!;
+  const searchableName = 'Order_search_%_\\_marker';
+  await customerOne.patch('/api/v1/account').set('Origin', origin).send({ fullName: searchableName }).expect(200);
   await ownerAgent.post('/api/v1/admin/inventory/P2-TEST-M-BLK/adjustments').set('Origin', origin).send({ newQuantity: 2, reason: 'Phase 2 checkout test setup' }).expect(200);
   await customerOne.post('/api/v1/cart/items').set('Origin', origin).send({ variantId: variant.id, quantity: 1 }).expect(200);
   const address = (await customerOne.get('/api/v1/account/addresses').expect(200)).body.addresses[0];
   const key = 'phase2-checkout-one-0001';
+  await customerOne.patch(`/api/v1/account/addresses/${address.id}`).set('Origin', origin).send({ recipientName: searchableName }).expect(200);
   const created = await customerOne.post('/api/v1/checkout/orders').set('Origin', origin).set('Idempotency-Key', key).send({ addressId: address.id, customerNote: 'آزمون', subtotalTomans: 1, shippingTomans: 0, totalTomans: 1 }).expect(201);
   const order = created.body.order;
   assert.match(order.orderNumber, /^SHP-\d{8}-\d{6}$/);
@@ -169,6 +172,15 @@ test('checkout creates one immutable awaiting-payment order, reserves stock, and
   assert.equal(order.items[0].sku, 'P2-TEST-M-BLK');
   assert.equal(order.items[0].unitPriceTomans, 245000);
   assert.equal(order.items[0].productName, 'پیراهن آزمون');
+  for (const search of ['_', '%', '\\']) {
+    const query = encodeURIComponent(search);
+    const orderSearch = await ownerAgent.get(`/api/v1/admin/orders?search=${query}`).expect(200);
+    assert.equal(orderSearch.body.pagination.total, 1, `order search should treat ${JSON.stringify(search)} literally`);
+    assert.equal(orderSearch.body.orders[0].id, order.id);
+    const customerSearch = await ownerAgent.get(`/api/v1/admin/customers?search=${query}&status=all`).expect(200);
+    assert.equal(customerSearch.body.pagination.total, 1, `customer search should treat ${JSON.stringify(search)} literally`);
+    assert.equal(customerSearch.body.customers[0].email, 'phase2-one@example.invalid');
+  }
   assert.equal((await ownerAgent.get('/api/v1/admin/inventory/P2-TEST-M-BLK').expect(200)).body.inventory.reservedStock, 1);
   const retry = await customerOne.post('/api/v1/checkout/orders').set('Origin', origin).set('Idempotency-Key', key).send({ addressId: address.id, customerNote: 'آزمون' }).expect(200);
   assert.equal(retry.body.order.id, order.id);

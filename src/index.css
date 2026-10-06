@@ -265,8 +265,9 @@
 
 .persian-zero {
   display: inline-block;
-  transform: scale(2.2);
-  transform-origin: center;
+  font-size: 1.5em;
+  line-height: 0.8;
+  vertical-align: -0.08em;
 }
 
 .font-serif {

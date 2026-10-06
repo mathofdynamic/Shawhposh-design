@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { and, asc, desc, eq, gte, inArray, like, lt, lte, or, sql, type SQL } from 'drizzle-orm';
+import { and, asc, desc, eq, gte, inArray, lt, lte, or, sql, type SQL, type SQLWrapper } from 'drizzle-orm';
 import { z } from 'zod';
 import { config } from '../../config';
 import { db } from '../../db/connection';
@@ -20,6 +20,11 @@ const keySchema = z.string().trim().min(8).max(128).regex(/^[A-Za-z0-9._:-]+$/);
 const cancelSchema = z.object({ reason: z.string().trim().min(3).max(1000) });
 const noteSchema = z.object({ note: z.string().trim().min(2).max(2000) });
 const addressChangeSchema = z.object({ ...createAddressSchema.shape, reason: z.string().trim().min(3).max(1000) });
+
+function containsLiteral(column: SQLWrapper, search: string): SQL {
+  const escaped = search.replace(/[\\%_]/g, character => `\\${character}`);
+  return sql`${column} LIKE ${`%${escaped}%`} ESCAPE '\\'`;
+}
 
 export function checkoutAvailability() {
   const shippingTomans = config.SHIPPING_COST_TOMANS ?? null;
@@ -140,8 +145,8 @@ export function adminOrderList(query: unknown) {
   if (filters.dateFrom) conditions.push(gte(orders.createdAt, tehranDateStartUtc(filters.dateFrom)));
   if (filters.dateTo) conditions.push(lt(orders.createdAt, tehranDateStartUtc(nextCalendarDate(filters.dateTo))));
   if (filters.search) {
-    const value = `%${filters.search.replace(/[\\%_]/g, char => `\\${char}`)}%`;
-    conditions.push(or(like(orders.orderNumber, value), like(orders.customerName, value), like(orders.customerEmail, value), like(orders.customerPhone, value))!);
+    conditions.push(or(containsLiteral(orders.orderNumber, filters.search), containsLiteral(orders.customerName, filters.search),
+      containsLiteral(orders.customerEmail, filters.search), containsLiteral(orders.customerPhone, filters.search))!);
   }
   const where = conditions.length ? and(...conditions) : undefined;
   const total = db.select({ total: sql<number>`count(*)` }).from(orders).where(where).get()!.total;
@@ -281,8 +286,7 @@ export function listAdminCustomers(query: unknown) {
   const conditions: SQL[] = [];
   if (filters.status !== 'all') conditions.push(eq(users.status, filters.status));
   if (filters.search) {
-    const value = `%${filters.search.replace(/[\\%_]/g, char => `\\${char}`)}%`;
-    conditions.push(or(like(users.fullName, value), like(users.email, value), like(users.phone, value))!);
+    conditions.push(or(containsLiteral(users.fullName, filters.search), containsLiteral(users.email, filters.search), containsLiteral(users.phone, filters.search))!);
   }
   const where = conditions.length ? and(...conditions) : undefined;
   const total = db.select({ total: sql<number>`count(*)` }).from(users).where(where).get()!.total;
