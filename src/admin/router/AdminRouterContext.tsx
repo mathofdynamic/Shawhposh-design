@@ -72,7 +72,7 @@ export const AdminRouterProvider: React.FC<AdminRouterProviderProps> = ({
     }
 
     setCurrentPath(cleanPath);
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    window.scrollTo({ top: 0, behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
 
     // Sync hash if running in environments where hash is used
     if (window.location.hash && (window.location.hash.startsWith('#admin') || window.location.hash.startsWith('#/admin'))) {

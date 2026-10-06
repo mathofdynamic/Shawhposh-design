@@ -77,7 +77,7 @@ export default function Signup({ theme, onLogin, onClose, onNavigateToLogin }: S
               خلق پیوندی نو میان هنر و تکنولوژی مد
             </h1>
             <p className="mt-4 text-xs leading-relaxed max-w-[40ch]" style={{ color: isDark ? '#9e9a93' : '#6e675c' }}>
-              با ایجاد حساب کاربری، به بخش طراحان انحصاری متصل شوید، تیشرت‌های شخصی‌تان را در کمد اختصاصی نگهداری کنید و به تاریخ لباس خود افتخار کنید.
+              از بخش حساب کاربری، اطلاعات شخصی، نشانی‌های ارسال و سفارش‌های خود را مدیریت کنید.
             </p>
 
             <div className="mt-8 pt-8 border-t border-dashed" style={{ borderColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.06)' }}>
@@ -138,14 +138,14 @@ export default function Signup({ theme, onLogin, onClose, onNavigateToLogin }: S
                 </div>
                 <h3 className="text-xl font-bold mb-2 text-emerald-500">ثبت نام با موفقیت انجام پذیرفت</h3>
                 <p className={`text-xs max-w-[32ch] leading-relaxed ${isDark ? 'text-gray-400' : 'text-slate-600'}`}>
-                  پرونده کاربری شما در سیستم ثبت نام پوشاک شهپوش با موفقیت مستند گردید. در حال ایجاد پرتال...
+                  حساب کاربری شما با موفقیت ایجاد شد. در حال بازگشت به فروشگاه...
                 </p>
               </div>
             ) : loading === 'loading' ? (
               <div className="flex flex-col items-center justify-center py-12 text-center">
                 <div className="w-12 h-12 border-2 border-t-[#ba8d3d] border-[#ba8d3d]/15 rounded-full animate-spin mb-6"></div>
-                <h4 className={`text-sm font-bold ${isDark ? 'text-white' : 'text-slate-900'}`}>ثبت اسناد هویت در تالار شهپوش</h4>
-                <p className={`text-xs mt-1.5 ${isDark ? 'text-[#eed29d]' : 'text-[#ba8d3d]'}`}>امنیت با سیستم رمزگذاری لایه امن شاهپوش...</p>
+                <h4 className={`text-sm font-bold ${isDark ? 'text-white' : 'text-slate-900'}`}>ایجاد حساب کاربری</h4>
+                <p className={`text-xs mt-1.5 ${isDark ? 'text-[#eed29d]' : 'text-[#ba8d3d]'}`}>ثبت‌نام با نشست امن سمت سرور...</p>
               </div>
             ) : (
               <>
@@ -155,7 +155,7 @@ export default function Signup({ theme, onLogin, onClose, onNavigateToLogin }: S
                     عضویت در شهپوش
                   </h2>
                   <p className={`text-xs mt-2 leading-relaxed ${isDark ? 'text-gray-400' : 'text-slate-500'}`}>
-                    با پیوستن به شهپوش، سفارشات خود را رهگیری کنید، طرح‌های POD منحصربه‌فرد ثبت کنید و تخفیف‌های کلوپ مشتریان ارشد را دریافت کنید.
+                    پس از ورود، اطلاعات حساب، نشانی‌های ارسال و سفارش‌های خود را از این بخش مدیریت کنید.
                   </p>
                 </div>
 

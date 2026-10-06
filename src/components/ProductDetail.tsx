@@ -21,6 +21,7 @@ import {
   AlertCircle
 } from 'lucide-react';
 import { Product, CartItem } from '../types';
+import { handleProductImageError } from '../lib/productImage';
 import { GlassButton } from './ui/apple-tahoe-liquid-glass-button';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -330,7 +331,7 @@ export default function ProductDetail({ theme = 'dark', product, onBack, onAddTo
       setNewCommentRating(5);
       setSubmitting(false);
       setSubmissionSuccess(true);
-      
+
       // Close forms with smooth transition
       setTimeout(() => {
         setShowCommentForm(false);
@@ -416,6 +417,7 @@ export default function ProductDetail({ theme = 'dark', product, onBack, onAddTo
                   <AnimatePresence mode="wait">
                     <motion.img
                       key={selectedImageIndex}
+                      onError={handleProductImageError}
                       initial={{ opacity: 0, scale: 0.95, filter: 'blur(5px)' }}
                       animate={{ opacity: 1, scale: 1, filter: 'blur(0px)' }}
                       exit={{ opacity: 0, scale: 1.03, filter: 'blur(5px)' }}
@@ -423,7 +425,7 @@ export default function ProductDetail({ theme = 'dark', product, onBack, onAddTo
                       src={product.images[selectedImageIndex]}
                       alt={`${product.name} - تصویر اصلی`}
                       referrerPolicy="no-referrer"
-                      className="w-full h-full max-h-[380px] object-contain p-6 drop-shadow-[0_20px_40px_rgba(0,0,0,0.15)] dark:drop-shadow-[0_25px_45px_rgba(0,0,0,0.55)]"
+                      className="product-media-source w-full h-full max-h-[380px] object-contain p-6 drop-shadow-[0_20px_40px_rgba(0,0,0,0.15)] dark:drop-shadow-[0_25px_45px_rgba(0,0,0,0.55)]"
                     />
                   </AnimatePresence>
                 </div>
@@ -449,7 +451,8 @@ export default function ProductDetail({ theme = 'dark', product, onBack, onAddTo
                       src={img}
                       alt={`${product.name} - تصویر ${index + 1}`}
                       referrerPolicy="no-referrer"
-                      className="w-full h-full object-contain filter contrast-[1.05]"
+                      onError={handleProductImageError}
+                      className="product-media-source w-full h-full object-contain filter contrast-[1.05]"
                     />
                   </motion.button>
                 ))}
@@ -622,9 +625,11 @@ export default function ProductDetail({ theme = 'dark', product, onBack, onAddTo
               }`}>
                 <motion.button
                   whileTap={{ scale: 0.9 }}
+                  aria-label="کاهش تعداد"
+                  disabled={available < 1 || quantity <= 1}
                   onClick={() => setQuantity(Math.max(1, quantity - 1))}
                   className={`w-8 h-8 rounded-full flex items-center justify-center cursor-pointer font-bold transition-colors ${
-                    isDark ? 'bg-white/5 text-gray-400 hover:text-white' : 'bg-white text-slate-600 border border-slate-200 shadow-sm hover:bg-slate-50'
+                    isDark ? 'bg-white/5 text-gray-400 hover:text-white disabled:cursor-not-allowed disabled:opacity-35 disabled:hover:text-gray-400' : 'bg-white text-slate-600 border border-slate-200 shadow-sm hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-35 disabled:hover:bg-white'
                   }`}
                 >
                   -
@@ -634,10 +639,11 @@ export default function ProductDetail({ theme = 'dark', product, onBack, onAddTo
                 </span>
                 <motion.button
                   whileTap={{ scale: 0.9 }}
+                  aria-label="افزایش تعداد"
                   disabled={quantity>=available}
                   onClick={() => setQuantity(Math.max(1,Math.min(available, quantity + 1)))}
                   className={`w-8 h-8 rounded-full flex items-center justify-center cursor-pointer font-bold transition-colors ${
-                    isDark ? 'bg-white/5 text-gray-400 hover:text-white' : 'bg-white text-slate-600 border border-slate-200 shadow-sm hover:bg-slate-50'
+                    isDark ? 'bg-white/5 text-gray-400 hover:text-white disabled:hover:text-gray-400' : 'bg-white text-slate-600 border border-slate-200 shadow-sm hover:bg-slate-50 disabled:hover:bg-white'
                   }`}
                 >
                   +
@@ -649,7 +655,7 @@ export default function ProductDetail({ theme = 'dark', product, onBack, onAddTo
                 disabled={!selectedVariant || available < 1 || quantity < 1 || available < quantity}
                 onClick={handleAddToCart}
                 glassColor={isDark ? "rgb(186, 141, 61)" : "rgb(238, 210, 157)"}
-                className="flex-1 group relative flex items-center justify-center gap-4 px-8 py-4 rounded-full text-xs font-bold shadow-lg transition-all duration-300 transform active:scale-95 cursor-pointer text-[#0e0d0c]"
+                className="flex-1 group relative flex items-center justify-center gap-4 px-8 py-4 rounded-full text-xs font-bold shadow-lg transition-all duration-300 transform active:scale-95 cursor-pointer text-[#0e0d0c] disabled:cursor-not-allowed disabled:opacity-50 disabled:active:scale-100"
               >
                 <ShoppingBag size={14} className="stroke-[2.5px]" />
                 <span>{available < 1 ? 'ناموجود' : 'افزودن به سبد خرید'}</span>

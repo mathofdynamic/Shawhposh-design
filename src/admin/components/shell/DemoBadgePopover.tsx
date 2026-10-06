@@ -66,17 +66,17 @@ export const DemoBadgePopover: React.FC<DemoBadgePopoverProps> = ({
           <div className="flex items-center justify-between pb-2 border-b border-white/10">
             <div className="flex items-center gap-2">
               <Sparkles size={16} className="text-[#ba8d3d]" />
-              <span className="text-xs font-bold text-white">کاتالوگ و موجودی واقعی؛ سایر بخش‌ها دمو</span>
+              <span className="text-xs font-bold text-white">حساب، سبد، سفارش، کاتالوگ و موجودی واقعی</span>
             </div>
             <span className="text-[10px] bg-amber-500/15 text-amber-300 border border-amber-500/25 px-1.5 py-0.5 rounded font-mono">
-              SANDBOX
+              REAL + DEMO
             </span>
           </div>
 
           {/* Description */}
           <p className="text-[12px] text-stone-300 leading-relaxed">
-            محصولات، دسته‌بندی‌ها، تنوع‌های کالا و موجودی روی سرور ذخیره می‌شوند.
-            سفارش‌ها، پرداخت‌ها و سایر ماژول‌ها هنوز نمایشی هستند. بازنشانی دمو فقط داده‌های نمایشی مرورگر را تغییر می‌دهد.
+            حساب مشتری، نشانی‌ها، سبد، سفارش‌های ثبت‌شده، محصولات، تنوع‌ها و موجودی روی سرور ذخیره می‌شوند.
+            پرداخت، تولید، ارسال، تحلیل و ماژول‌های دیگر هنوز نمایشی هستند. ثبت سفارش تا تعیین هزینه ارسال غیرفعال است؛ بازنشانی دمو فقط داده‌های نمایشی مرورگر را تغییر می‌دهد.
           </p>
 
           {/* Reference Time */}

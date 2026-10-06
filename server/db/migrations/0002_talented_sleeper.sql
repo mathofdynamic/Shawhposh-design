@@ -1,0 +1,1 @@
+CREATE INDEX `inventory_reservations_expiry_idx` ON `inventory_reservations` (`status`,`expires_at`);

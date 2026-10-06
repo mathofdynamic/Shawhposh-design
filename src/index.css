@@ -1,5 +1,12 @@
 @import "tailwindcss";
 
+.product-media-source {
+  background-image: url('/product-image-unavailable.svg');
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: contain;
+}
+
 /* ========================================================================= */
 /* YEKAN BAKH (STANDARD - PERSIAN & LATIN GLYPHS)                            */
 /* ========================================================================= */
@@ -254,6 +261,12 @@
 
 .font-yekan {
   font-family: 'Yekan Bakh', sans-serif !important;
+}
+
+.persian-zero {
+  display: inline-block;
+  transform: scale(2.2);
+  transform-origin: center;
 }
 
 .font-serif {

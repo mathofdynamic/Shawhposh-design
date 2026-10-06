@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { Sparkles, ArrowLeft, Shirt, ShoppingBag, Palette, ArrowUpRight, Award, Compass, Timer, ChevronLeft, ChevronRight } from 'lucide-react';
 import { GlassButton } from './ui/apple-tahoe-liquid-glass-button';
 import { DotField } from './ui/DotField';
+import { handleProductImageError, storefrontProductImage } from '../lib/productImage';
 
 const slides = [
   {
@@ -374,10 +375,11 @@ export default function Hero({ theme = 'dark', onStartDesign, onExploreProducts 
                     {/* Simulated Streetwear Model wearing Persian Calligraphy shirt */}
                     <div className="absolute inset-0 w-full h-full scale-[1.01] transition-transform duration-[12000ms] ease-out hover:scale-105 pointer-events-none">
                       <img 
-                        src={slides[currentSlide].image} 
+                        src={storefrontProductImage(slides[currentSlide].image)}
                         alt={slides[currentSlide].title} 
                         referrerPolicy="no-referrer"
-                        className="w-full h-full object-cover grayscale mix-blend-luminosity contrast-[1.12] transition-all duration-700 group-hover:grayscale-0 group-hover:mix-blend-normal opacity-90"
+                        onError={handleProductImageError}
+                        className="product-media-source w-full h-full object-cover grayscale mix-blend-luminosity contrast-[1.12] transition-all duration-700 group-hover:grayscale-0 group-hover:mix-blend-normal opacity-90"
                       />
                       {/* Gradient subtle vignette overlay to make text stand out */}
                       <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/40 to-transparent"></div>

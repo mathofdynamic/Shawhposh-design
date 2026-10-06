@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Star, ChevronLeft, ChevronRight } from 'lucide-react';
 import { Product } from '../types';
+import { handleProductImageError } from '../lib/productImage';
 
 interface ProductCardProps {
   key?: string;
@@ -135,7 +136,8 @@ export default function ProductCard({ theme = 'dark', product, onSelect }: Produ
             src={img} 
             alt={`${product.name} - ${index + 1}`}
             referrerPolicy="no-referrer"
-            className={`absolute w-44 h-44 object-contain drop-shadow-[0_12px_24px_rgba(0,0,0,0.18)] transition-all duration-500 ease-out transform ${
+            onError={handleProductImageError}
+            className={`product-media-source absolute w-44 h-44 object-contain drop-shadow-[0_12px_24px_rgba(0,0,0,0.18)] transition-all duration-500 ease-out transform ${
               index === currentImageIndex 
                 ? 'opacity-100 scale-100 group-hover:scale-105' 
                 : 'opacity-0 scale-95 pointer-events-none'

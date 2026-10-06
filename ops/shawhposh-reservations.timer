@@ -1,0 +1,12 @@
+[Unit]
+Description=Check Shawhposh unpaid reservations every minute
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=1min
+AccuracySec=15s
+Persistent=true
+Unit=shawhposh-reservations.service
+
+[Install]
+WantedBy=timers.target

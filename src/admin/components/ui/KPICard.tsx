@@ -60,7 +60,7 @@ export const KPICard: React.FC<KPICardProps> = ({
         ) : (
           <div className="flex items-baseline gap-2 text-right">
             <span className="text-2xl sm:text-[28px] font-bold font-fanum text-white tracking-tight leading-tight">
-              {typeof value === 'number' ? toFaDigits(value.toLocaleString('fa-IR')) : value}
+              {typeof value === 'number' ? value === 0 ? <span className="persian-zero">۰</span> : toFaDigits(value.toLocaleString('fa-IR')) : value}
             </span>
             {unit && (
               <span className="text-xs text-stone-400 font-sans font-medium">{unit}</span>

@@ -39,7 +39,7 @@ export const AdminMobileBottomNav: React.FC<AdminMobileBottomNavProps> = ({ onOp
   return (
     <nav
       aria-label="نوار دسترسی سریع پایین موبایل"
-      className="lg:hidden fixed bottom-0 left-0 right-0 h-14 bg-[#110f0e]/95 backdrop-blur-md border-t border-white/10 z-40 flex items-center justify-around px-2 font-sans"
+      className="lg:hidden relative z-40 h-14 shrink-0 bg-[#110f0e]/95 backdrop-blur-md border-t border-white/10 flex items-center justify-around px-2 font-sans"
     >
       {items.map((item) => {
         const Icon = item.icon;

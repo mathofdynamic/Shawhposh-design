@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 800" role="img" aria-labelledby="title description">
+  <title id="title">تصویر واقعی محصول ثبت نشده است</title>
+  <desc id="description">تصویر واقعی این محصول هنوز در فروشگاه ثبت نشده است.</desc>
+  <defs>
+    <linearGradient id="background" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#1b1917" />
+      <stop offset="1" stop-color="#100f0e" />
+    </linearGradient>
+  </defs>
+  <rect width="800" height="800" fill="url(#background)" />
+  <circle cx="400" cy="370" r="245" fill="#ba8d3d" opacity=".06" />
+  <path d="m300 185-105 45-90 150 112 69 59-91v250h248V358l59 91 112-69-90-150-105-45c-14 51-49 82-100 82s-86-31-100-82Z" fill="#211e1a" stroke="#ba8d3d" stroke-width="9" stroke-linejoin="round" />
+  <path d="M355 190c9 31 24 50 45 58 21-8 36-27 45-58" fill="none" stroke="#eed29d" stroke-width="7" stroke-linecap="round" />
+  <text x="400" y="690" fill="#eed29d" font-family="sans-serif" font-size="30" text-anchor="middle">تصویر واقعی محصول ثبت نشده است</text>
+</svg>

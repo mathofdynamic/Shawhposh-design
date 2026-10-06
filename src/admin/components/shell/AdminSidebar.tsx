@@ -17,6 +17,7 @@ import { StaffRole } from '../../domain/types';
 import { RoleKey } from '../../domain/rbac';
 import { AdminIcon } from './AdminIcon';
 import { toFaDigits } from '../../utils/formatters';
+import { listAdminOrders } from '../../features/commerceApi';
 
 export interface AdminSidebarProps {
   currentRole: StaffRole;
@@ -35,6 +36,27 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
 }) => {
   const { currentPath, activeRoute, activeGroup, navigate, goBackToStore } = useAdminRouter();
   const { state } = useCatalogAdmin();
+  const [pendingOrderCount, setPendingOrderCount] = useState<number | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    const refreshPendingOrders = () => {
+      const query = new URLSearchParams({ status: 'awaiting_payment', page: '1', pageSize: '1' });
+      void listAdminOrders(query).then(result => {
+        if (active) setPendingOrderCount(result.pagination.total);
+      }).catch(() => {
+        if (active) setPendingOrderCount(null);
+      });
+    };
+    refreshPendingOrders();
+    const interval = window.setInterval(refreshPendingOrders, 60_000);
+    window.addEventListener('focus', refreshPendingOrders);
+    return () => {
+      active = false;
+      window.clearInterval(interval);
+      window.removeEventListener('focus', refreshPendingOrders);
+    };
+  }, [currentPath, currentRole]);
 
   // Normalize legacy and modern roles for allowedRoles matching
   const normalizedRole: RoleKey =
@@ -109,18 +131,13 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
     });
   };
 
-  // Badge counts derived from live database
+  // Only unfinished demo modules use fixture-derived badges.
   const badgeCounts = useMemo(() => {
-    const pendingOrders = state.orders.filter(
-      (o) => o.status === 'paid_processing' || o.status === 'in_production'
-    ).length;
     const pendingDesigns = state.customDesigns.filter((d) => d.status === 'under_review').length;
     const lowStock = state.variants.filter((v) => v.onHandStock - v.reservedStock <= 3).length;
     const openTasks = state.tasks.filter((t) => t.status === 'todo' || t.status === 'in_progress').length;
-    const unverifiedPayments = state.payments.filter((p) => p.status === 'pending').length;
-
+    const unverifiedPayments = state.payments.filter((payment) => payment.status === 'pending').length;
     return {
-      pendingOrders,
       pendingDesigns,
       lowStock,
       openTasks,
@@ -130,6 +147,7 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
 
   const getBadgeValue = (key?: string): number | null => {
     if (!key) return null;
+    if (key === 'pendingOrders') return pendingOrderCount && pendingOrderCount > 0 ? pendingOrderCount : null;
     const count = (badgeCounts as Record<string, number>)[key];
     return count && count > 0 ? count : null;
   };

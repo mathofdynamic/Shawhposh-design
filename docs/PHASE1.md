@@ -1,4 +1,6 @@
-# Phase 1
+# Phase 1 baseline (historical)
+
+This file records the Phase 1 implementation. Phase 2 extends its schema and changes the real/demo boundary; use [PHASE2.md](./PHASE2.md) for current commerce behavior, migrations, and deployment requirements. Statements below that say cart/orders/customer directory are demo/local describe the Phase 1 baseline only.
 Express/TypeScript modular monolith with Drizzle and SQLite WAL, selected by owner to reduce VPS resource usage. PostgreSQL services for other apps are untouched. One backend process on loopback 3039, existing PM2, Nginx same-origin /api proxy.
 
 ## Database

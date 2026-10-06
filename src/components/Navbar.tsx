@@ -13,7 +13,9 @@ interface NavbarProps {
   user: UserType | null;
   onLoginClick: () => void;
   onLogout: () => void;
+  onAccountClick: () => void;
   onAdminClick?: () => void;
+  isCheckout?: boolean;
 }
 
 export default function Navbar({ 
@@ -26,7 +28,9 @@ export default function Navbar({
   user,
   onLoginClick,
   onLogout,
-  onAdminClick
+  onAccountClick,
+  onAdminClick,
+  isCheckout = false
 }: NavbarProps) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
@@ -41,7 +45,7 @@ export default function Navbar({
   ];
 
   return (
-    <nav className="fixed top-0 left-0 right-0 z-50 px-4 md:px-8 pt-4 md:pt-6 pointer-events-none">
+    <nav className={`${isCheckout ? 'relative' : 'fixed'} top-0 left-0 right-0 z-50 px-4 md:px-8 pt-4 md:pt-6 pointer-events-none`}>
       <div className={`max-w-7xl mx-auto h-16 md:h-18 flex items-center justify-between border backdrop-blur-md rounded-full px-6 pointer-events-auto transition-all duration-300 ${
         isDark 
           ? 'bg-[#131211]/80 border-white/5 shadow-[0_20px_40px_-15px_rgba(0,0,0,0.5)]' 
@@ -180,6 +184,7 @@ export default function Navbar({
             {user ? (
               <div className="relative">
                 <button
+                  aria-label={user.name}
                   onClick={() => setUserMenuOpen(!userMenuOpen)}
                   className={`flex items-center gap-2 pr-3.5 pl-1 py-1 rounded-full text-xs font-semibold cursor-pointer hover:scale-[1.02] active:scale-[0.98] transition-all duration-300 group whitespace-nowrap shrink-0 border ${
                     isDark 
@@ -188,7 +193,7 @@ export default function Navbar({
                   }`}
                 >
                   <span className="whitespace-nowrap max-w-[85px] overflow-hidden text-ellipsis inline-block">
-                    {user.name}
+                    <span className="hidden max-w-[85px] overflow-hidden text-ellipsis whitespace-nowrap sm:inline-block">{user.name}</span>
                   </span>
                   {user.avatarUrl ? (
                     <img src={user.avatarUrl} alt={user.name} referrerPolicy="no-referrer" className="w-6.5 h-6.5 rounded-full object-cover shrink-0" />
@@ -214,6 +219,13 @@ export default function Navbar({
                         <div className="font-bold text-xs truncate mb-0.5" style={{ color: isDark ? '#ffffff' : '#0f172a' }}>{user.name}</div>
                         <div className="truncate font-sans" style={{ color: isDark ? 'rgba(255,255,255,0.45)' : 'rgba(0,0,0,0.45)' }}>{user.email}</div>
                       </div>
+                      <button
+                        onClick={() => { onAccountClick(); setUserMenuOpen(false); }}
+                        className="w-full flex items-center justify-between text-right px-4 py-2.5 text-xs font-semibold rounded-xl hover:bg-[#ba8d3d]/10 hover:text-[#eed29d] transition-colors duration-200 cursor-pointer mt-1"
+                      >
+                        <span>حساب کاربری و سفارش‌ها</span>
+                        <User size={12} />
+                      </button>
                       <button
                         onClick={() => {
                           onLogout();
@@ -340,7 +352,7 @@ export default function Navbar({
               style={{ borderColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.06)' }}
             >
               {user ? (
-                <div className="flex items-center justify-between px-2">
+                <div className="flex flex-col gap-3 px-2">
                   <div className="flex items-center gap-3">
                     {user.avatarUrl ? (
                       <img src={user.avatarUrl} alt={user.name} referrerPolicy="no-referrer" className="w-10 h-10 rounded-full object-cover border border-[#ba8d3d]/20" />
@@ -354,16 +366,17 @@ export default function Navbar({
                       <div className="text-[10px] text-gray-500 font-sans">{user.email}</div>
                     </div>
                   </div>
-                  <button
-                    onClick={() => {
-                      onLogout();
-                      setMobileMenuOpen(false);
-                    }}
-                    className="p-2.5 rounded-xl bg-rose-500/10 text-rose-500 hover:bg-rose-500/20 transition-colors cursor-pointer"
-                    title="خروج از حساب"
-                  >
-                    <LogOut size={16} className="stroke-[2px]" />
-                  </button>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => { onAccountClick(); setMobileMenuOpen(false); }}
+                      className="flex-1 rounded-xl border border-[#ba8d3d]/20 bg-[#ba8d3d]/10 px-4 py-3 text-xs font-bold text-[#eed29d]"
+                    >حساب کاربری و سفارش‌ها</button>
+                    <button
+                      onClick={() => { onLogout(); setMobileMenuOpen(false); }}
+                      className="rounded-xl bg-rose-500/10 px-4 py-3 text-rose-500 hover:bg-rose-500/20 transition-colors cursor-pointer"
+                      title="خروج از حساب"
+                    ><LogOut size={16} className="stroke-[2px]" /></button>
+                  </div>
                 </div>
               ) : (
                 <button

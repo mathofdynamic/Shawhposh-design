@@ -40,6 +40,8 @@ export interface CartItem {
   color: { name: string; hex: string };
   size: string;
   image: string;
+  availableQuantity?: number;
+  availabilityCode?: string | null;
   isCustom?: boolean;
   customDesign?: CustomDesign;
 }

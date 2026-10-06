@@ -81,13 +81,13 @@ export default function Login({ theme, onLogin, onClose, onNavigateToSignup }: L
             <div className="mt-8 pt-8 border-t border-dashed" style={{ borderColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.06)' }}>
               <div className="flex gap-6 items-center">
                 <div>
-                  <div className="text-xl font-bold font-mono" style={{ color: isDark ? '#eed29d' : '#ba8d3d' }}>۴.۸ امتیاز</div>
-                  <div className="text-[10px] text-gray-500 mt-0.5">رضایت برگزیده مشتریان</div>
+                  <div className="text-xl font-bold font-mono" style={{ color: isDark ? '#eed29d' : '#ba8d3d' }}>فروشگاه</div>
+                  <div className="text-[10px] text-gray-500 mt-0.5">محصولات و موجودی واقعی</div>
                 </div>
                 <div className={`w-px h-8 ${isDark ? 'bg-white/5' : 'bg-slate-200'}`} />
                 <div>
-                  <div className="text-xl font-bold font-mono text-emerald-500">۱۰۰٪ امن</div>
-                  <div className="text-[10px] text-gray-500 mt-0.5">درگاه پرداخت و اصالت کالا</div>
+                  <div className="text-xl font-bold font-mono text-emerald-500">پرداخت آنلاین</div>
+                  <div className="text-[10px] text-gray-500 mt-0.5">در فاز بعد فعال می‌شود</div>
                 </div>
               </div>
             </div>
@@ -134,16 +134,16 @@ export default function Login({ theme, onLogin, onClose, onNavigateToSignup }: L
                 <div className="w-20 h-20 rounded-full bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-emerald-500 mb-5 shadow-[0_0_35px_rgba(16,185,129,0.15)] animate-bounce">
                   <ShieldCheck size={40} className="stroke-[1.5px]" />
                 </div>
-                <h3 className="text-xl font-bold mb-2 text-emerald-500">خوش آمدید، اتصال موفق آمیز بود</h3>
+                <h3 className="text-xl font-bold mb-2 text-emerald-500">ورود به حساب انجام شد</h3>
                 <p className={`text-xs max-w-[32ch] leading-relaxed ${isDark ? 'text-gray-400' : 'text-slate-600'}`}>
-                  هویت دیجیتال شما به عنوان عضو ارشد شهپوش تایید گردید. در حال انتقال به پرتال...
+                  به حساب کاربری شهپوش وارد شدید. در حال بازگشت به فروشگاه...
                 </p>
               </div>
             ) : loading === 'loading' ? (
               <div className="flex flex-col items-center justify-center py-12 text-center">
                 <div className="w-12 h-12 border-2 border-t-[#ba8d3d] border-[#ba8d3d]/15 rounded-full animate-spin mb-6"></div>
                 <h4 className={`text-sm font-bold ${isDark ? 'text-white' : 'text-slate-900'}`}>اتصال به پرتال پوشاک شهپوش</h4>
-                <p className={`text-xs mt-1.5 ${isDark ? 'text-[#eed29d]' : 'text-[#ba8d3d]'}`}>امنیت با سیستم رمزگذاری لایه امن شاهپوش...</p>
+                <p className={`text-xs mt-1.5 ${isDark ? 'text-[#eed29d]' : 'text-[#ba8d3d]'}`}>ورود با نشست امن سمت سرور...</p>
               </div>
             ) : (
               <>

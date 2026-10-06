@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   ShoppingBag,
   TrendingUp,
@@ -35,6 +35,8 @@ import { DateRangePreset } from '../../components/ui/DateRangeSelector';
 import { toFaDigits } from '../../utils/formatters';
 import { OrderInspectionDrawer } from '../../components/orders/OrderInspectionDrawer';
 import { ActionQueueItem } from '../../domain/types';
+import { listAdminOrders } from '../../features/commerceApi';
+import { shiftBusinessDateInTehran, tehranBusinessDate } from '../../utils/businessDate';
 
 export const DashboardPage: React.FC = () => {
   const { navigate } = useAdminRouter();
@@ -52,6 +54,23 @@ export const DashboardPage: React.FC = () => {
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
   const [chartMetric, setChartMetric] = useState<'gross' | 'net'>('gross');
   const [trafficMetric, setTrafficMetric] = useState<'sessions' | 'visitors'>('sessions');
+  const [realOrderCount, setRealOrderCount] = useState<number | null>(null);
+  const [realOrderCountLoading, setRealOrderCountLoading] = useState(true);
+  const [realOrderCountError, setRealOrderCountError] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    setRealOrderCountLoading(true);
+    const now = new Date();
+    const daysBack = dateRange === 'today' ? 0 : dateRange === '7d' ? 7 : dateRange === '30d' ? 30 : 90;
+    const query = new URLSearchParams({ page: '1', pageSize: '1', dateFrom: shiftBusinessDateInTehran(now, -daysBack), dateTo: tehranBusinessDate(now) });
+    void listAdminOrders(query).then(result => {
+      if (active) { setRealOrderCount(result.pagination.total); setRealOrderCountError(false); }
+    }).catch(() => {
+      if (active) { setRealOrderCount(null); setRealOrderCountError(true); }
+    }).finally(() => { if (active) setRealOrderCountLoading(false); });
+    return () => { active = false; };
+  }, [dateRange]);
 
   // KPI Calculations derived from deterministic state
   const kpis = useMemo(() => getDashboardKPIs(dateRange), [getDashboardKPIs, dateRange]);
@@ -141,7 +160,7 @@ export const DashboardPage: React.FC = () => {
       {/* 0. Header with Timeframe Tabs and Action Center Link */}
       <AdminPageHeader
         title="داشبورد عملیات و مرکز فرماندهی کارگاه"
-        description="پایش بلادرنگ عملکرد فروش، هماهنگی خطوط چاپ دیجیتال DTG و نظارت بر ناوردایی‌های انبار"
+        description="این داشبورد تحلیلی هنوز نمایشی است؛ شمار سفارش‌ها به‌تنهایی از پایگاه داده واقعی خوانده می‌شود."
         actions={
           <div className="flex flex-wrap items-center gap-3">
             {/* Timeframe Presets */}
@@ -497,14 +516,13 @@ export const DashboardPage: React.FC = () => {
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           <KPICard
             title="کل سفارش‌های دریافتی"
-            value={kpis.ordersCount}
+            value={realOrderCount ?? (realOrderCountError ? 'در دسترس نیست' : '—')}
             unit="سفارش"
-            definition="تعداد کل سفارش‌های ثبت‌شده در سامانه طی دوره انتخابی"
+            definition="تعداد سفارش‌های واقعی ثبت‌شده در پایگاه داده طی بازه انتخابی"
             timeframe={timeframeLabel}
-            changePercent={kpis.ordersDeltaPercent}
-            trendText="نسبت به دوره قبل"
-            sourceMode="داده پایگاه"
+            sourceMode="پایگاه داده واقعی"
             icon={<ShoppingBag size={18} />}
+            isLoading={realOrderCountLoading}
           />
 
           <KPICard
@@ -541,8 +559,8 @@ export const DashboardPage: React.FC = () => {
         {/* Short List: Recent Orders with Quick Drawer Inspection */}
         <div className="bg-[#131211] border border-white/10 rounded-2xl p-5">
           <div className="flex items-center justify-between mb-4">
-            <h3 className="text-sm font-bold text-white">آخرین سفارشات دریافتی</h3>
-            <span className="text-xs text-stone-400">کلیک روی هر سطر جهت بازرسی تفصیلی سفارش</span>
+            <h3 className="text-sm font-bold text-white">نمونه‌های نمایشی سفارش</h3>
+            <span className="text-xs text-stone-400">این فهرست تا اتصال داشبورد به سفارش‌های واقعی، فقط فیکسچر محلی است.</span>
           </div>
 
           <div className="divide-y divide-white/5">

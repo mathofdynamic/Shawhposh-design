@@ -1,5 +1,5 @@
 import { useStaff } from './features/StaffAuth';
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useRef } from 'react';
 import { useAdminRouter } from './router';
 import { StaffRole } from './domain/types';
 import { useAdminRepository } from './domain/useAdminRepository';
@@ -22,8 +22,13 @@ import { toFaDigits } from './utils/formatters';
 
 export const AdminLayout: React.FC = () => {
   const { goBackToStore, activeRoute, currentPath } = useAdminRouter();
+  const contentScrollRef = useRef<HTMLDivElement>(null);
   const { state, resetToFixtures, demoClock } = useAdminRepository();
   const { addToast } = useToast();
+
+  useLayoutEffect(() => {
+    contentScrollRef.current?.scrollTo({ top: 0, behavior: 'auto' });
+  }, [currentPath]);
 
   // Staff role from the authenticated server session
   const staffSession = useStaff();
@@ -78,8 +83,8 @@ export const AdminLayout: React.FC = () => {
     resetToFixtures();
     setIsResetConfirmOpen(false);
     addToast({
-      title: 'پایگاه داده بازنشانی شد',
-      description: 'تمامی مقادیر، سفارش‌ها و موجودی انبار به حالت پیش‌فرض کارخانه بازگشت.',
+      title: 'داده‌های نمایشی مرورگر بازنشانی شد',
+      description: 'بازنشانی فقط داده‌های آزمایشی پنل را تغییر می‌دهد؛ اطلاعات واقعی کاربران، سفارش‌ها، کاتالوگ و انبار دست‌نخورده می‌مانند.',
       type: 'info',
     });
   };
@@ -140,7 +145,7 @@ export const AdminLayout: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-[#0d0c0b] text-stone-100 flex flex-col font-sans select-text overflow-x-hidden antialiased" dir="rtl">
+    <div className="h-dvh min-h-screen bg-[#0d0c0b] text-stone-100 flex flex-col font-sans select-text overflow-x-hidden antialiased" dir="rtl">
       {/* Main Workspace Frame */}
       <div className="flex-1 flex min-h-0 relative">
         {/* Desktop Sidebar */}
@@ -157,7 +162,7 @@ export const AdminLayout: React.FC = () => {
         </aside>
 
         {/* Content Body */}
-        <div className="flex-1 flex flex-col min-w-0 min-h-0 overflow-y-auto">
+        <div ref={contentScrollRef} data-admin-scroll-root className="flex-1 flex flex-col min-w-0 min-h-0 overflow-y-auto">
           {/* Header */}
           <AdminHeader
             currentRole={currentRole}
@@ -169,7 +174,7 @@ export const AdminLayout: React.FC = () => {
           />
 
           {/* Page View Region */}
-          <main className={`flex-1 p-4 sm:p-6 lg:p-8 pb-20 lg:pb-8 w-full mx-auto ${getPageWidthClass()}`}>
+          <main className={`flex-1 p-4 sm:p-6 lg:p-8 pb-24 lg:pb-8 w-full mx-auto ${getPageWidthClass()}`}>
             <AdminPageDispatcher />
           </main>
         </div>
@@ -197,8 +202,8 @@ export const AdminLayout: React.FC = () => {
         isOpen={isResetConfirmOpen}
         onClose={() => setIsResetConfirmOpen(false)}
         onConfirm={handleReset}
-        title="بازنشانی کامل پایگاه‌داده دمو"
-        message="آیا مطمئن هستید؟ تمامی فاکتورهای جدید، تغییرات انبار و تاییدهای آتلیه پاک شده و به داده‌های اولیه بازمی‌گردد."
+        title="بازنشانی داده‌های نمایشی مرورگر"
+        message="فقط فیکسچرها و تغییرات نمایشی این مرورگر بازنشانی می‌شوند. کاربران، سفارش‌ها، محصولات، تنوع‌ها و موجودی واقعی سرور تغییر نمی‌کنند."
         confirmLabel="بله، بازنشانی شود"
         cancelLabel="انصراف"
         variant="destructive"

@@ -1,5 +1,7 @@
+import { useEffect, useRef } from 'react';
 import { X, Trash2, ShoppingBag, ArrowLeft, Sliders } from 'lucide-react';
 import { CartItem } from '../types';
+import { handleProductImageError, isDemoProductImage, storefrontProductImage } from '../lib/productImage';
 
 interface CartProps {
   isOpen: boolean;
@@ -8,9 +10,54 @@ interface CartProps {
   onUpdateQuantity: (id: string, qty: number) => void;
   onRemoveItem: (id: string) => void;
   onCheckout: () => void;
+  shippingTomans?: number | null;
 }
 
-export default function Cart({ isOpen, onClose, cart, onUpdateQuantity, onRemoveItem, onCheckout }: CartProps) {
+export default function Cart({ isOpen, onClose, cart, onUpdateQuantity, onRemoveItem, onCheckout, shippingTomans }: CartProps) {
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const closeButtonRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const previouslyFocused = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    closeButtonRef.current?.focus();
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        onClose();
+        return;
+      }
+
+      if (event.key !== 'Tab' || !dialogRef.current) return;
+      const focusable = Array.from(dialogRef.current.querySelectorAll(
+        'button:not([disabled]), a[href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+      ) as NodeListOf<HTMLElement>);
+      if (focusable.length === 0) {
+        event.preventDefault();
+        dialogRef.current.focus();
+        return;
+      }
+
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && (document.activeElement === first || !dialogRef.current.contains(document.activeElement))) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && (document.activeElement === last || !dialogRef.current.contains(document.activeElement))) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+      previouslyFocused?.focus();
+    };
+  }, [isOpen, onClose]);
+
   if (!isOpen) return null;
 
   const totalItems = cart.reduce((acc, item) => acc + item.quantity, 0);
@@ -26,7 +73,7 @@ export default function Cart({ isOpen, onClose, cart, onUpdateQuantity, onRemove
       />
 
       <div className="absolute inset-y-0 left-0 max-w-full flex pr-10">
-        <div className="w-screen max-w-lg bg-[#0e0d0c] border-r border-white/5 shadow-2xl flex flex-col pointer-events-auto">
+        <div ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby="cart-title" tabIndex={-1} className="w-screen max-w-lg bg-[#0e0d0c] border-r border-white/5 shadow-2xl flex flex-col pointer-events-auto">
           
           {/* Cart Header */}
           <div className="px-6 py-5 border-b border-white/5 flex items-center justify-between">
@@ -35,8 +82,8 @@ export default function Cart({ isOpen, onClose, cart, onUpdateQuantity, onRemove
                 <ShoppingBag size={16} />
               </div>
               <div className="text-right">
-                <h2 className="text-sm font-bold text-white">سبد خرید شما</h2>
-                <span className="text-[10px] text-gray-500 font-mono">
+                <h2 id="cart-title" className="text-sm font-bold text-white">سبد خرید شما</h2>
+                <span className="text-[10px] text-stone-300 font-mono">
                   {totalItems.toLocaleString('fa-IR')} محصول اضافه شده است
                 </span>
               </div>
@@ -44,8 +91,10 @@ export default function Cart({ isOpen, onClose, cart, onUpdateQuantity, onRemove
 
             {/* Close Cross */}
             <button
+              ref={closeButtonRef}
               onClick={onClose}
-              className="p-2 bg-white/5 hover:bg-white/10 text-gray-400 hover:text-white rounded-full transition-colors cursor-pointer"
+              aria-label="بستن سبد خرید"
+              className="inline-flex h-11 w-11 shrink-0 items-center justify-center bg-white/5 hover:bg-white/10 text-gray-400 hover:text-white rounded-full transition-colors cursor-pointer focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#ba8d3d] focus-visible:outline-offset-2"
             >
               <X size={16} />
             </button>
@@ -82,10 +131,11 @@ export default function Cart({ isOpen, onClose, cart, onUpdateQuantity, onRemove
                     {/* Item Image */}
                     <div className="w-20 h-20 rounded-xl bg-[#0e0d0c] border border-white/5 p-2 flex items-center justify-center shrink-0">
                       <img
-                        src={item.image}
-                        alt={item.productName}
+                        src={storefrontProductImage(item.image)}
+                        alt={isDemoProductImage(item.image) ? 'تصویر محصول در دسترس نیست' : item.productName}
                         referrerPolicy="no-referrer"
-                        className="w-full h-full object-contain"
+                        onError={handleProductImageError}
+                        className="product-media-source w-full h-full object-contain"
                       />
                     </div>
 
@@ -97,7 +147,8 @@ export default function Cart({ isOpen, onClose, cart, onUpdateQuantity, onRemove
                           <h4 className="text-xs font-bold text-white line-clamp-1">{item.productName}</h4>
                           <button
                             onClick={() => onRemoveItem(item.id)}
-                            className="text-gray-600 hover:text-[#E61919] p-1.5 hover:bg-white/5 rounded transition-colors cursor-pointer shrink-0"
+                            aria-label="حذف کالا از سبد خرید"
+                            className="inline-flex h-11 w-11 shrink-0 items-center justify-center text-stone-400 hover:text-[#E61919] hover:bg-white/5 rounded transition-colors cursor-pointer focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#ba8d3d] focus-visible:outline-offset-2"
                             title="حذف کالا"
                           >
                             <Trash2 size={13} />
@@ -122,14 +173,22 @@ export default function Cart({ isOpen, onClose, cart, onUpdateQuantity, onRemove
                         </div>
                       </div>
 
+                      {item.availabilityCode && (
+                        <p role="status" className="mt-2 text-[10px] font-medium text-amber-300">
+                          {item.availableQuantity === 0 ? 'این سایز دیگر موجود نیست.' : `فقط ${item.availableQuantity?.toLocaleString('fa-IR')} عدد باقی مانده است.`}
+                        </p>
+                      )}
+
                       {/* Quantity & Price Row */}
                       <div className="flex justify-between items-center mt-3 pt-3 border-t border-white/5">
                         
                         {/* Quantity picker */}
                         <div className="flex items-center gap-1 bg-[#0e0d0c] border border-white/5 rounded-lg p-0.5">
                           <button
+                            aria-label="کاهش تعداد"
+                            disabled={item.quantity <= 1}
                             onClick={() => onUpdateQuantity(item.id, Math.max(1, item.quantity - 1))}
-                            className="w-6 h-6 rounded bg-white/5 hover:bg-white/10 text-gray-400 text-xs flex items-center justify-center cursor-pointer"
+                            className="w-11 h-11 rounded bg-white/5 hover:bg-white/10 text-gray-400 text-xs flex items-center justify-center cursor-pointer disabled:cursor-not-allowed disabled:opacity-30"
                           >
                             -
                           </button>
@@ -137,8 +196,10 @@ export default function Cart({ isOpen, onClose, cart, onUpdateQuantity, onRemove
                             {item.quantity.toLocaleString('fa-IR')}
                           </span>
                           <button
+                            aria-label="افزایش تعداد"
+                            disabled={item.availableQuantity !== undefined && item.quantity >= item.availableQuantity}
                             onClick={() => onUpdateQuantity(item.id, item.quantity + 1)}
-                            className="w-6 h-6 rounded bg-white/5 hover:bg-white/10 text-gray-400 text-xs flex items-center justify-center cursor-pointer"
+                            className="w-11 h-11 rounded bg-white/5 hover:bg-white/10 text-gray-400 text-xs flex items-center justify-center cursor-pointer disabled:cursor-not-allowed disabled:opacity-30"
                           >
                             +
                           </button>
@@ -163,17 +224,17 @@ export default function Cart({ isOpen, onClose, cart, onUpdateQuantity, onRemove
             <div className="border-t border-white/5 bg-[#121110] px-6 py-6 space-y-4">
               <div className="space-y-2.5">
                 <div className="flex justify-between items-center text-xs text-gray-400">
-                  <span>جمع فرعی کالاها</span>
+                  <span>جمع کالاها</span>
                   <span className="font-mono">{formattedTotalPrice} تومان</span>
                 </div>
                 <div className="flex justify-between items-center text-xs text-gray-400">
-                  <span>هزینه بسته‌بندی ویژه کادویی و ارسال</span>
+                  <span>هزینه ارسال</span>
                   <span className="text-[#eed29d] text-[10px] bg-[#eed29d]/10 border border-[#eed29d]/20 px-2 py-0.5 rounded-full font-semibold">
-                    رایگان در کل ایران
+                    {shippingTomans == null ? 'تعرفه هنوز تعیین نشده' : `${shippingTomans.toLocaleString('fa-IR')} تومان`}
                   </span>
                 </div>
                 <div className="pt-2 border-t border-white/5 flex justify-between items-center text-sm font-bold text-white">
-                  <span>مجموع مبلغ نهایی</span>
+                  <span>مجموع سبد بدون هزینه ارسال</span>
                   <span className="font-mono text-[#eed29d] text-base">{formattedTotalPrice} تومان</span>
                 </div>
               </div>
@@ -183,7 +244,7 @@ export default function Cart({ isOpen, onClose, cart, onUpdateQuantity, onRemove
                 onClick={onCheckout}
                 className="w-full group relative flex items-center justify-center gap-4 px-6 py-4.5 bg-gradient-to-r from-[#ba8d3d] to-[#e4bc71] hover:from-[#ba8d3d] hover:to-[#ba8d3d] text-[#0e0d0c] rounded-full text-xs font-bold shadow-lg transition-all duration-300 transform active:scale-95 cursor-pointer"
               >
-                <span>تکمیل و ثبت نهایی سفارش من</span>
+                <span>بررسی نشانی و هزینه ارسال</span>
                 <span className="w-7 h-7 rounded-full bg-black/10 flex items-center justify-center group-hover:translate-x-[-3px] transition-transform">
                   <ArrowLeft size={12} className="stroke-[2.5px]" />
                 </span>

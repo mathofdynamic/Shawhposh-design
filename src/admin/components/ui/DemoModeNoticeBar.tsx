@@ -23,8 +23,8 @@ export const DemoModeNoticeBar: React.FC = () => {
     resetData();
     setIsResetConfirmOpen(false);
     addToast({
-      title: 'بازنشانی موفق داده‌ها',
-      description: 'تمامی جداول و تراکنش‌ها به وضعیت پایدار اولیه (Seed ۱۴۰۵۰۷۲۳) بازگشتند.',
+      title: 'داده‌های نمایشی مرورگر بازنشانی شد',
+      description: 'این عملیات فقط فیکسچرهای نمایشی مرورگر را تغییر می‌دهد و اطلاعات واقعی سرور را لمس نمی‌کند.',
       type: 'success',
     });
   };
@@ -41,10 +41,10 @@ export const DemoModeNoticeBar: React.FC = () => {
       <div className="bg-[#181614] border-b border-[#ba8d3d]/30 px-4 py-2.5 flex flex-wrap items-center justify-between gap-3 text-xs">
         <div className="flex items-center gap-2.5">
           <Badge tone="warning" dot>
-            داده‌های نمایشی (Synthetic Demo)
+            ماژول‌های نمایشی
           </Badge>
           <span className="text-stone-300 font-medium">
-            محیط شبیه‌سازی کارگاه شاه‌پوش
+            حساب، سبد، سفارش، کاتالوگ و موجودی به سرور متصل‌اند
           </span>
           <span className="hidden md:inline-block text-stone-500">|</span>
           <span className="hidden md:inline-flex items-center gap-1.5 text-stone-400">
@@ -77,7 +77,7 @@ export const DemoModeNoticeBar: React.FC = () => {
             <svg className="w-3.5 h-3.5 ml-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
             </svg>
-            بازنشانی به فیکسچرهای پیش‌فرض
+            بازنشانی فیکسچرهای مرورگر
           </Button>
         </div>
       </div>
@@ -87,8 +87,8 @@ export const DemoModeNoticeBar: React.FC = () => {
         isOpen={isResetConfirmOpen}
         onClose={() => setIsResetConfirmOpen(false)}
         onConfirm={handleReset}
-        title="بازنشانی داده‌های نمایشی کارگاه"
-        description="آیا مطمئن هستید که می‌خواهید تمامی تغییرات اعمال شده (تغییر موجودی انبار، تایید طرح‌ها، وظایف و ثبت مرجوعی‌ها) را پاک کرده و فیکسچرهای اولیه را بارگذاری مجدد نمایید؟"
+        title="بازنشانی فیکسچرهای نمایشی مرورگر"
+        description="فقط فیکسچرها و تغییرات نمایشی همین مرورگر بازنشانی می‌شوند. حساب‌های واقعی، سفارش‌ها، محصولات، تنوع‌ها و موجودی روی سرور تغییر نمی‌کنند."
         confirmLabel="بله، بازنشانی شود"
         cancelLabel="انصراف"
         isDestructive

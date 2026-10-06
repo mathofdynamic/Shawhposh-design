@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Search, Sliders, Filter, Phone, MapPin, Eye, ArrowLeft, CheckCircle, Shirt, Settings } from 'lucide-react';
 import Navbar from './components/Navbar';
 import Hero from './components/Hero';
@@ -11,16 +11,37 @@ import Checkout from './components/Checkout';
 import ReviewScrollTicker from './components/ReviewScrollTicker';
 import InstagramFeed from './components/InstagramFeed';
 import { useCatalog } from './features/catalog/useCatalog';
-import { api, post } from './api/client';
+import { handleProductImageError } from './lib/productImage';
+import { api, post, ApiClientError } from './api/client';
 import { StaffAuth } from './admin/features/StaffAuth';
 import { CatalogProvider } from './admin/features/CatalogProvider';
 import { Product, CartItem, User as UserType } from './types';
 import Login from './components/Login';
 import Signup from './components/Signup';
+import CustomerAccount from './components/CustomerAccount';
 import { motion, AnimatePresence } from 'motion/react';
 import { AdminRouterProvider } from './admin/router';
 import { AdminLayout } from './admin/AdminLayout';
 import { ToastProvider } from './admin/components/ui';
+import { addVariantToCart, cartItemsForStorefront, loadCart, migrateLegacyCart, removeCartLine, updateCartQuantity, type ServerCart } from './features/cart/api';
+import { resolveLegacyCartVariant } from './features/cart/legacy';
+import { createCheckoutOrder, loadCheckoutConfiguration, type CheckoutConfiguration } from './features/orders/api';
+
+function readLegacyCart(): CartItem[] {
+  try {
+    const raw = localStorage.getItem('shahpoosh_cart');
+    const value: unknown = raw ? JSON.parse(raw) : [];
+    if (!Array.isArray(value)) return [];
+    return value.filter((item): item is CartItem => Boolean(item && typeof item === 'object'
+      && typeof item.productId === 'string' && typeof item.productName === 'string'
+      && typeof item.id === 'string' && typeof item.price === 'number' && Number.isFinite(item.price)
+      && Number.isInteger(item.quantity) && item.quantity > 0
+      && item.color && typeof item.color.name === 'string' && typeof item.color.hex === 'string'
+      && typeof item.size === 'string' && typeof item.image === 'string'));
+  } catch {
+    return [];
+  }
+}
 
 export default function App() {
   // Navigation Screen State
@@ -68,10 +89,18 @@ export default function App() {
     return (saved as 'dark' | 'light') || 'dark';
   });
 
-  // User State with localStorage integration for persistent sessions
+  // Customer identity comes only from the server-backed session.
   const [user, setUser] = useState<UserType | null>(null);
+  const [authReady, setAuthReady] = useState(false);
   const [authError,setAuthError]=useState('');
-  useEffect(() => { localStorage.removeItem('shahpoosh_user'); api<{user:UserType|null}>('/v1/auth/me').then(r=>setUser(r.user)).catch(()=>setUser(null)); }, []);
+  useEffect(() => {
+    let active = true;
+    api<{ user: UserType | null }>('/v1/auth/me')
+      .then(result => { if (active) setUser(result.user); })
+      .catch(() => { if (active) setUser(null); })
+      .finally(() => { if (active) setAuthReady(true); });
+    return () => { active = false; };
+  }, []);
   const [authPage, setAuthPage] = useState<'login' | 'signup' | null>(null);
 
   const handleLogin = (loggedUser: UserType) => {
@@ -80,7 +109,14 @@ export default function App() {
   };
 
   const handleLogout = async () => {
-    try{await post('/v1/auth/logout', {});setUser(null);setAuthError('');localStorage.removeItem('shahpoosh_user');}
+    try {
+      await post('/v1/auth/logout', {});
+      setUser(null);
+      setServerCart(null);
+      setLocalCart([]);
+      setAuthError('');
+      cartHydratedUserRef.current = null;
+    }
     catch(e){setAuthError((e as Error).message);}
   };
 
@@ -96,54 +132,175 @@ export default function App() {
   
   const isDark = theme === 'dark';
 
-  // Cart state with localStorage integration
-  const [cart, setCart] = useState<CartItem[]>(() => {
-    const saved = localStorage.getItem('shahpoosh_cart');
-    return saved ? JSON.parse(saved) : [];
-  });
+  const [localCart, setLocalCart] = useState<CartItem[]>(readLegacyCart);
+  const [serverCart, setServerCart] = useState<ServerCart | null>(null);
+  const [cartLoading, setCartLoading] = useState(false);
+  const [cartError, setCartError] = useState('');
+  const [cartNotice, setCartNotice] = useState('');
+  const [cartRefreshToken, setCartRefreshToken] = useState(0);
+  const [checkoutConfiguration, setCheckoutConfiguration] = useState<CheckoutConfiguration | null>(null);
+  const checkoutAfterLoginRef = useRef(false);
+  const cartHydratedUserRef = useRef<string | null>(null);
+  const cartLoadingUserRef = useRef<string | null>(null);
+  const productsRef = useRef(PRODUCTS);
+  productsRef.current = PRODUCTS;
+  const cart: CartItem[] = user ? (serverCart ? cartItemsForStorefront(serverCart) : []) : localCart;
   const [cartOpen, setCartOpen] = useState(false);
+
+  useEffect(() => {
+    if (!cartNotice) return;
+    const timer = window.setTimeout(() => setCartNotice(''), 5000);
+    return () => window.clearTimeout(timer);
+  }, [cartNotice]);
+
+  useEffect(() => {
+    let active = true;
+    loadCheckoutConfiguration().then(result => { if (active) setCheckoutConfiguration(result); }).catch(() => {
+      if (active) setCheckoutConfiguration(null);
+    });
+    return () => { active = false; };
+  }, []);
+
+  useEffect(() => {
+    if (!authReady || !user || cartHydratedUserRef.current === user.id || cartLoadingUserRef.current === user.id) return;
+    let legacyRaw: string | null = null;
+    try { legacyRaw = localStorage.getItem('shahpoosh_cart'); } catch { /* storage may be unavailable */ }
+    if (legacyRaw && catalogLoading) return;
+    if (legacyRaw && (catalogError || PRODUCTS.length === 0)) {
+      setCartError('فهرست محصولات در دسترس نیست؛ سبد قبلی تا بارگذاری دوباره حفظ شده است.');
+      return;
+    }
+
+    cartLoadingUserRef.current = user.id;
+    let active = true;
+    setCartLoading(true);
+    setCartError('');
+    void (async () => {
+      try {
+        const loaded = await loadCart();
+        if (!active) return;
+        setServerCart(loaded.cart);
+        if (legacyRaw) {
+          let oldItems: unknown[];
+          try {
+            const parsed: unknown = JSON.parse(legacyRaw);
+            if (!Array.isArray(parsed)) throw new Error('invalid legacy cart');
+            oldItems = parsed;
+          } catch {
+            setCartError('سبد خرید ذخیره‌شده در این مرورگر قابل خواندن نیست؛ داده موجود حفظ شده است.');
+            cartHydratedUserRef.current = user.id;
+            return;
+          }
+          const valid: Array<{ variantId: string; quantity: number }> = [];
+          let unmappableCount = 0;
+          for (const rawItem of oldItems) {
+            if (!rawItem || typeof rawItem !== 'object') { unmappableCount += 1; continue; }
+            const legacyItem = rawItem as Partial<CartItem>;
+            if (legacyItem.isCustom || !Number.isInteger(legacyItem.quantity) || !legacyItem.quantity || legacyItem.quantity < 1 || legacyItem.quantity > 20) {
+              unmappableCount += 1;
+              continue;
+            }
+            const variant = resolveLegacyCartVariant(productsRef.current, legacyItem);
+            if (!variant) { unmappableCount += 1; continue; }
+            valid.push({ variantId: variant.id, quantity: legacyItem.quantity });
+          }
+          let migrationKey: string;
+          try {
+            migrationKey = localStorage.getItem('shahpoosh_cart_migration_key') || crypto.randomUUID();
+            localStorage.setItem('shahpoosh_cart_migration_key', migrationKey);
+          } catch {
+            throw new Error('امکان ذخیره شناسه امن انتقال سبد وجود ندارد؛ سبد قبلی حفظ شد.');
+          }
+          const migrated = await migrateLegacyCart(valid, migrationKey);
+          if (!active) return;
+          setServerCart(migrated.cart);
+          let legacyRemoved = false;
+          try {
+            localStorage.removeItem('shahpoosh_cart');
+            legacyRemoved = true;
+            localStorage.removeItem('shahpoosh_cart_migration_key');
+          } catch { /* keep the idempotency key while a local copy remains */ }
+          if (legacyRemoved) setLocalCart([]);
+          const rejectedCount = migrated.migration.rejected.length + unmappableCount;
+          if (rejectedCount) setCartNotice(`${migrated.migration.accepted} کالا منتقل شد؛ ${rejectedCount} مورد نامعتبر، ناموجود یا مربوط به طرح سفارشی منتقل نشد.`);
+          else if (migrated.migration.accepted) setCartNotice('سبد خرید قبلی با قیمت و موجودی فعلی سرور منتقل شد.');
+        }
+        cartHydratedUserRef.current = user.id;
+        if (checkoutAfterLoginRef.current) {
+          checkoutAfterLoginRef.current = false;
+          setActiveTab('checkout');
+        }
+      } catch (failure) {
+        if (active) setCartError(failure instanceof ApiClientError ? failure.message : 'سبد خرید از سرور دریافت نشد. دوباره تلاش کنید.');
+      } finally {
+        if (cartLoadingUserRef.current === user.id) cartLoadingUserRef.current = null;
+        if (active) setCartLoading(false);
+      }
+    })();
+    return () => { active = false; };
+  }, [authReady, user?.id, catalogLoading, catalogError, PRODUCTS.length, cartRefreshToken]);
 
   // Shop state toggling
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [sortBy, setSortBy] = useState<'default' | 'price-asc' | 'price-desc' | 'popular'>('default');
 
-  // Sync cart to local Storage
+  // Guest cart is a temporary, non-authoritative browser convenience.
   useEffect(() => {
-    localStorage.setItem('shahpoosh_cart', JSON.stringify(cart));
-  }, [cart]);
+    if (!user && authReady) {
+      try { localStorage.setItem('shahpoosh_cart', JSON.stringify(localCart)); } catch { /* cart remains in memory */ }
+    }
+  }, [localCart, user, authReady]);
 
-  // Add Item to active cart
   const handleAddToCart = (newItem: Omit<CartItem, 'id'>) => {
-    const product=PRODUCTS.find(p=>p.id===newItem.productId);
-    const variant=product?.variants?.find(v=>v.id===newItem.variantId&&v.sku===newItem.sku);
-    if(!variant || newItem.quantity<1 || newItem.quantity>variant.available)return;
-    newItem={...newItem,price:variant.priceTomans??product!.price};
-    const uniqueId = newItem.isCustom 
-      ? newItem.productId // Already generated uniquely
-      : `${newItem.productId}-${newItem.color.hex}-${newItem.size}`;
-
-    setCart((prevCart) => {
-      const existingIdx = prevCart.findIndex((item) => item.id === uniqueId);
-      if (existingIdx > -1) {
-        const updated = [...prevCart];
-        updated[existingIdx].quantity = Math.min(variant.available,updated[existingIdx].quantity+newItem.quantity);
-        return updated;
+    setCartError('');
+    if (newItem.isCustom) {
+      setCartNotice('ذخیره طرح سفارشی در سفارش هنوز فعال نیست؛ این طرح در سبد خرید ثبت نشد.');
+      return;
+    }
+    const product = PRODUCTS.find(item => item.id === newItem.productId);
+    const variant = product?.variants?.find(item => item.id === newItem.variantId && item.sku === newItem.sku);
+    if (!product || !variant || newItem.quantity < 1 || newItem.quantity > variant.available) {
+      setCartError('این اندازه یا تعداد دیگر موجود نیست. موجودی فعلی را بررسی کنید.');
+      return;
+    }
+    if (user) {
+      if (cartHydratedUserRef.current !== user.id) {
+        setCartError('سبد خرید از سرور در حال آماده‌سازی است؛ دوباره تلاش کنید.');
+        return;
       }
-      return [...prevCart, { ...newItem, id: uniqueId }];
+      void addVariantToCart(variant.id, newItem.quantity).then(result => setServerCart(result.cart)).catch(failure => {
+        setCartError(failure instanceof Error ? failure.message : 'افزودن کالا انجام نشد.');
+      });
+      return;
+    }
+    const guestItem = { ...newItem, price: variant.priceTomans ?? product.price, availableQuantity: variant.available, availabilityCode: null };
+    setLocalCart(previous => {
+      const existing = previous.find(item => item.variantId === variant.id);
+      const quantity = (existing?.quantity ?? 0) + newItem.quantity;
+      if (quantity > variant.available) {
+        setCartError(`فقط ${variant.available.toLocaleString('fa-IR')} عدد از این اندازه موجود است.`);
+        return previous;
+      }
+      if (existing) return previous.map(item => item.variantId === variant.id ? { ...item, quantity } : item);
+      return [...previous, { ...guestItem, id: variant.id, variantId: variant.id }];
     });
   };
 
-  // Modify quantities
   const handleUpdateQuantity = (id: string, newQty: number) => {
-    setCart((prevCart) => 
-      prevCart.map((item) => item.id === id ? { ...item, quantity: newQty } : item)
-    );
+    if (user) {
+      void updateCartQuantity(id, newQty).then(result => setServerCart(result.cart)).catch(failure => setCartError(failure instanceof Error ? failure.message : 'تعداد به‌روزرسانی نشد.'));
+      return;
+    }
+    setLocalCart(previous => previous.map(item => item.id === id ? { ...item, quantity: Math.min(newQty, item.availableQuantity ?? newQty) } : item));
   };
 
-  // Remove single card item
   const handleRemoveItem = (id: string) => {
-    setCart((prevCart) => prevCart.filter((item) => item.id !== id));
+    if (user) {
+      void removeCartLine(id).then(result => setServerCart(result.cart)).catch(failure => setCartError(failure instanceof Error ? failure.message : 'حذف کالا انجام نشد.'));
+      return;
+    }
+    setLocalCart(previous => previous.filter(item => item.id !== id));
   };
 
   // Switch designer view loaded with template
@@ -152,10 +309,34 @@ export default function App() {
     setActiveTab('designer');
   };
 
-  // Handle Order Submit (clear cart)
-  const handleSubmitOrder = (orderDetails: any) => {
-    setCart([]);
-    localStorage.removeItem('shahpoosh_cart');
+  const handleCheckout = () => {
+    setCartOpen(false);
+    if (!authReady) {
+      setCartNotice('در حال بررسی نشست حساب کاربری؛ چند لحظه دیگر دوباره تلاش کنید.');
+      return;
+    }
+    if (!user) {
+      checkoutAfterLoginRef.current = true;
+      setAuthPage('login');
+      return;
+    }
+    if (cartHydratedUserRef.current !== user.id) {
+      setCartError('در حال آماده‌سازی سبد خرید؛ چند لحظه دیگر دوباره تلاش کنید.');
+      return;
+    }
+    setActiveTab('checkout');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const refreshServerCart = async () => {
+    try { setServerCart((await loadCart()).cart); setCartError(''); }
+    catch (failure) { setCartError(failure instanceof Error ? failure.message : 'سبد خرید به‌روزرسانی نشد.'); }
+  };
+
+  const handleSubmitOrder = async (input: { addressId?: string; shippingAddress?: Record<string, string>; customerNote?: string }, idempotencyKey: string) => {
+    const result = await createCheckoutOrder(input, idempotencyKey);
+    await refreshServerCart();
+    return result.order;
   };
 
   // Set active product detail screen
@@ -207,8 +388,11 @@ export default function App() {
       {catalogLoading && <div role="status" className="fixed bottom-4 left-4 z-40 rounded-xl bg-black/90 p-3 text-stone-200">در حال دریافت محصولات…</div>}
       {catalogError && <div role="alert" className="fixed bottom-4 left-4 z-40 rounded-xl bg-black/90 p-3 text-red-300">{catalogError}</div>}
       {authError && <div role="alert" className="fixed bottom-4 right-4 z-50 rounded-xl bg-black/90 p-3 text-red-300">{authError}<button onClick={()=>void handleLogout()} className="mr-3 underline">تلاش دوباره</button></div>}
+      {cartLoading && <div role="status" className="fixed bottom-4 right-4 z-40 rounded-xl bg-black/90 p-3 text-stone-200">در حال دریافت سبد خرید…</div>}
+      {cartError && <div role="alert" className="fixed bottom-4 right-4 z-50 max-w-sm rounded-xl border border-red-400/20 bg-black/95 p-3 text-xs text-red-200">{cartError}{user && <button onClick={() => setCartRefreshToken(value => value + 1)} className="mr-3 underline">تلاش دوباره</button>}</div>}
       <Navbar 
         activeTab={activeTab} 
+        isCheckout={activeTab === 'checkout'}
         setActiveTab={(tab) => {
           setActiveTab(tab);
           setSelectedProduct(null);
@@ -221,12 +405,14 @@ export default function App() {
         user={user}
         onLoginClick={() => setAuthPage('login')}
         onLogout={handleLogout}
+        onAccountClick={() => { setActiveTab('account'); window.scrollTo({ top: 0, behavior: 'smooth' }); }}
         onAdminClick={() => {
           setActiveTab('admin');
           window.history.pushState({}, '', '/admin/overview/dashboard');
           window.scrollTo({ top: 0, behavior: 'smooth' });
         }}
       />
+      {cartNotice && <div role="status" className="mx-auto mt-24 w-[calc(100%-2rem)] max-w-5xl rounded-xl border border-[#ba8d3d]/20 bg-black/95 p-3 text-xs text-[#eed29d]">{cartNotice}<button onClick={() => setCartNotice('')} className="mr-3 underline">بستن</button></div>}
 
       {/* Primary Page views */}
       <div className="flex-1 w-full relative">
@@ -320,7 +506,7 @@ export default function App() {
               </div>
             </section>
 
-            {/* HIGH-END SCROLLING TICKER LOOP - REAL CUSTOMER FEEDBACK */}
+            {/* Customer feedback remains unavailable until the real review module is implemented. */}
             <div className="max-w-7xl mx-auto px-6 md:px-12 pb-24">
               <ReviewScrollTicker isDark={isDark} />
             </div>
@@ -591,6 +777,7 @@ export default function App() {
                     src="https://picsum.photos/seed/printing_tech/800/500"
                     alt="مراحل تولید تیشرت در چاپ‌خانه"
                     referrerPolicy="no-referrer"
+                    onError={handleProductImageError}
                     className="w-full h-full object-cover opacity-80 hover:scale-105 transition-transform duration-700"
                   />
                 </div>
@@ -643,10 +830,25 @@ export default function App() {
           <div className="animate-fade-in animate-duration-500">
             <Checkout 
               cart={cart}
+              configuration={checkoutConfiguration}
               onBackToShop={() => setActiveTab('shop')}
               onSubmitOrder={handleSubmitOrder}
             />
           </div>
+        )}
+        {activeTab === 'account' && user && (
+          <CustomerAccount
+            theme={theme}
+            user={user}
+            onBack={() => setActiveTab('home')}
+            onUserUpdated={setUser}
+          />
+        )}
+        {activeTab === 'account' && !user && (
+          <section className="min-h-[70vh] px-6 pt-40 text-center text-stone-300">
+            <p>برای مشاهده حساب کاربری وارد شوید.</p>
+            <button onClick={() => setAuthPage('login')} className="mt-5 rounded-full bg-[#ba8d3d] px-6 py-3 text-sm font-bold text-black">ورود به حساب</button>
+          </section>
         )}
           </motion.div>
         </AnimatePresence>
@@ -659,11 +861,8 @@ export default function App() {
         cart={cart}
         onUpdateQuantity={handleUpdateQuantity}
         onRemoveItem={handleRemoveItem}
-        onCheckout={() => {
-          setCartOpen(false);
-          setActiveTab('checkout');
-          window.scrollTo({ top: 0, behavior: 'smooth' });
-        }}
+        onCheckout={handleCheckout}
+        shippingTomans={checkoutConfiguration?.shippingTomans ?? null}
       />
 
       {/* Styled Iranian Streetwear Footer */}
@@ -786,25 +985,25 @@ export default function App() {
 
           {/* Dynamic trust certificates (Enamad) Mock Column 3 */}
           <div className="md:col-span-3 space-y-4">
-            <h4 className="text-[11px] font-black tracking-wider text-[#ba8d3d] border-r-2 border-[#ba8d3d]/40 pr-2">مجوزها و استانداردهای تایید شده</h4>
+            <h4 className="text-[11px] font-black tracking-wider text-[#ba8d3d] border-r-2 border-[#ba8d3d]/40 pr-2">وضعیت فروشگاه</h4>
             <div className="grid grid-cols-2 gap-3">
               <div className={`p-4 rounded-2xl border flex flex-col items-center justify-center text-center gap-2 transition-all duration-300 hover:scale-[1.03] ${
                 isDark ? 'bg-[#151312] border-white/5 hover:border-[#ba8d3d]/20 shadow-lg' : 'bg-white border-slate-200/80 hover:border-[#ba8d3d]/30 shadow-sm text-slate-800'
               }`}>
-                <div className="w-7 h-7 rounded-full bg-[#ba8d3d]/10 flex items-center justify-center text-[10px] text-[#ba8d3d] font-bold">ص</div>
-                <span className="text-[10px] text-[#eed29d] font-extrabold">وزارت صنعت معدن</span>
-                <span className={`text-[8px] leading-normal ${isDark ? 'text-gray-500' : 'text-slate-550'}`}>درمانگاه امن اعتماد الکترونیکی</span>
+                <div className="w-7 h-7 rounded-full bg-[#ba8d3d]/10 flex items-center justify-center text-[10px] text-[#ba8d3d] font-bold">ک</div>
+                <span className="text-[10px] text-[#eed29d] font-extrabold">کاتالوگ</span>
+                <span className={`text-[8px] leading-normal ${isDark ? 'text-gray-500' : 'text-slate-550'}`}>محصولات از پایگاه داده</span>
               </div>
               <div className={`p-4 rounded-2xl border flex flex-col items-center justify-center text-center gap-2 transition-all duration-300 hover:scale-[1.03] ${
                 isDark ? 'bg-[#151312] border-white/5 hover:border-[#ba8d3d]/20 shadow-lg' : 'bg-white border-slate-200/80 hover:border-[#ba8d3d]/30 shadow-sm text-slate-800'
               }`}>
-                <div className="w-7 h-7 rounded-full bg-[#ba8d3d]/10 flex items-center justify-center text-[10px] text-[#ba8d3d] font-bold">ر</div>
-                <span className="text-[10px] text-[#eed29d] font-extrabold">ارشاد و رسانه</span>
-                <span className={`text-[8px] leading-normal ${isDark ? 'text-gray-500' : 'text-slate-550'}`}>سامانه نشان طلایی فرهنگ عامه</span>
+                <div className="w-7 h-7 rounded-full bg-[#ba8d3d]/10 flex items-center justify-center text-[10px] text-[#ba8d3d] font-bold">پ</div>
+                <span className="text-[10px] text-[#eed29d] font-extrabold">پرداخت آنلاین</span>
+                <span className={`text-[8px] leading-normal ${isDark ? 'text-gray-500' : 'text-slate-550'}`}>در فاز بعد فعال می‌شود</span>
               </div>
             </div>
             <div className={`text-[9.5px] leading-relaxed transition-colors ${isDark ? 'text-gray-600' : 'text-slate-400'}`}>
-              پلتفرم امن شهپوش مجهز به پروتکل رمزگذاری سراسری تبادلات مالی همگام با استانداردهای شبکه بانکی کشور است.
+              درگاه پرداخت هنوز متصل نشده است؛ ثبت سفارش تا تعیین هزینه ارسال غیرفعال می‌ماند.
             </div>
           </div>
 

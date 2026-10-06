@@ -31,6 +31,7 @@ export interface TableProps<T> {
   stickyHeader?: boolean;
   maxHeight?: string;
   ariaLabel?: string;
+  mobileScrollHint?: boolean;
 }
 
 export function Table<T>({
@@ -50,6 +51,7 @@ export function Table<T>({
   stickyHeader = false,
   maxHeight,
   ariaLabel = 'جدول داده‌های سامانه',
+  mobileScrollHint = false,
 }: TableProps<T>) {
   const safeColumns = columns || [];
   const safeData = data || [];
@@ -66,8 +68,15 @@ export function Table<T>({
       : 'py-3 px-4 text-xs sm:text-[13px] font-semibold';
 
   return (
-    <div className="w-full overflow-hidden border border-white/10 rounded-xl bg-[#131211] shadow-sm">
-      <div className="overflow-x-auto scrollbar-thin scrollbar-thumb-white/10" style={maxHeight ? { maxHeight, overflowY: 'auto' } : undefined}>
+    <div className="w-full min-w-0 overflow-hidden border border-white/10 rounded-xl bg-[#131211] shadow-sm">
+      {mobileScrollHint && <p className="border-b border-white/5 bg-white/[0.015] px-3 py-2 text-right text-[10px] text-stone-400 sm:hidden">برای مشاهده همه ستون‌ها، جدول را افقی بکشید.</p>}
+      <div
+        className="overflow-x-auto scrollbar-thin scrollbar-thumb-white/25 scrollbar-track-white/5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#ba8d3d]"
+        role={mobileScrollHint ? 'region' : undefined}
+        tabIndex={mobileScrollHint ? 0 : undefined}
+        aria-label={mobileScrollHint ? `${ariaLabel}. برای مشاهده همه ستون‌ها در موبایل افقی پیمایش کنید.` : undefined}
+        style={maxHeight ? { maxHeight, overflowY: 'auto' } : undefined}
+      >
         <table className="w-full text-right border-collapse select-text" aria-label={ariaLabel}>
           <thead className={stickyHeader ? 'sticky top-0 z-10 bg-[#161413] shadow-sm' : 'bg-[#161413]'}>
             <tr className="border-b border-white/10">
@@ -147,7 +156,9 @@ export function Table<T>({
                   colSpan={safeColumns.length + (onSelectAll ? 1 : 0)}
                   className="py-12 text-center text-gray-500 text-xs md:text-sm font-sans"
                 >
-                  {emptyMessage}
+                  <span className="ml-auto mr-0 block w-full text-right md:mx-auto md:text-center" style={{ maxWidth: 'calc(100vw - 2rem)' }}>
+                    {emptyMessage}
+                  </span>
                 </td>
               </tr>
             ) : (

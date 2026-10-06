@@ -1,94 +1,101 @@
-import React, { useState } from 'react';
-import { ArrowRight, CheckCircle, ShieldCheck, CreditCard, Sparkles, MapPin, ClipboardList } from 'lucide-react';
-import { CartItem, Order } from '../types';
+import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
+import { ArrowRight, CheckCircle, ClipboardList, CreditCard, MapPin, ShieldCheck } from 'lucide-react';
+import { ApiClientError } from '../api/client';
+import type { CustomerAddress } from '../features/account/api';
+import { loadAddresses } from '../features/account/api';
+import type { CheckoutConfiguration, OrderSnapshot } from '../features/orders/api';
+import type { CartItem } from '../types';
 
 interface CheckoutProps {
   cart: CartItem[];
+  configuration: CheckoutConfiguration | null;
   onBackToShop: () => void;
-  onSubmitOrder: (orderDetails: any) => void;
+  onSubmitOrder: (input: { addressId?: string; shippingAddress?: Record<string, string>; customerNote?: string }, idempotencyKey: string) => Promise<OrderSnapshot>;
 }
 
-export default function Checkout({ cart, onBackToShop, onSubmitOrder }: CheckoutProps) {
-  const [fullName, setFullName] = useState('');
+const inputClass = 'w-full rounded-2xl border border-white/10 bg-[#0e0d0c] px-5 py-3.5 text-right text-xs text-white outline-none transition-colors focus:border-[#ba8d3d] focus:ring-1 focus:ring-[#ba8d3d]/30';
+
+export default function Checkout({ cart, configuration, onBackToShop, onSubmitOrder }: CheckoutProps) {
+  const [addresses, setAddresses] = useState<CustomerAddress[]>([]);
+  const [selectedAddressId, setSelectedAddressId] = useState('');
+  const [recipientName, setRecipientName] = useState('');
   const [phone, setPhone] = useState('');
-  const [email, setEmail] = useState('');
+  const [province, setProvince] = useState('');
   const [city, setCity] = useState('');
-  const [address, setAddress] = useState('');
+  const [addressLine, setAddressLine] = useState('');
   const [postalCode, setPostalCode] = useState('');
-  const [formErrors, setFormErrors] = useState<Record<string, string>>({});
-  const [isSuccess, setIsSuccess] = useState(false);
-  const [orderId, setOrderId] = useState('');
+  const [customerNote, setCustomerNote] = useState('');
+  const [addressLoading, setAddressLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState('');
+  const [order, setOrder] = useState<OrderSnapshot | null>(null);
+  const keyRef = useRef<{ fingerprint: string; key: string } | null>(null);
 
-  const totalPrice = cart.reduce((acc, item) => acc + (item.price * item.quantity), 0);
-  const formattedTotalPrice = totalPrice.toLocaleString('fa-IR');
+  useEffect(() => {
+    let active = true;
+    loadAddresses().then(result => {
+      if (!active) return;
+      setAddresses(result.addresses);
+      const preferred = result.addresses.find(item => item.isDefault) ?? result.addresses[0];
+      if (preferred) setSelectedAddressId(preferred.id);
+    }).catch(failure => {
+      if (active) setError(failure instanceof ApiClientError ? failure.message : 'نشانی‌های ذخیره‌شده بارگذاری نشدند.');
+    }).finally(() => { if (active) setAddressLoading(false); });
+    return () => { active = false; };
+  }, []);
 
-  const validateForm = () => {
-    const errors: Record<string, string> = {};
-    if (!fullName.trim()) errors.fullName = 'نام و نام خانوادگی را وارد نمایید';
-    if (!phone.trim()) errors.phone = 'شماره تلفن همراه را وارد نمایید';
-    else if (!/^09\d{9}$/.test(phone)) errors.phone = 'شماره معتبر نیست (مثال: 09123456789)';
-    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) errors.email = 'ایمیل وارد شده معتبر نیست';
-    if (!city.trim()) errors.city = 'استان و شهر محل سکونت را وارد نمایید';
-    if (!address.trim()) errors.address = 'نشانی دقیق پستی را بنویسید';
-    if (!postalCode.trim()) errors.postalCode = 'کد پستی ۱۰ رقمی را همراه داشته باشید';
-    else if (!/^\d{10}$/.test(postalCode)) errors.postalCode = 'کد پستی باید ده رقم متوالی باشد';
+  useEffect(() => {
+    if (order) window.scrollTo(0, 0);
+  }, [order]);
 
-    setFormErrors(errors);
-    return Object.keys(errors).length === 0;
+  const selectedAddress = addresses.find(item => item.id === selectedAddressId);
+  const subtotalTomans = useMemo(() => cart.reduce((sum, item) => sum + item.price * item.quantity, 0), [cart]);
+  const unavailable = cart.some(item => item.availabilityCode || (item.availableQuantity !== undefined && item.quantity > item.availableQuantity));
+  const shippingTomans = configuration?.shippingTomans ?? null;
+  const totalTomans = shippingTomans === null ? null : subtotalTomans + shippingTomans;
+
+  const chooseAddress = (id: string) => {
+    setSelectedAddressId(id);
+    setError('');
   };
 
-  const handlePlaceOrder = (e: React.FormEvent) => {
-    e.preventDefault();
-    setFormErrors({checkout:'ثبت سفارش و پرداخت هنوز فعال نیست. هیچ سفارشی ثبت نشده است.'});
+  const placeOrder = async (event: FormEvent) => {
+    event.preventDefault();
+    if (!configuration?.orderSubmissionEnabled || unavailable || cart.length === 0) return;
+    setError('');
+    const payload = selectedAddress ? { addressId: selectedAddress.id, ...(customerNote.trim() ? { customerNote: customerNote.trim() } : {}) } : {
+      shippingAddress: { recipientName, phone, province, city, addressLine, postalCode },
+      ...(customerNote.trim() ? { customerNote: customerNote.trim() } : {}),
+    };
+    const fingerprint = JSON.stringify(payload);
+    if (!keyRef.current || keyRef.current.fingerprint !== fingerprint) {
+      keyRef.current = { fingerprint, key: crypto.randomUUID() };
+    }
+    setSubmitting(true);
+    try {
+      setOrder(await onSubmitOrder(payload, keyRef.current.key));
+    } catch (failure) {
+      setError(failure instanceof ApiClientError ? failure.message : 'ثبت سفارش انجام نشد. وضعیت سبد را بررسی کنید و دوباره تلاش کنید.');
+    } finally { setSubmitting(false); }
   };
 
-  if (isSuccess) {
+  if (order) {
     return (
-      <section className="min-h-[100dvh] pt-32 pb-24 px-6 md:px-12 bg-grid-lines flex items-center justify-center">
-        {/* Outer Hardware frame double-bezel nesting */}
-        <div className="double-bezel-outer w-full max-w-2xl">
-          <div className="double-bezel p-8 md:p-12 text-center bg-[#151312] flex flex-col items-center">
-            
-            <div className="w-16 h-16 rounded-full bg-[#4AF626]/10 border border-[#4AF626]/20 text-[#4AF626] flex items-center justify-center mb-6 shadow-md">
-              <CheckCircle size={32} className="stroke-[2px]" />
-            </div>
-
-            <h1 className="text-2xl md:text-4xl font-display font-medium text-white mb-3">
-              سفارش شما با موفقیت ثبت شد!
-            </h1>
-            
-            <p className="text-xs md:text-sm text-gray-400 max-w-[50ch] leading-relaxed mb-8">
-              هنرمندان و کارورزان چاپ‌خانه شهپوش در حال آماده‌سازی و پیاده‌سازی طرح شما بر روی البسه گران‌بها هستند. جزئیات به زودی پیامک خواهد شد.
-            </p>
-
-            {/* Tracking Code with monospaced format */}
-            <div className="bg-[#0e0d0c] border border-white/5 rounded-3xl p-6 mb-8 w-full max-w-md">
-              <div className="text-[10px] text-gray-500 font-mono tracking-wider mb-2">UNIQUE ORDER REFERENCE</div>
-              <div className="font-mono text-xl md:text-2xl font-bold text-[#eed29d] tracking-widest">{orderId}</div>
-              <div className="text-[10px] text-[#4AF626] bg-[#4AF626]/10 border border-[#4AF626]/20 px-3 py-1 rounded-full w-max mx-auto mt-3">
-                وضعیت: در حال پردازش ملزومات چاپی
+      <section className="min-h-[100dvh] px-6 pb-24 pt-12 md:px-12 md:pt-8">
+        <div className="double-bezel-outer mx-auto w-full max-w-2xl">
+          <div className="double-bezel flex flex-col items-center bg-[#151312] p-8 text-center md:p-12">
+            <div className="mb-6 flex h-16 w-16 items-center justify-center rounded-full border border-[#ba8d3d]/30 bg-[#ba8d3d]/10 text-[#eed29d]"><CheckCircle size={30} /></div>
+            <h1 className="mb-3 text-2xl font-medium text-white md:text-3xl">سفارش شما ثبت شد</h1>
+            <p className="mb-8 max-w-[50ch] text-sm leading-relaxed text-gray-400">سفارش در انتظار پرداخت است. هیچ پرداختی انجام نشده و پس از فعال‌شدن درگاه، ادامه پرداخت از همین بخش در دسترس خواهد بود.</p>
+            <div className="mb-8 w-full max-w-md rounded-3xl border border-white/5 bg-[#0e0d0c] p-6">
+              <div className="mb-2 text-[10px] tracking-wide text-gray-500">شماره سفارش</div>
+              <div dir="ltr" className="whitespace-nowrap font-mono text-base font-bold tracking-wide text-[#eed29d] sm:text-xl">{order.orderNumber}</div>
+              <div className="mt-4 inline-flex items-center gap-2 rounded-full border border-amber-400/20 bg-amber-400/10 px-3 py-1.5 text-xs text-amber-200">
+                <CreditCard size={13} /> وضعیت پرداخت: پرداخت‌نشده
               </div>
+              <div className="mt-3 text-sm text-stone-300">مبلغ سفارش: {order.totalTomans.toLocaleString('fa-IR')} تومان</div>
             </div>
-
-            {/* Guarantees list inline */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 w-full max-w-lg mb-8 text-right">
-              <div className="flex gap-2 p-3 bg-white/5 border border-white/5 rounded-2xl">
-                <ShieldCheck size={16} className="text-[#ba8d3d] shrink-0 mt-0.5" />
-                <span className="text-[11px] text-gray-400">شناسنامه انحصاری اصالت اثر صادر شده و در کادوی ویژه ارسال خواهد شد.</span>
-              </div>
-              <div className="flex gap-2 p-3 bg-white/5 border border-white/5 rounded-2xl">
-                <MapPin size={16} className="text-[#ba8d3d] shrink-0 mt-0.5" />
-                <span className="text-[11px] text-gray-400">ارسال با بیمه کامل پستی در سریع‌ترین زمان از گمرک پایتخت.</span>
-              </div>
-            </div>
-
-            <button
-              onClick={onBackToShop}
-              className="px-8 py-4 bg-[#ba8d3d] hover:bg-[#a67c33] text-[#0e0d0c] rounded-full text-xs font-bold shadow-lg transition-transform active:scale-95 cursor-pointer"
-            >
-              بازگشت به صفحه اصلی فروشگاه
-            </button>
-
+            <button onClick={onBackToShop} className="rounded-full bg-[#ba8d3d] px-7 py-3.5 text-xs font-bold text-[#0e0d0c] transition-colors hover:bg-[#a67c33]">بازگشت به فروشگاه</button>
           </div>
         </div>
       </section>
@@ -96,197 +103,77 @@ export default function Checkout({ cart, onBackToShop, onSubmitOrder }: Checkout
   }
 
   return (
-    <section className="min-h-[100dvh] pt-32 pb-24 px-6 md:px-12 bg-grid-lines">
-      <div className="max-w-7xl mx-auto">
-        
-        {/* Navigation Head Back */}
-        <button
-          onClick={onBackToShop}
-          className="mb-8 flex items-center gap-2 px-5 py-2.5 bg-white/5 hover:bg-white/10 border border-white/5 rounded-full text-xs text-gray-300 transition-all duration-300 group cursor-pointer"
-        >
-          <ArrowRight size={14} className="group-hover:translate-x-[2px] transition-transform" />
-          <span>بازگشت به کارگاه فروشگاه</span>
-        </button>
+    <section className="min-h-[100dvh] bg-grid-lines px-5 pb-24 pt-12 md:px-12 md:pt-8">
+      <div className="mx-auto max-w-7xl">
+        <button onClick={onBackToShop} className="mb-8 inline-flex items-center gap-2 rounded-full border border-white/5 bg-white/5 px-5 py-2.5 text-xs text-gray-300 transition-colors hover:bg-white/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#ba8d3d]"><ArrowRight size={14} /> بازگشت به فروشگاه</button>
+        <div className="mb-7 text-right">
+          <span className="font-mono text-[10px] tracking-wide text-[#ba8d3d]">ORDER REVIEW</span>
+          <h1 className="mt-1 text-2xl font-bold text-white md:text-3xl">بررسی سفارش</h1>
+          <p className="mt-2 text-xs text-stone-400">قیمت، موجودی و مبلغ نهایی هنگام ثبت سفارش در سرور دوباره بررسی می‌شوند.</p>
+        </div>
+        {error && <div role="alert" className="mb-5 rounded-2xl border border-red-400/20 bg-red-500/10 p-4 text-right text-sm text-red-200">{error}</div>}
+        {unavailable && <div role="alert" className="mb-5 rounded-2xl border border-amber-400/20 bg-amber-500/10 p-4 text-right text-sm text-amber-200">موجودی یکی از کالاهای سبد تغییر کرده است. به سبد خرید برگردید و تعدادها را بررسی کنید.</div>}
 
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 items-start">
-          
-          {/* Right/Left: Checkout Delivery Information Form - Columns 7 */}
-          <form 
-            onSubmit={handlePlaceOrder}
-            className="lg:col-span-7 bg-[#141211] border border-white/5 rounded-[2rem] p-6.5 md:p-8 text-right"
-          >
-            <div className="flex items-center gap-3 mb-6 pb-4 border-b border-white/5">
-              <div className="p-2.5 bg-[#ba8d3d]/10 text-[#eed29d] rounded-full">
-                <MapPin size={16} />
-              </div>
-              <div>
-                <h2 className="text-sm font-bold text-white">نشانی و مشخصات گیرنده محموله</h2>
-                <p className="text-[10px] text-gray-500 mt-0.5">ثبت آدرس دقیق جهت بسته‌بندی پستی</p>
-              </div>
+        <div className="grid grid-cols-1 items-start gap-7 lg:grid-cols-12">
+          <form onSubmit={placeOrder} className="space-y-6 rounded-[2rem] border border-white/5 bg-[#141211] p-5 text-right sm:p-7 lg:col-span-7">
+            <div className="flex items-center gap-3 border-b border-white/5 pb-4">
+              <div className="rounded-full bg-[#ba8d3d]/10 p-2.5 text-[#eed29d]"><MapPin size={16} /></div>
+              <div><h2 className="text-sm font-bold text-white">نشانی گیرنده</h2><p className="mt-1 text-[10px] text-gray-500">نشانی تحویل سفارش را انتخاب یا وارد کنید.</p></div>
             </div>
 
-            <div className="space-y-5">
-              {/* Name */}
-              <div className="flex flex-col gap-2">
-                <label className="text-xs text-gray-300 font-semibold">نام و نام خانوادگی تحویل‌گیرنده:</label>
-                <input
-                  type="text"
-                  value={fullName}
-                  onChange={(e) => setFullName(e.target.value)}
-                  placeholder="مثال: بردیا مهدوی"
-                  className="w-full bg-[#0e0d0c] border border-white/10 focus:border-[#ba8d3d] focus:ring-1 focus:ring-[#ba8d3d]/30 text-white rounded-2xl px-5 py-3.5 text-xs outline-none transition-all"
-                />
-                {formErrors.fullName && <p className="text-[10px] text-[#E61919] font-medium">{formErrors.fullName}</p>}
+            {addressLoading ? <p role="status" className="text-xs text-stone-400">در حال دریافت نشانی‌ها…</p> : addresses.length > 0 && (
+              <div className="space-y-3">
+                <label className="block text-xs font-semibold text-gray-300">نشانی ذخیره‌شده
+                  <select value={selectedAddressId} onChange={event => chooseAddress(event.target.value)} className={`${inputClass} mt-2`}>
+                    <option value="">وارد کردن نشانی دیگر</option>
+                    {addresses.map(item => <option key={item.id} value={item.id}>{item.title || item.city} — {item.recipientName}{item.isDefault ? ' (پیش‌فرض)' : ''}</option>)}
+                  </select>
+                </label>
               </div>
+            )}
 
-              {/* Phone and Email row */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="flex flex-col gap-2">
-                  <label className="text-xs text-gray-300 font-semibold">شماره موبایل (جهت هماهنگی پیکی/کد رهگیری):</label>
-                  <input
-                    type="tel"
-                    value={phone}
-                    onChange={(e) => setPhone(e.target.value)}
-                    placeholder="مثال: 09121234567"
-                    className="w-full bg-[#0e0d0c] border border-white/10 focus:border-[#ba8d3d] focus:ring-1 focus:ring-[#ba8d3d]/30 text-white rounded-2xl px-5 py-3.5 text-xs outline-none transition-all font-mono placeholder:font-sans"
-                  />
-                  {formErrors.phone && <p className="text-[10px] text-[#E61919] font-medium">{formErrors.phone}</p>}
-                </div>
-
-                <div className="flex flex-col gap-2">
-                  <label className="text-xs text-gray-300 font-semibold">آدرس ایمیل (اختیاری):</label>
-                  <input
-                    type="email"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    placeholder="مثال: client@shahpoosh.com"
-                    className="w-full bg-[#0e0d0c] border border-white/10 focus:border-[#ba8d3d] text-white rounded-2xl px-5 py-3.5 text-xs outline-none transition-all font-mono placeholder:font-sans"
-                  />
-                  {formErrors.email && <p className="text-[10px] text-[#E61919] font-medium">{formErrors.email}</p>}
-                </div>
+            {selectedAddress ? <div className="rounded-2xl border border-[#ba8d3d]/20 bg-[#ba8d3d]/5 p-4 text-xs leading-7 text-stone-300">
+              <strong className="text-white">{selectedAddress.recipientName} · {selectedAddress.phone}</strong><br />
+              {selectedAddress.province}، {selectedAddress.city}<br />{selectedAddress.addressLine}<br />کد پستی: {selectedAddress.postalCode}
+            </div> : (
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <label className="text-xs font-semibold text-gray-300">نام گیرنده<input required minLength={2} maxLength={120} autoComplete="name" value={recipientName} onChange={event => setRecipientName(event.target.value)} className={`${inputClass} mt-2`} /></label>
+                <label className="text-xs font-semibold text-gray-300">شماره همراه<input required type="tel" inputMode="tel" autoComplete="tel" value={phone} onChange={event => setPhone(event.target.value)} className={`${inputClass} mt-2`} /></label>
+                <label className="text-xs font-semibold text-gray-300">استان<input required minLength={2} maxLength={100} autoComplete="address-level1" value={province} onChange={event => setProvince(event.target.value)} className={`${inputClass} mt-2`} /></label>
+                <label className="text-xs font-semibold text-gray-300">شهر<input required minLength={2} maxLength={100} autoComplete="address-level2" value={city} onChange={event => setCity(event.target.value)} className={`${inputClass} mt-2`} /></label>
+                <label className="text-xs font-semibold text-gray-300 sm:col-span-2">نشانی کامل<textarea required minLength={8} maxLength={500} rows={3} autoComplete="street-address" value={addressLine} onChange={event => setAddressLine(event.target.value)} className={`${inputClass} mt-2 resize-y leading-relaxed`} /></label>
+                <label className="text-xs font-semibold text-gray-300">کد پستی<input required minLength={10} maxLength={10} inputMode="numeric" autoComplete="postal-code" value={postalCode} onChange={event => setPostalCode(event.target.value)} className={`${inputClass} mt-2 font-mono`} /></label>
               </div>
+            )}
+            <label className="block text-xs font-semibold text-gray-300">یادداشت سفارش (اختیاری)<textarea maxLength={1000} rows={2} value={customerNote} onChange={event => setCustomerNote(event.target.value)} className={`${inputClass} mt-2 resize-y`} /></label>
 
-              {/* City & State */}
-              <div className="flex flex-col gap-2">
-                <label className="text-xs text-gray-300 font-semibold">استان و شهر:</label>
-                <input
-                  type="text"
-                  value={city}
-                  onChange={(e) => setCity(e.target.value)}
-                  placeholder="مثال: تهران، تجریش"
-                  className="w-full bg-[#0e0d0c] border border-white/10 focus:border-[#ba8d3d] focus:ring-1 focus:ring-[#ba8d3d]/30 text-white rounded-2xl px-5 py-3.5 text-xs outline-none transition-all"
-                />
-                {formErrors.city && <p className="text-[10px] text-[#E61919] font-medium">{formErrors.city}</p>}
-              </div>
-
-              {/* Full Address */}
-              <div className="flex flex-col gap-2">
-                <label className="text-xs text-gray-300 font-semibold">نشانی کامل پستی دقیق:</label>
-                <textarea
-                  rows={3}
-                  value={address}
-                  onChange={(e) => setAddress(e.target.value)}
-                  placeholder="خیابان، کوچه، پلاک، واحد، واحد اداری/مسکونی"
-                  className="w-full bg-[#0e0d0c] border border-white/10 focus:border-[#ba8d3d] focus:ring-1 focus:ring-[#ba8d3d]/30 text-white rounded-2xl px-5 py-3.5 text-xs outline-none transition-all resize-none leading-relaxed"
-                />
-                {formErrors.address && <p className="text-[10px] text-[#E61919] font-medium">{formErrors.address}</p>}
-              </div>
-
-              {/* Postal Code */}
-              <div className="flex flex-col gap-2">
-                <label className="text-xs text-gray-300 font-semibold">کد پستی ۱۰ رقمی:</label>
-                <input
-                  type="text"
-                  maxLength={10}
-                  value={postalCode}
-                  onChange={(e) => setPostalCode(e.target.value)}
-                  placeholder="مثال: 1234567890"
-                  className="w-full bg-[#0e0d0c] border border-white/10 focus:border-[#ba8d3d] focus:ring-1 focus:ring-[#ba8d3d]/30 text-white rounded-2xl px-5 py-3.5 text-xs outline-none transition-all font-mono placeholder:font-sans"
-                />
-                {formErrors.postalCode && <p className="text-[10px] text-[#E61919] font-medium">{formErrors.postalCode}</p>}
+            <div className="rounded-2xl border border-[#ba8d3d]/20 bg-[#ba8d3d]/5 p-4">
+              <div className="flex items-center gap-3">
+                <div className="rounded-xl bg-[#ba8d3d]/10 p-2 text-[#eed29d]"><CreditCard size={14} /></div>
+                <div className="text-right"><strong className="block text-xs text-white">پرداخت آنلاین هنوز فعال نیست</strong><span className="mt-1 block text-[10px] text-stone-400">ثبت سفارش تنها پس از تعیین هزینه ارسال فعال می‌شود. پرداختی دریافت نمی‌شود.</span></div>
               </div>
             </div>
-
-            {/* Billing Payment Selection mock */}
-            <div className="mt-8 pt-6 border-t border-white/5 space-y-4">
-              <span className="text-xs text-gray-300 font-semibold block">روش پرداخت منتخب:</span>
-              <div className="p-4 bg-[#ba8d3d]/5 border border-[#ba8d3d]/20 rounded-2xl flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="p-2 bg-[#ba8d3d]/10 text-[#eed29d] rounded-xl">
-                    <CreditCard size={14} />
-                  </div>
-                  <div className="text-right">
-                    <span className="text-xs text-white font-semibold block">پیش‌نمایش تسویه‌حساب؛ پرداخت فعال نیست</span>
-                    <span className="text-[10px] text-gray-500">هیچ مبلغی دریافت و هیچ سفارش واقعی ثبت نمی‌شود</span>
-                  </div>
-                </div>
-                <div className="w-4 h-4 rounded-full border-2 border-[#ba8d3d] flex items-center justify-center">
-                  <span className="w-1.5 h-1.5 rounded-full bg-[#ba8d3d] block" />
-                </div>
-              </div>
-            </div>
-
-            <button
-              type="submit"
-              disabled
-              className="mt-8 w-full py-4 bg-gradient-to-r from-[#ba8d3d] to-[#e4bc71] hover:from-[#ba8d3d] hover:to-[#ba8d3d] text-[#0e0d0c] rounded-full text-xs font-bold transition-all duration-300 active:scale-95 cursor-pointer shadow-lg text-center"
-            >
-              ثبت سفارش و پرداخت هنوز فعال نیست
+            <button type="submit" disabled={!configuration?.orderSubmissionEnabled || submitting || unavailable || cart.length === 0 || totalTomans === null} className="w-full rounded-full bg-gradient-to-r from-[#ba8d3d] to-[#e4bc71] px-6 py-4 text-xs font-bold text-[#0e0d0c] shadow-lg transition-all active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-45">
+              {submitting ? 'در حال ثبت سفارش…' : configuration?.orderSubmissionEnabled ? 'ثبت سفارش در انتظار پرداخت' : 'ثبت سفارش تا تعیین هزینه ارسال غیرفعال است'}
             </button>
-
           </form>
 
-          {/* Left/Right: Order Summary sidebar - Columns 5 */}
-          <div className="lg:col-span-5 bg-[#141211] border border-white/5 rounded-[2rem] p-6.5 text-right space-y-6">
-            <div className="flex items-center gap-3 pb-4 border-b border-white/5">
-              <ClipboardList size={16} className="text-[#eed29d]" />
-              <h3 className="text-xs font-bold text-white">خلاصه پیش‌فاکتور خرید</h3>
+          <aside className="space-y-5 rounded-[2rem] border border-white/5 bg-[#141211] p-5 text-right sm:p-7 lg:col-span-5">
+            <div className="flex items-center gap-3 border-b border-white/5 pb-4"><ClipboardList size={16} className="text-[#eed29d]" /><h2 className="text-sm font-bold text-white">خلاصه سفارش</h2></div>
+            <div className="max-h-[340px] space-y-3 overflow-y-auto">
+              {cart.map(item => <div key={item.id} className="flex items-center justify-between gap-3 rounded-xl border border-white/5 bg-[#0e0d0c]/50 p-3">
+                <span className="shrink-0 font-mono text-xs font-bold text-[#eed29d]">{(item.price * item.quantity).toLocaleString('fa-IR')} تومان</span>
+                <div className="min-w-0 text-right"><span className="block truncate text-xs font-medium text-white">{item.productName}</span><span className="mt-1 block text-[10px] text-gray-500">{item.color.name} · {item.size} · تعداد {item.quantity}</span></div>
+              </div>)}
+              {cart.length === 0 && <p className="py-8 text-center text-sm text-stone-400">سبد خرید خالی است.</p>}
             </div>
-
-            {/* List Ordered Items */}
-            <div className="space-y-3 max-h-[250px] overflow-y-auto">
-              {cart.map((item) => {
-                const itemTotalPrice = (item.price * item.quantity).toLocaleString('fa-IR');
-                return (
-                  <div key={item.id} className="flex gap-3 justify-between items-center bg-[#0e0d0c]/50 p-3 rounded-xl border border-white/5">
-                    <div className="text-right flex-1">
-                      <span className="text-xs text-white font-medium line-clamp-1">{item.productName}</span>
-                      <div className="text-[10px] text-gray-500 font-mono mt-1 flex gap-2">
-                        <span>سایز: {item.size}</span>
-                        <span>رنگ: {item.color.name}</span>
-                        <span>تعداد: {item.quantity}</span>
-                      </div>
-                    </div>
-                    <div className="text-left font-mono shrink-0">
-                      <span className="text-xs font-bold text-[#eed29d]">{itemTotalPrice}</span>
-                      <span className="text-[8px] text-gray-500 mr-0.5 font-sans">تومان</span>
-                    </div>
-                  </div>
-                );
-              })}
+            <div className="space-y-3 border-t border-white/5 pt-4 text-xs text-gray-400">
+              <div className="flex justify-between"><span>{subtotalTomans.toLocaleString('fa-IR')} تومان</span><span>جمع کالاها</span></div>
+              <div className="flex justify-between"><span>{shippingTomans === null ? '—' : `${shippingTomans.toLocaleString('fa-IR')} تومان`}</span><span>هزینه ارسال</span></div>
+              <div className="flex items-center justify-between border-t border-white/5 pt-3 text-sm font-bold text-white"><span className="font-mono text-lg text-[#eed29d]">{totalTomans === null ? '—' : `${totalTomans.toLocaleString('fa-IR')} تومان`}</span><span>جمع کل سفارش</span></div>
             </div>
-
-            {/* Billing total box itemizes */}
-            <div className="pt-4 border-t border-white/5 space-y-2 text-xs text-gray-400">
-              <div className="flex justify-between items-center">
-                <span>جمع کل موارد اقلام منتخب</span>
-                <span className="font-mono">{formattedTotalPrice} تومان</span>
-              </div>
-              <div className="flex justify-between items-center text-[#eed29d] font-semibold bg-[#eed29d]/5 border border-[#eed29d]/15 p-2 rounded-xl text-[11px]">
-                <span>هزینه کادو پیچ و ارسال سراسری</span>
-                <span>رایگان و ضمانت‌دار</span>
-              </div>
-              <div className="pt-3 border-t border-white/5 flex justify-between items-end">
-                <span className="text-white font-semibold text-sm">مبلغ کل فاکتور صادر شده:</span>
-                <div className="text-left font-mono text-[#eed29d] font-bold text-lg">
-                  <span>{formattedTotalPrice}</span>
-                  <span className="text-[9px] text-gray-500 font-sans mr-1">تومان</span>
-                </div>
-              </div>
-            </div>
-
-          </div>
-
+            {configuration?.orderSubmissionEnabled ? <div className="flex items-start gap-2 rounded-xl border border-emerald-400/15 bg-emerald-500/5 p-3 text-[10px] leading-5 text-stone-400"><ShieldCheck size={14} className="mt-0.5 shrink-0 text-emerald-300" /><span>موجودی در زمان ثبت سفارش دوباره بررسی و برای {configuration.reservationMinutes} دقیقه رزرو می‌شود. پرداخت هنوز به درگاه متصل نیست.</span></div> : <div role="status" className="rounded-xl border border-amber-400/20 bg-amber-500/5 p-3 text-[10px] leading-5 text-amber-200">هزینه ارسال هنوز در تنظیمات سرور تعیین نشده؛ امکان ثبت سفارش تا آن زمان غیرفعال است.</div>}
+          </aside>
         </div>
       </div>
     </section>
