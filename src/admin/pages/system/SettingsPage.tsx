@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useRef } from 'react';
 import {
   Settings,
   Save,
@@ -40,6 +40,7 @@ import {
 } from '../../domain/systemConfig';
 import { adminRepository } from '../../domain/repository';
 import { toFaDigits } from '../../utils/formatters';
+import ShippingMethodsPanel from './ShippingMethodsPanel';
 
 export const SettingsPage: React.FC = () => {
   const { addToast } = useToast();
@@ -49,6 +50,7 @@ export const SettingsPage: React.FC = () => {
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [validationErrors, setValidationErrors] = useState<SettingsValidationError[]>([]);
   const [isResetConfirmOpen, setIsResetConfirmOpen] = useState(false);
+  const settingsTabsRef = useRef<HTMLDivElement>(null);
 
   const [activeTab, setActiveTab] = useState<
     | 'store'
@@ -62,6 +64,15 @@ export const SettingsPage: React.FC = () => {
     | 'security'
     | 'secrets'
   >('store');
+
+  useLayoutEffect(() => {
+    const activeTabButton = settingsTabsRef.current?.querySelector<HTMLButtonElement>(`[data-settings-tab="${activeTab}"]`);
+    activeTabButton?.scrollIntoView({
+      behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth',
+      block: 'nearest',
+      inline: 'nearest',
+    });
+  }, [activeTab]);
 
   // Check for unsaved changes whenever formData changes
   useEffect(() => {
@@ -104,7 +115,6 @@ export const SettingsPage: React.FC = () => {
       entityId: 'SYSTEM_CONFIG',
       metadata: {
         storeName: updated.store.storeName,
-        flatShipping: updated.shipping.flatShippingFeeTomans,
         minDpi: updated.customization.minResolutionDpi,
       },
     });
@@ -159,7 +169,7 @@ export const SettingsPage: React.FC = () => {
     { id: 'store', label: 'اطلاعات فروشگاه و تماس', icon: Store },
     { id: 'locale', label: 'بومی‌سازی، تاریخ و ارز', icon: Globe },
     { id: 'tax', label: 'فیلدهای مالیاتی (Placeholder)', icon: DollarSign },
-    { id: 'shipping', label: 'قوانین ارسال و مرجوعی', icon: Truck },
+    { id: 'shipping', label: 'روش‌های ارسال و مرجوعی', icon: Truck },
     { id: 'customization', label: 'محدودیت‌های آتلیه و نواحی چاپ', icon: Palette },
     { id: 'discounts', label: 'قوانین همپوشانی تخفیف‌ها', icon: Percent },
     { id: 'notifications', label: 'اعلان‌های پیامکی و وب‌هوک', icon: Bell },
@@ -172,7 +182,7 @@ export const SettingsPage: React.FC = () => {
     <div className="space-y-6 pb-24" dir="rtl">
       <AdminPageHeader
         title="تنظیمات جامع فروشگاه، آتلیه و زیرساخت"
-        description="پیکربندی متمرکز هویت برند، تقویم جلالی، هزینه ارسال، محدودیت‌های چاپ سفارشی، سیاست‌های مرجوعی و مراجع امن سرور."
+        description="تنظیم روش‌های ارسال واقعی، هویت برند، تقویم جلالی، سیاست‌های مرجوعی نمایشی و محدودیت‌های چاپ."
         actions={
           <div className="flex items-center gap-2">
             <Button
@@ -213,13 +223,14 @@ export const SettingsPage: React.FC = () => {
       )}
 
       {/* Settings Navigation Tabs */}
-      <div className="flex items-center gap-2 border-b border-white/10 pb-2 overflow-x-auto">
+      <div ref={settingsTabsRef} className="flex items-center gap-2 border-b border-white/10 pb-2 overflow-x-auto">
         {tabs.map((tab) => {
           const IconComp = tab.icon;
           const isActive = activeTab === tab.id;
           return (
             <button
               key={tab.id}
+              data-settings-tab={tab.id}
               type="button"
               onClick={() => setActiveTab(tab.id as any)}
               className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-2 whitespace-nowrap ${
@@ -450,45 +461,15 @@ export const SettingsPage: React.FC = () => {
 
       {/* Tab 4: Shipping & Returns */}
       {activeTab === 'shipping' && (
-        <div className="bg-[#131211] border border-white/10 rounded-2xl p-6 space-y-5">
+        <div className="space-y-5">
+          <ShippingMethodsPanel />
+          <div className="bg-[#131211] border border-white/10 rounded-2xl p-6 space-y-5">
           <div className="border-b border-white/5 pb-3">
-            <h3 className="text-sm font-bold text-white">قوانین ارسال مرسولات و سیاست‌های مرجوعی</h3>
-            <p className="text-xs text-stone-400 mt-0.5">تعیین هزینه پایه کرایه، سقف ارسال رایگان و مهلت قانونی عودت کالا</p>
+            <h3 className="text-sm font-bold text-white">سیاست‌های مرجوعی کالا — نمونه نمایشی</h3>
+            <p className="text-xs text-stone-400 mt-0.5">این سیاست‌ها هنوز به سفارش و فرآیند مرجوعی واقعی متصل نیستند.</p>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <FormField label="هزینه ثابت ارسال عادی (تومان)">
-              <Input
-                type="number"
-                value={formData.shipping.flatShippingFeeTomans}
-                onChange={(e) =>
-                  setFormData({
-                    ...formData,
-                    shipping: {
-                      ...formData.shipping,
-                      flatShippingFeeTomans: Number(e.target.value),
-                    },
-                  })
-                }
-              />
-            </FormField>
-
-            <FormField label="حداقل سبد خرید برای ارسال رایگان (تومان)">
-              <Input
-                type="number"
-                value={formData.shipping.freeShippingThresholdTomans}
-                onChange={(e) =>
-                  setFormData({
-                    ...formData,
-                    shipping: {
-                      ...formData.shipping,
-                      freeShippingThresholdTomans: Number(e.target.value),
-                    },
-                  })
-                }
-              />
-            </FormField>
-
             <FormField label="مهلت درخواست مرجوعی کالاهای استاندارد (روز)">
               <Input
                 type="number"
@@ -559,6 +540,7 @@ export const SettingsPage: React.FC = () => {
               </FormField>
             </div>
           </div>
+        </div>
         </div>
       )}
 
@@ -985,7 +967,7 @@ export const SettingsPage: React.FC = () => {
         >
           <div className="space-y-4 text-xs" dir="rtl">
             <div className="p-3.5 bg-amber-500/10 border border-amber-500/20 rounded-xl text-amber-200 leading-relaxed">
-              آیا از بازنشانی تمامی فیلدهای تنظیمات فروشگاه، قوانین ارسال، محدودیت‌های چاپ و مراجع امن به مقادیر اولیه کارخانه اطمینان دارید؟
+              آیا از بازنشانی تنظیمات نمایشی فروشگاه، محدودیت‌های چاپ و مراجع نمونه به مقادیر اولیه اطمینان دارید؟ روش‌های ارسال واقعی جداگانه حفظ می‌شوند.
             </div>
 
             <div className="flex items-center justify-end gap-2 pt-2 border-t border-white/10">

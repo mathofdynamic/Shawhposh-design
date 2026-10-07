@@ -9,7 +9,6 @@ const dir = mkdtempSync(join(tmpdir(), 'shawhposh-phase2-'));
 process.env.DATABASE_PATH = join(dir, 'test.sqlite');
 process.env.APP_ORIGIN = 'http://localhost:3000';
 process.env.NODE_ENV = 'test';
-process.env.SHIPPING_COST_TOMANS = '15000';
 process.env.CHECKOUT_RESERVATION_MINUTES = '20';
 
 const { db, sqlite } = await import('../db/connection');
@@ -20,15 +19,6 @@ const { staffUsers } = await import('../db/schema');
 const { hashPassword } = await import('../modules/auth/service');
 const { saveCategory, saveProduct, catalogSnapshot } = await import('../modules/catalog/service');
 const { expireReservations, tehranDateStartUtc } = await import('../modules/orders/service');
-const { config, shippingCostTomansSchema } = await import('../config');
-
-test('blank shipping configuration remains unset', () => {
-  assert.equal(shippingCostTomansSchema.parse(''), undefined);
-  assert.equal(shippingCostTomansSchema.parse('   \t  '), undefined);
-  assert.equal(shippingCostTomansSchema.parse('0'), 0);
-  assert.equal(shippingCostTomansSchema.parse('15000'), 15000);
-});
-
 test('admin calendar-date boundaries resolve to Tehran midnight', () => {
   const boundary = tehranDateStartUtc('2026-10-03');
   const parts = new Intl.DateTimeFormat('en-CA', {
@@ -50,6 +40,11 @@ saveCategory({ nameFa: 'گروه آزمون', slug: 'phase2-test' });
 saveProduct({ name: 'پیراهن آزمون', slug: 'phase2-test-tee', category: 'phase2-test', basePriceTomans: 245000, status: 'active', description: 'آزمون', variants: [{ sku: 'P2-TEST-M-BLK', colorName: 'مشکی', colorHex: '#111111', size: 'M' }, { sku: 'P2-TEST-L-BLK', colorName: 'مشکی', colorHex: '#111111', size: 'L' }] });
 const ownerAgent = request.agent(app);
 await ownerAgent.post('/api/v1/admin/auth/login').set('Origin', origin).send({ identifier: ownerEmail, password }).expect(200);
+const shippingMethod = await ownerAgent.post('/api/v1/admin/shipping/methods').set('Origin', origin).send({
+  code: 'phase2-test-shipping', name: 'Phase 2 test shipping', fixedPriceTomans: 15000,
+  freeShippingThresholdTomans: null, estimatedMinDays: 2, estimatedMaxDays: 4, active: true, displayOrder: 0,
+}).expect(201);
+const shippingMethodId = shippingMethod.body.shippingMethod.id;
 
 test('admin order date filters accept valid Tehran calendar dates only', async () => {
   await ownerAgent.get('/api/v1/admin/orders?dateFrom=2026-10-03&dateTo=2026-10-03').expect(200);
@@ -70,6 +65,21 @@ const customerOne = request.agent(app);
 const customerTwo = request.agent(app);
 await registerCustomer(customerOne, 'one').expect(201);
 await registerCustomer(customerTwo, 'two').expect(201);
+
+async function createExpectedQuote(agent: ReturnType<typeof request.agent>, address: { addressId?: string; shippingAddress?: Record<string, string> }) {
+  const quote = await agent.post('/api/v1/checkout/quote').set('Origin', origin).send(address).expect(200);
+  const shippingMethod = quote.body.shippingMethods.find((method: { id: string }) => method.id === shippingMethodId);
+  assert.ok(shippingMethod);
+  return {
+    quote: quote.body,
+    expectedQuote: {
+      subtotalTomans: quote.body.subtotalTomans,
+      discountTomans: quote.body.discountTomans,
+      shippingMethod,
+      items: quote.body.items.map(({ availableQuantity: _availableQuantity, ...item }: { availableQuantity: number; [key: string]: unknown }) => item),
+    },
+  };
+}
 
 test('customer account and addresses are private and persist in the database', async () => {
   assert.equal((await request(app).get('/api/v1/account')).status, 401);
@@ -161,7 +171,9 @@ test('checkout creates one immutable awaiting-payment order, reserves stock, and
   const address = (await customerOne.get('/api/v1/account/addresses').expect(200)).body.addresses[0];
   const key = 'phase2-checkout-one-0001';
   await customerOne.patch(`/api/v1/account/addresses/${address.id}`).set('Origin', origin).send({ recipientName: searchableName }).expect(200);
-  const created = await customerOne.post('/api/v1/checkout/orders').set('Origin', origin).set('Idempotency-Key', key).send({ addressId: address.id, customerNote: 'آزمون', subtotalTomans: 1, shippingTomans: 0, totalTomans: 1 }).expect(201);
+  const { expectedQuote } = await createExpectedQuote(customerOne, { addressId: address.id });
+  const checkoutRequest = { addressId: address.id, shippingMethodId, customerNote: 'آزمون', expectedQuote };
+  const created = await customerOne.post('/api/v1/checkout/orders').set('Origin', origin).set('Idempotency-Key', key).send(checkoutRequest).expect(201);
   const order = created.body.order;
   assert.match(order.orderNumber, /^SHP-\d{8}-\d{6}$/);
   assert.equal(order.orderStatus, 'awaiting_payment');
@@ -182,9 +194,9 @@ test('checkout creates one immutable awaiting-payment order, reserves stock, and
     assert.equal(customerSearch.body.customers[0].email, 'phase2-one@example.invalid');
   }
   assert.equal((await ownerAgent.get('/api/v1/admin/inventory/P2-TEST-M-BLK').expect(200)).body.inventory.reservedStock, 1);
-  const retry = await customerOne.post('/api/v1/checkout/orders').set('Origin', origin).set('Idempotency-Key', key).send({ addressId: address.id, customerNote: 'آزمون' }).expect(200);
+  const retry = await customerOne.post('/api/v1/checkout/orders').set('Origin', origin).set('Idempotency-Key', key).send(checkoutRequest).expect(200);
   assert.equal(retry.body.order.id, order.id);
-  assert.equal((await customerOne.post('/api/v1/checkout/orders').set('Origin', origin).set('Idempotency-Key', key).send({ addressId: address.id, customerNote: 'متفاوت' })).status, 409);
+  assert.equal((await customerOne.post('/api/v1/checkout/orders').set('Origin', origin).set('Idempotency-Key', key).send({ ...checkoutRequest, customerNote: 'متفاوت' })).status, 409);
   assert.equal((await customerTwo.get(`/api/v1/orders/${order.id}`).expect(404)).body.error.code, 'NOT_FOUND');
   assert.equal((await customerOne.get(`/api/v1/orders/${order.id}`).expect(200)).body.order.items[0].productName, 'پیراهن آزمون');
   await ownerAgent.patch(`/api/v1/admin/products/${product.id}`).set('Origin', origin).send({ name: 'نام تغییریافته', basePriceTomans: 999999 }).expect(200);
@@ -206,8 +218,10 @@ test('failed multi-item checkout rolls back the order, reservations, and cart co
   await ownerAgent.post(`/api/v1/admin/inventory/${large.sku}/adjustments`).set('Origin', origin).send({ newQuantity: 1, reason: 'Phase 2 rollback test setup' }).expect(200);
   await customerTwo.post('/api/v1/cart/items').set('Origin', origin).send({ variantId: medium.id, quantity: 1 }).expect(200);
   await customerTwo.post('/api/v1/cart/items').set('Origin', origin).send({ variantId: large.id, quantity: 1 }).expect(200);
+  const rollbackAddress = { recipientName: 'مشتری دوم', phone: '09121234568', province: 'تهران', city: 'تهران', addressLine: 'خیابان نمونه، پلاک ۲۳', postalCode: '1234567891' };
+  const { expectedQuote: rollbackExpectedQuote } = await createExpectedQuote(customerTwo, { shippingAddress: rollbackAddress });
   await ownerAgent.post(`/api/v1/admin/inventory/${large.sku}/adjustments`).set('Origin', origin).send({ newQuantity: 0, reason: 'Phase 2 rollback stale-stock condition' }).expect(200);
-  const failed = await customerTwo.post('/api/v1/checkout/orders').set('Origin', origin).set('Idempotency-Key', 'phase2-rollback-checkout-01').send({ shippingAddress: { recipientName: 'مشتری دوم', phone: '09121234568', province: 'تهران', city: 'تهران', addressLine: 'خیابان نمونه، پلاک ۲۳', postalCode: '1234567891' } }).expect(409);
+  const failed = await customerTwo.post('/api/v1/checkout/orders').set('Origin', origin).set('Idempotency-Key', 'phase2-rollback-checkout-01').send({ shippingAddress: rollbackAddress, shippingMethodId, expectedQuote: rollbackExpectedQuote }).expect(409);
   assert.equal(failed.body.error.code, 'OUT_OF_STOCK');
   assert.equal((await customerTwo.get('/api/v1/account/orders').expect(200)).body.pagination.total, 0);
   assert.equal((await ownerAgent.get(`/api/v1/admin/inventory/${medium.sku}`).expect(200)).body.inventory.reservedStock, 0);
@@ -228,7 +242,8 @@ test('reservation expiration releases every line in an unpaid order once', async
   const medium = variants.find(item => item.sku === 'P2-TEST-M-BLK')!;
   await customerTwo.post('/api/v1/cart/items').set('Origin', origin).send({ variantId: medium.id, quantity: 1 }).expect(200);
   await customerTwo.post('/api/v1/cart/items').set('Origin', origin).send({ variantId: longVariant.id, quantity: 1 }).expect(200);
-  const created = await customerTwo.post('/api/v1/checkout/orders').set('Origin', origin).set('Idempotency-Key', 'phase2-expiration-test-01').send({ addressId: address.body.address.id }).expect(201);
+  const { expectedQuote: expiryExpectedQuote } = await createExpectedQuote(customerTwo, { addressId: address.body.address.id });
+  const created = await customerTwo.post('/api/v1/checkout/orders').set('Origin', origin).set('Idempotency-Key', 'phase2-expiration-test-01').send({ addressId: address.body.address.id, shippingMethodId, expectedQuote: expiryExpectedQuote }).expect(201);
   const result = expireReservations(new Date(Date.now() + 21 * 60_000));
   assert.equal(result.released, 2);
   assert.equal(expireReservations(new Date(Date.now() + 22 * 60_000)).released, 0);
@@ -253,11 +268,16 @@ test('simultaneous checkout cannot sell the last unit twice; support is read-onl
   assert.ok(addresses.body.addresses.length > 0);
   await customerOne.post('/api/v1/cart/items').set('Origin', origin).send({ variantId: medium.id, quantity: 1 }).expect(200);
   await customerTwo.post('/api/v1/cart/items').set('Origin', origin).send({ variantId: medium.id, quantity: 1 }).expect(200);
+  const oneAddress = { addressId: addresses.body.addresses[0].id };
+  const twoAddress = { shippingAddress: { recipientName: 'مشتری دوم', phone: '09121234568', province: 'تهران', city: 'تهران', addressLine: 'خیابان نمونه، پلاک ۲۳', postalCode: '1234567891' } };
+  const [{ expectedQuote: oneExpectedQuote }, { expectedQuote: twoExpectedQuote }] = await Promise.all([
+    createExpectedQuote(customerOne, oneAddress), createExpectedQuote(customerTwo, twoAddress),
+  ]);
   const supportAgent = request.agent(app);
   await supportAgent.post('/api/v1/admin/auth/login').set('Origin', origin).send({ identifier: 'phase2-support@example.invalid', password }).expect(200);
   const submissions = await Promise.all([
-    customerOne.post('/api/v1/checkout/orders').set('Origin', origin).set('Idempotency-Key', 'phase2-race-customer-one').send({ addressId: addresses.body.addresses[0].id }),
-    customerTwo.post('/api/v1/checkout/orders').set('Origin', origin).set('Idempotency-Key', 'phase2-race-customer-two').send({ shippingAddress: { recipientName: 'مشتری دوم', phone: '09121234568', province: 'تهران', city: 'تهران', addressLine: 'خیابان نمونه، پلاک ۲۳', postalCode: '1234567891' } }),
+    customerOne.post('/api/v1/checkout/orders').set('Origin', origin).set('Idempotency-Key', 'phase2-race-customer-one').send({ ...oneAddress, shippingMethodId, expectedQuote: oneExpectedQuote }),
+    customerTwo.post('/api/v1/checkout/orders').set('Origin', origin).set('Idempotency-Key', 'phase2-race-customer-two').send({ ...twoAddress, shippingMethodId, expectedQuote: twoExpectedQuote }),
   ]);
   assert.deepEqual(submissions.map(response => response.status).sort(), [201, 409]);
   const winner = submissions.find(response => response.status === 201)!;
@@ -283,16 +303,22 @@ test('simultaneous checkout cannot sell the last unit twice; support is read-onl
   await ownerAgent.post('/api/v1/admin/inventory/P2-TEST-M-BLK/adjustments').set('Origin', origin).send({ newQuantity: 0, reason: 'Phase 2 concurrent checkout test cleanup' }).expect(200);
 });
 
-test('checkout order creation stays disabled when no shipping fee is approved', async () => {
-  const configuredFee = config.SHIPPING_COST_TOMANS;
-  config.SHIPPING_COST_TOMANS = undefined;
-  try {
-    const configResponse = await request(app).get('/api/v1/checkout/config').expect(200);
-    assert.equal(configResponse.body.orderSubmissionEnabled, false);
-    assert.equal(configResponse.body.shippingTomans, null);
-    const blocked = await customerOne.post('/api/v1/checkout/orders').set('Origin', origin).set('Idempotency-Key', 'phase2-shipping-not-set-01').send({ addressId: '00000000-0000-4000-8000-000000000000' }).expect(503);
-    assert.equal(blocked.body.error.code, 'SHIPPING_NOT_CONFIGURED');
-  } finally { config.SHIPPING_COST_TOMANS = configuredFee; }
+test('checkout order creation stays disabled when no shipping methods are active', async () => {
+  const variant = catalogSnapshot().variants.find(item => item.sku === 'P2-TEST-M-BLK')!;
+  await ownerAgent.post('/api/v1/admin/inventory/P2-TEST-M-BLK/adjustments').set('Origin', origin).send({ newQuantity: 1, reason: 'Phase 2 disabled-shipping test setup' }).expect(200);
+  await customerOne.delete('/api/v1/cart').set('Origin', origin).send({}).expect(200);
+  await customerOne.post('/api/v1/cart/items').set('Origin', origin).send({ variantId: variant.id, quantity: 1 }).expect(200);
+  const addresses = await customerOne.get('/api/v1/account/addresses').expect(200);
+  const { expectedQuote } = await createExpectedQuote(customerOne, { addressId: addresses.body.addresses[0].id });
+  await ownerAgent.patch(`/api/v1/admin/shipping/methods/${shippingMethodId}`).set('Origin', origin).send({ active: false }).expect(200);
+  const configResponse = await request(app).get('/api/v1/checkout/config').expect(200);
+  assert.equal(configResponse.body.orderSubmissionEnabled, false);
+  assert.deepEqual((await request(app).get('/api/v1/shipping/methods').expect(200)).body.shippingMethods, []);
+  const blocked = await customerOne.post('/api/v1/checkout/orders').set('Origin', origin).set('Idempotency-Key', 'phase2-shipping-not-set-01')
+    .send({ addressId: addresses.body.addresses[0].id, shippingMethodId, expectedQuote }).expect(503);
+  assert.equal(blocked.body.error.code, 'SHIPPING_UNAVAILABLE');
+  await customerOne.delete('/api/v1/cart').set('Origin', origin).send({}).expect(200);
+  await ownerAgent.post('/api/v1/admin/inventory/P2-TEST-M-BLK/adjustments').set('Origin', origin).send({ newQuantity: 0, reason: 'Phase 2 disabled-shipping test cleanup' }).expect(200);
 });
 
 after(() => {

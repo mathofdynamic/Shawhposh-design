@@ -8,6 +8,9 @@ export interface AdminOrder {
   customerEmail: string | null;
   customerPhone: string | null;
   shippingAddress: { recipientName: string; phone: string; province: string; city: string; addressLine: string; postalCode: string };
+  shippingMethodId: string | null;
+  shippingMethodCode: string | null;
+  shippingMethodName: string | null;
   subtotalTomans: number;
   discountTomans: number;
   shippingTomans: number;

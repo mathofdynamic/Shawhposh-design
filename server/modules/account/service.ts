@@ -124,6 +124,7 @@ export function orderDto(order: typeof orders.$inferSelect, includeInternal = fa
       id: order.id, orderNumber: order.orderNumber, ...(includeInternal ? { customerId: order.userId } : {}),
       customerName: order.customerName, customerEmail: order.customerEmail,
     customerPhone: order.customerPhone, shippingAddress: order.shippingAddressSnapshot,
+    shippingMethodId: order.shippingMethodId, shippingMethodCode: order.shippingMethodCode, shippingMethodName: order.shippingMethodName,
     subtotalTomans: order.subtotalTomans, discountTomans: order.discountTomans, shippingTomans: order.shippingTomans,
     totalTomans: order.totalTomans, orderStatus: order.orderStatus, paymentStatus: order.paymentStatus,
     productionStatus: order.productionStatus, fulfillmentStatus: order.fulfillmentStatus, customerNote: order.customerNote,

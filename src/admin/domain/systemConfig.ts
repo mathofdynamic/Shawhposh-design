@@ -32,9 +32,6 @@ export interface SystemTaxSettings {
 }
 
 export interface SystemShippingRules {
-  defaultCarrier: 'tipax' | 'post_pishtaz' | 'snapp_box';
-  flatShippingFeeTomans: number;
-  freeShippingThresholdTomans: number;
   returnWindowDays: number;
   damagedItemReturnPolicyDays: number;
   customizedGoodsNonReturnable: boolean;
@@ -198,9 +195,6 @@ export const DEFAULT_SYSTEM_SETTINGS: CompleteSystemSettings = {
     applyTaxToShipping: false,
   },
   shipping: {
-    defaultCarrier: 'tipax',
-    flatShippingFeeTomans: 45000,
-    freeShippingThresholdTomans: 1500000,
     returnWindowDays: 7,
     damagedItemReturnPolicyDays: 48,
     customizedGoodsNonReturnable: true,
@@ -262,13 +256,17 @@ export function getStoredSystemSettings(): CompleteSystemSettings {
     const raw = localStorage.getItem(SETTINGS_STORAGE_KEY);
     if (!raw) return DEFAULT_SYSTEM_SETTINGS;
     const parsed = JSON.parse(raw);
+    const savedShipping = { ...(parsed.shipping ?? {}) };
+    delete savedShipping.defaultCarrier;
+    delete savedShipping.flatShippingFeeTomans;
+    delete savedShipping.freeShippingThresholdTomans;
     return {
       ...DEFAULT_SYSTEM_SETTINGS,
       ...parsed,
       store: { ...DEFAULT_SYSTEM_SETTINGS.store, ...parsed.store },
       localization: { ...DEFAULT_SYSTEM_SETTINGS.localization, ...parsed.localization },
       tax: { ...DEFAULT_SYSTEM_SETTINGS.tax, ...parsed.tax },
-      shipping: { ...DEFAULT_SYSTEM_SETTINGS.shipping, ...parsed.shipping },
+      shipping: { ...DEFAULT_SYSTEM_SETTINGS.shipping, ...savedShipping },
       customization: { ...DEFAULT_SYSTEM_SETTINGS.customization, ...parsed.customization },
       printZones: parsed.printZones || DEFAULT_PRINT_ZONES,
       discountStacking: { ...DEFAULT_SYSTEM_SETTINGS.discountStacking, ...parsed.discountStacking },
@@ -307,17 +305,6 @@ export function validateSystemSettings(settings: CompleteSystemSettings): Settin
 
   if (!settings.store.storeName.trim()) {
     errors.push({ field: 'store.storeName', message: 'نام فروشگاه نمی‌تواند خالی باشد.' });
-  }
-
-  if (settings.shipping.flatShippingFeeTomans < 0) {
-    errors.push({ field: 'shipping.flatShippingFeeTomans', message: 'هزینه ارسال نمی‌تواند منفی باشد.' });
-  }
-
-  if (settings.shipping.freeShippingThresholdTomans < settings.shipping.flatShippingFeeTomans) {
-    errors.push({
-      field: 'shipping.freeShippingThresholdTomans',
-      message: 'سقف ارسال رایگان باید بزرگتر یا مساوی هزینه پایه ارسال باشد.',
-    });
   }
 
   if (settings.customization.minResolutionDpi < 150 || settings.customization.minResolutionDpi > 1200) {

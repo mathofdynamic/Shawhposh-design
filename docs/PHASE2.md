@@ -4,15 +4,15 @@ Phase 2 extends the Phase 1 SQLite database in place. It keeps the single PM2 AP
 
 ## Database and migration
 
-The forward migrations are `server/db/migrations/0001_phase2_commerce.sql` and `0002_talented_sleeper.sql` (the reservation-expiry index). Apply them with `npm run db:migrate`; inspect applied migrations with `npm run db:status`. The migration runner records completed migrations and does not drop existing tables. It must be exercised against a copied/test database before production.
+The forward migrations are `server/db/migrations/0001_phase2_commerce.sql`, `0002_talented_sleeper.sql` (the reservation-expiry index), and `0003_phase25_shipping_methods.sql`. Apply them with `npm run db:migrate`; inspect applied migrations with `npm run db:status`. The migration runner records completed migrations and does not drop existing tables. It must be exercised against a copied/test database before production.
 
-It adds `customer_addresses`, `carts`, `cart_items`, `cart_migrations`, `orders`, `order_items`, `inventory_reservations`, `order_events`, `checkout_idempotency`, and `order_sequences`. Existing users, staff, sessions, catalog, inventory, and stock movement rows are preserved. No customer or order fixtures are seeded.
+Phase 2 adds `customer_addresses`, `carts`, `cart_items`, `cart_migrations`, `orders`, `order_items`, `inventory_reservations`, `order_events`, `checkout_idempotency`, and `order_sequences`. Phase 2.5 adds `shipping_methods` plus nullable shipping-method snapshots to `orders`. Existing users, staff, sessions, catalog, inventory, stock movement rows, and historical orders are preserved. No customer, order, or shipping method fixtures are seeded.
 
 Commerce writes use immediate SQLite transactions, WAL, foreign keys, a 5-second busy timeout, and `synchronous=FULL`. Order creation re-reads active catalog and inventory rows in the transaction, creates immutable item snapshots, reserves stock, writes movements/events, converts the cart, and stores the idempotency result atomically. Checkout retries with the same customer and key return the same order.
 
 ## Configuration and checkout gate
 
-`DATABASE_PATH`, `APP_ORIGIN`, `SHIPPING_COST_TOMANS`, and `CHECKOUT_RESERVATION_MINUTES` are server-only. `SHIPPING_COST_TOMANS` is intentionally unset in production until the owner approves a fee. When unset, `/api/v1/checkout/config` reports submission disabled and order creation returns `503 SHIPPING_NOT_CONFIGURED`. Do not add this value to a `VITE_*` variable or enable order submission until the approved fee is known.
+`DATABASE_PATH`, `APP_ORIGIN`, and `CHECKOUT_RESERVATION_MINUTES` are server-only. Shipping prices are configured in the database through Admin → Settings → Shipping Methods; `SHIPPING_COST_TOMANS` is no longer used. The Phase 2.5 migration creates no methods, so checkout remains disabled until an owner or store manager intentionally configures and activates one. `GET /api/v1/shipping/methods` exposes only active methods, while `POST /api/v1/checkout/quote` recalculates the cart and delivery total from server data. Orders snapshot the selected method name/code and amount.
 
 Reservation expiry defaults to 20 minutes and is configurable from 1 to 120 minutes. `ops/shawhposh-reservations.timer` runs the idempotent expiry command once per minute. The timer must be installed/enabled alongside the API release. Expiry cancels unpaid orders and atomically releases their stock reservations.
 
@@ -20,7 +20,7 @@ Reservation expiry defaults to 20 minutes and is configurable from 1 to 120 minu
 
 Customer account, addresses, orders, and cart use authenticated API routes. Ownership is always taken from the session, and foreign IDs return not found. Guests retain a temporary browser cart; login imports it through an idempotent server endpoint, maps current variant IDs, rechecks stock, and ignores saved prices. The browser copy is removed only after the server confirms migration. Custom designer output remains outside persisted cart/order items in this phase and is not represented as a purchasable line.
 
-Checkout is intentionally disabled while shipping is unconfigured. When enabled after owner configuration, orders remain `awaiting_payment` / `unpaid`; no payment success can be recorded by the admin UI.
+Checkout is disabled while no active shipping method exists. When an owner or store manager configures a method, orders remain `awaiting_payment` / `unpaid`; no payment success can be recorded by the admin UI. Shipping-method configuration is database-backed; return policies shown beside it remain local prototype settings.
 
 ## Admin and prototype boundary
 

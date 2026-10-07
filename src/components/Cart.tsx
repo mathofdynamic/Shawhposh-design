@@ -10,10 +10,9 @@ interface CartProps {
   onUpdateQuantity: (id: string, qty: number) => void;
   onRemoveItem: (id: string) => void;
   onCheckout: () => void;
-  shippingTomans?: number | null;
 }
 
-export default function Cart({ isOpen, onClose, cart, onUpdateQuantity, onRemoveItem, onCheckout, shippingTomans }: CartProps) {
+export default function Cart({ isOpen, onClose, cart, onUpdateQuantity, onRemoveItem, onCheckout }: CartProps) {
   const dialogRef = useRef<HTMLDivElement>(null);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
 
@@ -227,11 +226,9 @@ export default function Cart({ isOpen, onClose, cart, onUpdateQuantity, onRemove
                   <span>جمع کالاها</span>
                   <span className="font-mono">{formattedTotalPrice} تومان</span>
                 </div>
-                <div className="flex justify-between items-center text-xs text-gray-400">
+                <div className="flex justify-between items-center gap-3 text-xs text-gray-400">
                   <span>هزینه ارسال</span>
-                  <span className="text-[#eed29d] text-[10px] bg-[#eed29d]/10 border border-[#eed29d]/20 px-2 py-0.5 rounded-full font-semibold">
-                    {shippingTomans == null ? 'تعرفه هنوز تعیین نشده' : `${shippingTomans.toLocaleString('fa-IR')} تومان`}
-                  </span>
+                  <span className="text-right text-[10px] text-stone-400">پس از انتخاب روش ارسال محاسبه می‌شود</span>
                 </div>
                 <div className="pt-2 border-t border-white/5 flex justify-between items-center text-sm font-bold text-white">
                   <span>مجموع سبد بدون هزینه ارسال</span>

@@ -5,15 +5,45 @@ import { config } from '../../config';
 import { db } from '../../db/connection';
 import {
   carts, cartItems, checkoutIdempotency, customerAddresses, inventory, inventoryReservations,
-  orderEvents, orderItems, orderSequences, orders, productMedia, productVariants, products,
+  orderEvents, orderItems, orderSequences, orders, productMedia, productVariants, products, shippingMethods,
   stockMovements, users,
 } from '../../db/schema';
 import { ApiError } from '../../lib/errors';
 import { createAddressSchema, orderDto } from '../account/service';
+import { calculateShippingTomans } from '../shipping/service';
 
+const checkoutQuoteSchema = z.object({
+  subtotalTomans: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER),
+  discountTomans: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER),
+  shippingMethod: z.object({
+    id: z.string().uuid(),
+    code: z.string().max(48),
+    name: z.string().max(100),
+    description: z.string().max(500).nullable(),
+    priceTomans: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER),
+    totalTomans: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER),
+    estimatedMinDays: z.number().int().min(1).max(365).nullable(),
+    estimatedMaxDays: z.number().int().min(1).max(365).nullable(),
+  }),
+  items: z.array(z.object({
+    cartItemId: z.string().uuid(),
+    productId: z.string().uuid(),
+    variantId: z.string().uuid(),
+    sku: z.string().max(80),
+    productName: z.string().max(200),
+    colorName: z.string().max(100),
+    colorHex: z.string().max(32),
+    size: z.string().max(32),
+    quantity: z.number().int().min(1).max(1000),
+    unitPriceTomans: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER),
+    lineTotalTomans: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER),
+  })).min(1).max(500),
+});
 const checkoutSchema = z.object({
   addressId: z.string().uuid().optional(),
   shippingAddress: createAddressSchema.optional(),
+  shippingMethodId: z.string().uuid(),
+  expectedQuote: checkoutQuoteSchema,
   customerNote: z.string().trim().max(1000).optional(),
 }).refine(value => (value.addressId !== undefined) !== (value.shippingAddress !== undefined), 'انتخاب یک نشانی لازم است.');
 const keySchema = z.string().trim().min(8).max(128).regex(/^[A-Za-z0-9._:-]+$/);
@@ -24,12 +54,6 @@ const addressChangeSchema = z.object({ ...createAddressSchema.shape, reason: z.s
 function containsLiteral(column: SQLWrapper, search: string): SQL {
   const escaped = search.replace(/[\\%_]/g, character => `\\${character}`);
   return sql`${column} LIKE ${`%${escaped}%`} ESCAPE '\\'`;
-}
-
-export function checkoutAvailability() {
-  const shippingTomans = config.SHIPPING_COST_TOMANS ?? null;
-  return { orderSubmissionEnabled: shippingTomans !== null, shippingConfigured: shippingTomans !== null,
-    shippingTomans, reservationMinutes: config.CHECKOUT_RESERVATION_MINUTES };
 }
 
 function orderPeriod(date: Date) {
@@ -60,7 +84,12 @@ export function createCheckoutOrder(userId: string, idempotencyKeyInput: unknown
       return { order: orderDto(existingOrder), replayed: true };
     }
 
-    if (config.SHIPPING_COST_TOMANS === undefined) throw new ApiError(503, 'SHIPPING_NOT_CONFIGURED', 'ثبت سفارش تا تعیین هزینه ارسال فعال نمی‌شود.');
+    const shippingMethod = tx.select().from(shippingMethods).where(and(
+      eq(shippingMethods.id, body.shippingMethodId), eq(shippingMethods.active, true),
+    )).get();
+    if (!shippingMethod || shippingMethod.pricingType !== 'fixed' || shippingMethod.fixedPriceTomans === null) {
+      throw new ApiError(503, 'SHIPPING_UNAVAILABLE', 'در حال حاضر روش ارسال فعالی برای ثبت سفارش وجود ندارد.');
+    }
     const user = tx.select().from(users).where(eq(users.id, userId)).get();
     if (!user || user.status !== 'active') throw new ApiError(401, 'UNAUTHENTICATED', 'برای ثبت سفارش دوباره وارد حساب کاربری شوید.');
     const address = body.addressId
@@ -88,9 +117,40 @@ export function createCheckoutOrder(userId: string, idempotencyKeyInput: unknown
       return { item, variant, product, stock, unitPriceTomans, lineTotalTomans, image };
     });
     const subtotalTomans = priced.reduce((sum, line) => sum + line.lineTotalTomans, 0);
-    const shippingTomans = config.SHIPPING_COST_TOMANS;
+    const shippingTomans = calculateShippingTomans(shippingMethod, subtotalTomans);
     const totalTomans = subtotalTomans + shippingTomans;
     if (!Number.isSafeInteger(totalTomans)) throw new ApiError(422, 'AMOUNT_TOO_LARGE', 'مبلغ سفارش بیش از حد مجاز است.');
+
+    const actualQuote = {
+      subtotalTomans,
+      discountTomans: 0,
+      shippingMethod: {
+        id: shippingMethod.id,
+        code: shippingMethod.code,
+        name: shippingMethod.name,
+        description: shippingMethod.description,
+        priceTomans: shippingTomans,
+        totalTomans,
+        estimatedMinDays: shippingMethod.estimatedMinDays,
+        estimatedMaxDays: shippingMethod.estimatedMaxDays,
+      },
+      items: priced.map(({ item, variant, product, unitPriceTomans, lineTotalTomans }) => ({
+        cartItemId: item.id,
+        productId: product.id,
+        variantId: variant.id,
+        sku: variant.sku,
+        productName: product.name,
+        colorName: variant.colorName,
+        colorHex: variant.colorHex,
+        size: variant.size,
+        quantity: item.quantity,
+        unitPriceTomans,
+        lineTotalTomans,
+      })),
+    };
+    if (body.shippingMethodId !== body.expectedQuote.shippingMethod.id || JSON.stringify(actualQuote) !== JSON.stringify(body.expectedQuote)) {
+      throw new ApiError(409, 'QUOTE_CHANGED', 'مبلغ یا جزئیات سفارش تغییر کرده است. اطلاعات به‌روز را بررسی و دوباره ثبت کنید.');
+    }
 
     const period = orderPeriod(now);
     const sequence = tx.insert(orderSequences).values({ period, value: 1 })
@@ -99,6 +159,7 @@ export function createCheckoutOrder(userId: string, idempotencyKeyInput: unknown
     const orderNumber = `SHP-${period}-${String(sequence.value).padStart(6, '0')}`;
     const order = tx.insert(orders).values({ orderNumber, userId, customerEmail: user.email, customerPhone: shippingAddress.phone,
       customerName: shippingAddress.recipientName, shippingAddressSnapshot: shippingAddress, subtotalTomans,
+      shippingMethodId: shippingMethod.id, shippingMethodCode: shippingMethod.code, shippingMethodName: shippingMethod.name,
       discountTomans: 0, shippingTomans, totalTomans, orderStatus: 'awaiting_payment', paymentStatus: 'unpaid',
       productionStatus: 'not_required', fulfillmentStatus: 'unfulfilled', customerNote: body.customerNote ?? null,
       createdAt: now, updatedAt: now }).returning().get();
@@ -120,7 +181,8 @@ export function createCheckoutOrder(userId: string, idempotencyKeyInput: unknown
         note: 'موجودی برای سفارش رزرو شد.', metadata: { sku: line.variant.sku, quantity: line.item.quantity }, createdAt: now }).run();
     }
     tx.insert(orderEvents).values({ orderId: order.id, eventType: 'order_created', actorType: 'customer', actorUserId: userId,
-      newValue: 'awaiting_payment', note: 'سفارش ثبت شد و در انتظار پرداخت است.', createdAt: now }).run();
+      newValue: 'awaiting_payment', note: 'سفارش ثبت شد و در انتظار پرداخت است.',
+      metadata: { shippingMethodCode: shippingMethod.code, shippingMethodName: shippingMethod.name, shippingTomans }, createdAt: now }).run();
     tx.update(carts).set({ status: 'converted', updatedAt: now }).where(eq(carts.id, cart.id)).run();
     tx.insert(checkoutIdempotency).values({ userId, key, requestHash: fingerprint, orderId: order.id, createdAt: now }).run();
     return { order: orderDto(order), replayed: false };

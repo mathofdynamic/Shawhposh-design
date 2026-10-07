@@ -21,7 +21,7 @@
     "db:seed": "tsx server/db/seed.ts",
     "server:expire-reservations": "node server-dist/modules/orders/expire-reservations.js",
     "admin:create-owner": "tsx server/modules/admin/create-owner.ts",
-    "test:backend": "tsx --test server/tests/phase1.test.ts server/tests/phase2.test.ts",
+    "test:backend": "tsx --test server/tests/phase1.test.ts server/tests/phase2.test.ts server/tests/phase25.test.ts",
     "test:ui": "tsx --test src/admin/domain/__tests__/pagination.test.tsx src/admin/domain/__tests__/business-date.test.ts src/lib/productImage.test.ts src/features/cart/legacy.test.ts",
     "server:check": "tsc --noEmit -p server/tsconfig.json"
   },

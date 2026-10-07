@@ -10,6 +10,7 @@ export interface OrderDetailPageProps { orderIdProp?: string; }
 
 const orderLabels: Record<string, string> = { draft: 'پیش‌نویس', awaiting_payment: 'در انتظار پرداخت', confirmed: 'تأییدشده', cancelled: 'لغوشده', completed: 'تکمیل‌شده' };
 const paymentLabels: Record<string, string> = { unpaid: 'پرداخت‌نشده', pending: 'در حال پرداخت', paid: 'پرداخت‌شده', failed: 'ناموفق', partially_refunded: 'بازپرداخت بخشی', refunded: 'بازپرداخت‌شده' };
+const fulfillmentLabels: Record<string, string> = { unfulfilled: 'آماده‌نشده', ready_to_pack: 'آماده بسته‌بندی', packed: 'بسته‌بندی‌شده', shipped: 'ارسال‌شده', delivered: 'تحویل‌شده', returned: 'مرجوع‌شده' };
 const inputClass = 'w-full rounded-xl border border-white/10 bg-[#181716] px-3 py-2.5 text-sm text-white outline-none focus:border-[#ba8d3d]';
 
 export const OrderDetailPage: React.FC<OrderDetailPageProps> = ({ orderIdProp }) => {
@@ -88,13 +89,17 @@ export const OrderDetailPage: React.FC<OrderDetailPageProps> = ({ orderIdProp })
         <section className="space-y-4 rounded-2xl border border-white/10 bg-[#131211] p-5 lg:col-span-2">
           <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/5 pb-4">
             <div><p className="font-mono text-lg font-bold text-[#eed29d]">{currentOrder.orderNumber}</p><p className="mt-1 text-xs text-stone-500">ثبت‌شده در {new Date(currentOrder.createdAt).toLocaleString('fa-IR')}</p></div>
-            <div className="flex gap-2"><Badge tone={currentOrder.orderStatus === 'cancelled' ? 'danger' : 'warning'}>{orderLabels[currentOrder.orderStatus] ?? currentOrder.orderStatus}</Badge><Badge tone={currentOrder.paymentStatus === 'paid' ? 'success' : 'neutral'}>{paymentLabels[currentOrder.paymentStatus] ?? currentOrder.paymentStatus}</Badge></div>
+            <div className="flex flex-wrap gap-2"><Badge tone={currentOrder.orderStatus === 'cancelled' ? 'danger' : 'warning'}>{orderLabels[currentOrder.orderStatus] ?? currentOrder.orderStatus}</Badge><Badge tone={currentOrder.paymentStatus === 'paid' ? 'success' : 'neutral'}>{paymentLabels[currentOrder.paymentStatus] ?? currentOrder.paymentStatus}</Badge><Badge tone="neutral">ارسال: {fulfillmentLabels[currentOrder.fulfillmentStatus] ?? currentOrder.fulfillmentStatus}</Badge></div>
           </div>
           <div className="grid grid-cols-2 gap-4 text-sm sm:grid-cols-4">
             <div><span className="block text-[10px] text-stone-500">جمع کالاها</span><strong className="mt-1 block font-mono">{currentOrder.subtotalTomans.toLocaleString('fa-IR')} تومان</strong></div>
             <div><span className="block text-[10px] text-stone-500">تخفیف</span><strong className="mt-1 block font-mono">{currentOrder.discountTomans.toLocaleString('fa-IR')} تومان</strong></div>
             <div><span className="block text-[10px] text-stone-500">هزینه ارسال</span><strong className="mt-1 block font-mono">{currentOrder.shippingTomans.toLocaleString('fa-IR')} تومان</strong></div>
             <div><span className="block text-[10px] text-stone-500">مبلغ سفارش</span><strong className="mt-1 block font-mono text-[#eed29d]">{currentOrder.totalTomans.toLocaleString('fa-IR')} تومان</strong></div>
+          </div>
+          <div className="grid grid-cols-1 gap-3 border-t border-white/5 pt-3 text-xs sm:grid-cols-2">
+            <div><span className="block text-[10px] text-stone-500">روش ارسال ثبت‌شده</span><strong className="mt-1 block text-stone-200">{currentOrder.shippingMethodName || 'ثبت نشده'}</strong></div>
+            <div><span className="block text-[10px] text-stone-500">وضعیت آماده‌سازی و ارسال</span><strong className="mt-1 block text-stone-200">{fulfillmentLabels[currentOrder.fulfillmentStatus] ?? currentOrder.fulfillmentStatus}</strong></div>
           </div>
             <div className="overflow-hidden rounded-xl border border-white/5">
             <div role="region" tabIndex={0} aria-label={'\u0622\u06cc\u062a\u0645\u200c\u0647\u0627\u06cc \u0633\u0641\u0627\u0631\u0634. \u0628\u0631\u0627\u06cc \u0645\u0634\u0627\u0647\u062f\u0647 \u0647\u0645\u0647 \u0633\u062a\u0648\u0646\u200c\u0647\u0627 \u062f\u0631 \u0645\u0648\u0628\u0627\u06cc\u0644 \u0627\u0641\u0642\u06cc \u067e\u06cc\u0645\u0627\u06cc\u0634 \u06a9\u0646\u06cc\u062f.'} className="overflow-x-auto focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#ba8d3d]"><table className="w-full min-w-[560px] text-right text-xs"><thead className="bg-white/[0.03] text-stone-400"><tr><th className="p-3">کالا</th><th className="p-3">SKU</th><th className="p-3">ویژگی</th><th className="p-3">تعداد</th><th className="p-3">قیمت نهایی</th></tr></thead><tbody className="divide-y divide-white/5">{currentOrder.items.map(item => <tr key={item.id}><td className="p-3 font-medium text-white">{item.productName}</td><td className="p-3 font-mono text-stone-400">{item.sku}</td><td className="p-3 text-stone-400">{item.variant.colorName} · {item.variant.size}</td><td className="p-3">{item.quantity.toLocaleString('fa-IR')}</td><td className="p-3 font-mono">{item.lineTotalTomans.toLocaleString('fa-IR')} تومان</td></tr>)}</tbody></table></div>

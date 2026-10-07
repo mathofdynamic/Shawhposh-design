@@ -25,7 +25,7 @@ import { AdminLayout } from './admin/AdminLayout';
 import { ToastProvider } from './admin/components/ui';
 import { addVariantToCart, cartItemsForStorefront, loadCart, migrateLegacyCart, removeCartLine, updateCartQuantity, type ServerCart } from './features/cart/api';
 import { resolveLegacyCartVariant } from './features/cart/legacy';
-import { createCheckoutOrder, loadCheckoutConfiguration, type CheckoutConfiguration } from './features/orders/api';
+import { createCheckoutOrder, loadCheckoutConfiguration, type CheckoutConfiguration, type CheckoutOrderInput } from './features/orders/api';
 
 function readLegacyCart(): CartItem[] {
   try {
@@ -333,7 +333,7 @@ export default function App() {
     catch (failure) { setCartError(failure instanceof Error ? failure.message : 'سبد خرید به‌روزرسانی نشد.'); }
   };
 
-  const handleSubmitOrder = async (input: { addressId?: string; shippingAddress?: Record<string, string>; customerNote?: string }, idempotencyKey: string) => {
+  const handleSubmitOrder = async (input: CheckoutOrderInput, idempotencyKey: string) => {
     const result = await createCheckoutOrder(input, idempotencyKey);
     await refreshServerCart();
     return result.order;
@@ -862,7 +862,6 @@ export default function App() {
         onUpdateQuantity={handleUpdateQuantity}
         onRemoveItem={handleRemoveItem}
         onCheckout={handleCheckout}
-        shippingTomans={checkoutConfiguration?.shippingTomans ?? null}
       />
 
       {/* Styled Iranian Streetwear Footer */}

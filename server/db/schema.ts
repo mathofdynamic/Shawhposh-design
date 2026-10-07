@@ -50,6 +50,29 @@ export const carts = sqliteTable('carts', {
   updatedAt: timestamp('updated_at', { withTimezone: true }).$defaultFn(() => new Date()).notNull(), expiresAt: timestamp('expires_at', { withTimezone: true }),
 }, t => [check('cart_status', sql`${t.status} in ('active','converted','abandoned','expired')`), uniqueIndex('one_active_cart_per_customer').on(t.userId).where(sql`${t.status} = 'active'`) ]);
 
+export const shippingMethods = sqliteTable('shipping_methods', {
+  id: uuid().primaryKey().$defaultFn(() => randomUUID()),
+  code: text().notNull().unique(),
+  name: text().notNull(),
+  description: text(),
+  carrierType: text('carrier_type').default('manual').notNull(),
+  pricingType: text('pricing_type').default('fixed').notNull(),
+  fixedPriceTomans: integer('fixed_price_tomans'),
+  freeShippingThresholdTomans: integer('free_shipping_threshold_tomans'),
+  estimatedMinDays: integer('estimated_min_days'),
+  estimatedMaxDays: integer('estimated_max_days'),
+  active: boolean().default(false).notNull(),
+  displayOrder: integer('display_order').default(0).notNull(),
+  ...timestamps(),
+}, t => [
+  check('shipping_fixed_price_nonnegative', sql`${t.fixedPriceTomans} is null or ${t.fixedPriceTomans} >= 0`),
+  check('shipping_threshold_nonnegative', sql`${t.freeShippingThresholdTomans} is null or ${t.freeShippingThresholdTomans} >= 0`),
+  check('shipping_min_days_positive', sql`${t.estimatedMinDays} is null or ${t.estimatedMinDays} >= 1`),
+  check('shipping_max_days_positive', sql`${t.estimatedMaxDays} is null or ${t.estimatedMaxDays} >= 1`),
+  check('shipping_display_order_nonnegative', sql`${t.displayOrder} >= 0`),
+  index('shipping_methods_active_order_idx').on(t.active, t.displayOrder, t.createdAt),
+]);
+
 export const cartItems = sqliteTable('cart_items', {
   id: uuid().primaryKey().$defaultFn(() => randomUUID()), cartId: uuid('cart_id').references(() => carts.id, { onDelete: 'cascade' }).notNull(),
   variantId: uuid('variant_id').references(() => productVariants.id).notNull(), quantity: integer().notNull(),
@@ -61,6 +84,7 @@ export const orders = sqliteTable('orders', {
   userId: uuid('user_id').references(() => users.id, { onDelete: 'set null' }), customerEmail: text('customer_email'),
   customerPhone: text('customer_phone'), customerName: text('customer_name').notNull(),
   shippingAddressSnapshot: jsonb('shipping_address_snapshot').$type<Record<string, string>>().notNull(),
+  shippingMethodId: uuid('shipping_method_id'), shippingMethodCode: text('shipping_method_code'), shippingMethodName: text('shipping_method_name'),
   subtotalTomans: integer('subtotal_tomans').notNull(), discountTomans: integer('discount_tomans').default(0).notNull(),
   shippingTomans: integer('shipping_tomans').notNull(), totalTomans: integer('total_tomans').notNull(),
   orderStatus: text('order_status').default('awaiting_payment').notNull(), paymentStatus: text('payment_status').default('unpaid').notNull(),
