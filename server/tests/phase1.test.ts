@@ -33,9 +33,19 @@ test('admin authentication, CSRF, role authorization and catalog persistence',as
  assert.equal((await request(app).get('/api/v1/admin/products')).status,401);
  assert.equal((await staff.post('/api/v1/admin/auth/login').set('Origin',origin).send({identifier:'owner@example.invalid',password})).status,200);
  const product=catalogSnapshot().products[0];
+ const summary=(await staff.get('/api/v1/admin/dashboard/summary')).body;
+ assert.deepEqual(summary.products,{total:1,active:1});
+ assert.deepEqual(summary.variants,{total:1,active:1,lowStock:1});
+ assert.deepEqual(summary.inventory,{onHand:0,reserved:0,available:0});
+ assert.equal(summary.customers,1);
+ assert.deepEqual(summary.orders,{total:0,awaitingPayment:0});
  assert.equal((await staff.patch('/api/v1/admin/products/'+product.id).send({name:'Rejected'})).status,403);
  assert.equal((await staff.patch('/api/v1/admin/products/'+product.id).set('Origin',origin).send({name:'Changed',basePriceTomans:250})).status,200);
- assert.equal((await request(app).get('/api/v1/products/test-product')).body.product.price,250);
+ const publicProduct=(await request(app).get('/api/v1/products/test-product')).body.product;
+ assert.equal(publicProduct.price,250);
+ for (const key of ['rating','ratingScore','reviewCount','reviewsCount','originalPrice','originalPriceTomans','discountPercent','isPopular']) {
+  assert.equal(Object.hasOwn(publicProduct,key),false,`public catalog must not claim ${key}`);
+ }
  await staff.patch('/api/v1/admin/products/'+product.id).set('Origin',origin).send({status:'archived'});assert.equal((await request(app).get('/api/v1/products/test-product')).status,404);
  await staff.patch('/api/v1/admin/products/'+product.id).set('Origin',origin).send({status:'active'});
  const duplicate=await staff.post('/api/v1/admin/variants').set('Origin',origin).send({productId:product.id,sku:'TEST-SKU',colorName:'White',colorHex:'#FFFFFF',size:'L'});assert.equal(duplicate.status,409);

@@ -250,7 +250,7 @@ export default function ShippingMethodsPanel() {
         </article>)}
       </div>}
 
-      <p className="flex items-start gap-2 border-t border-white/5 pt-4 text-[11px] leading-5 text-stone-500"><Check size={13} className="mt-0.5 shrink-0 text-[#ba8d3d]" />بازنشانی تنظیمات نمایشی، روش‌های ارسال ذخیره‌شده را تغییر نمی‌دهد. برای تغییر مبلغ یا فعال‌بودن، همین بخش را ویرایش کنید.</p>
+      <p className="flex items-start gap-2 border-t border-white/5 pt-4 text-[11px] leading-5 text-stone-500"><Check size={13} className="mt-0.5 shrink-0 text-[#ba8d3d]" />سفارش‌های ثبت‌شده مبلغ و روش ارسال زمان ثبت را نگه می‌دارند. تغییرات این بخش فقط روی سفارش‌های بعدی اثر دارد.</p>
       <button type="button" onClick={() => void refresh()} disabled={loading} className="inline-flex min-h-9 items-center gap-2 rounded-lg px-2 text-[11px] text-stone-400 transition-colors hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#ba8d3d] disabled:opacity-40"><RotateCw size={12} />به‌روزرسانی فهرست</button>
     </section>
   );

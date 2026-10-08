@@ -10,6 +10,7 @@ import { accountRoutes } from './modules/account/routes';
 import { cartRoutes } from './modules/cart/routes';
 import { adminOrderRoutes, checkoutRoutes, customerOrderRoutes } from './modules/orders/routes';
 import { adminShippingRoutes, checkoutQuoteRoutes, publicShippingRoutes } from './modules/shipping/routes';
+import { adminDashboardRoutes } from './modules/admin/dashboardRoutes';
 import { ApiError, errorHandler } from './lib/errors';
 
 export const app=express();
@@ -31,7 +32,7 @@ app.use('/api/v1/cart',requireCustomer,cartRoutes);
 app.use('/api/v1/shipping',publicShippingRoutes);
 app.use('/api/v1/checkout',checkoutQuoteRoutes,checkoutRoutes);
 app.use('/api/v1/orders',requireCustomer,customerOrderRoutes);
-app.use('/api/v1/admin',requireStaff,adminOrderRoutes,adminCatalog,adminShippingRoutes);
+app.use('/api/v1/admin',requireStaff,adminDashboardRoutes,adminOrderRoutes,adminCatalog,adminShippingRoutes);
 app.use('/api/v1',publicCatalog);
 app.use((_req,_res,next)=>next(new ApiError(404,'NOT_FOUND','مسیر یافت نشد.')));
 app.use(errorHandler);

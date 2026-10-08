@@ -1,38 +1,20 @@
-import { ComponentType } from 'react';
-import { StaffRole } from '../domain/types';
+export type StaffRole = 'owner' | 'store_manager' | 'finance' | 'production' | 'inventory' | 'support';
 
-export type AdminGroupId =
-  | 'overview'
-  | 'sales'
-  | 'catalog'
-  | 'custom_studio'
-  | 'customers'
-  | 'marketing'
-  | 'content'
-  | 'analytics'
-  | 'team'
-  | 'system';
+export type AdminGroupId = 'overview' | 'sales' | 'catalog' | 'customers' | 'system';
 
 export interface AdminRouteDef {
   id: string;
-  path: string; // e.g. '/admin/sales/orders'
+  path: string;
   groupId: AdminGroupId;
   titleFa: string;
   titleEn: string;
   shortTitleFa: string;
   descriptionFa: string;
   iconName: string;
-  allowedRoles?: StaffRole[]; // Visual permission indicators
-  badgeKey?: 'pendingOrders' | 'pendingDesigns' | 'lowStock' | 'openTasks' | 'unverifiedPayments';
-  quickAction?: {
-    label: string;
-    actionKey: string;
-  };
-  showInNav?: boolean; // When false, hidden from sidebar navigation
-  devOnly?: boolean; // When true, only available for developer debugging
-  isDetail?: boolean; // When true, contextual detail route
-  redirectTo?: string; // Redirect legacy/consolidated path to canonical destination
-  layoutWidth?: 'wide' | 'standard' | 'narrow'; // Page container max-width preset
+  allowedRoles?: StaffRole[];
+  showInNav?: boolean;
+  isDetail?: boolean;
+  layoutWidth?: 'wide' | 'standard' | 'narrow';
 }
 
 export interface AdminNavGroupDef {

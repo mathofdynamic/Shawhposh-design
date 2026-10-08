@@ -1,59 +1,8 @@
-import { Product } from './types';
-
-export const PersianGraphics = [
-  {
-    id: 'heeche',
-    name: 'کالیگرافی نستعلیق «هیچ»',
-    svgPath: 'M 10 20 L 90 20 L 50 80 Z', // custom elegant styling
-    artist: 'کارگاه شهپوش',
-    description: 'خوشنویسی سنتی بر پایه هنر معاصر',
-    // We will render these as gorgeous inline SVG illustrations in the POD editor!
-    type: 'calligraphy' as const,
-  },
-  {
-    id: 'eshgh',
-    name: 'کالیگرافی خط ثلث «عشق»',
-    artist: 'استاد امین',
-    description: 'طرح برجسته با الهام از اشعار مولوی',
-    type: 'calligraphy' as const,
-  },
-  {
-    id: 'tehran_vintage',
-    name: 'ایلوستراسیون دروازه تهران',
-    artist: 'مهرگان منفرد',
-    description: 'تلفیق نوستالژی پایتخت و آرت دکو',
-    type: 'graphic' as const,
-  },
-  {
-    id: 'damavand_minimal',
-    name: 'خطوط نمادین کوه دماوند',
-    artist: 'سیاوش راد',
-    description: 'نمای مونوکروم و هندسی قله ایران',
-    type: 'minimalist' as const,
-  },
-  {
-    id: 'hafez_collage',
-    name: 'کلاژ ابیات دیوان حافظ',
-    artist: 'ستاره نیک‌فر',
-    description: 'تایپوگرافی اشعار گرانبهای خواجه شیراز',
-    type: 'graphic' as const,
-  },
-  {
-    id: 'persian_lion',
-    name: 'مهر اساطیری شیر و خورشید',
-    artist: 'سهراب زارع',
-    description: 'بازآفرینی اساطیری نقش دوران ساسانی',
-    type: 'graphic' as const,
-  }
-];
-
-export const PRODUCTS: Product[] = [
+export const catalogSeedProducts = [
   {
     id: 'sp-101',
     name: 'تیشرت کالیگرافی «هیچ»',
     price: 490000,
-    originalPrice: 545000,
-    discountPercent: 10,
     description: 'تیشرت نخی سوپرپنبه با چاپ دیجیتال مستقیم نستعلیق برجسته. این محصول ترکیبی از تایپوگرافی اصیل ایرانی و برش‌های مدرن خیابانی (Streetwear) است که با رنگ‌آمیزی عمیق و کیفیت دوخت در سطح استانداردهای جهانی، تجربه‌ای نوینی از پوشاک ایرانی ارائه می‌کند.',
     details: [
       'جنس پارچه: ۱۰۰٪ پنبه شانه شده دو نخ (سوپرپنبه ارگانیک)',
@@ -63,22 +12,13 @@ export const PRODUCTS: Product[] = [
       'برش بدنه: لش فیت (Oversized) راحت و اسپرت مناسب آقایان و بانوان'
     ],
     category: 'calligraphy',
-    images: [
-      'https://picsum.photos/seed/heech_tshirt_1/800/800',
-      'https://picsum.photos/seed/heech_tshirt_2/800/800',
-      'https://picsum.photos/seed/heech_tshirt_3/800/800',
-      'https://picsum.photos/seed/heech_tshirt_4/800/800'
-    ],
+    images: [],
     colors: [
       { name: 'جغرافیای مشکی (ذغالی)', hex: '#1C1A1A' },
       { name: 'سپید استخوانی', hex: '#F5F2EB' },
       { name: 'سبز کهربایی', hex: '#233A2E' }
     ],
     sizes: ['S', 'M', 'L', 'XL', 'XXL'],
-    rating: 4.8,
-    reviewsCount: 38,
-    isPopular: true,
-    isNew: false
   },
   {
     id: 'sp-102',
@@ -93,21 +33,13 @@ export const PRODUCTS: Product[] = [
       'برش بدنه: فیت کلاسیک متناسب با آناتومی خاورمیانه‌ای'
     ],
     category: 'graphic',
-    images: [
-      'https://picsum.photos/seed/tehran_gate_1/800/800',
-      'https://picsum.photos/seed/tehran_gate_2/800/800',
-      'https://picsum.photos/seed/tehran_gate_3/800/800'
-    ],
+    images: [],
     colors: [
       { name: 'سورمه‌ای عمیق', hex: '#1E2530' },
       { name: 'جغرافیای مشکی (ذغالی)', hex: '#1C1A1A' },
       { name: 'خاکستری مِلانژ', hex: '#7E8287' }
     ],
     sizes: ['M', 'L', 'XL', 'XXL'],
-    rating: 4.9,
-    reviewsCount: 24,
-    isPopular: false,
-    isNew: true
   },
   {
     id: 'sp-103',
@@ -122,25 +54,13 @@ export const PRODUCTS: Product[] = [
       'مناسب تمامی فصول با تراکم بافت ۲۰۰ گرم بر متر مربع'
     ],
     category: 'minimalist',
-    originalPrice: 530000,
-    discountPercent: 15,
-    images: [
-      'https://picsum.photos/seed/peace_min_1/800/800',
-      'https://picsum.photos/seed/peace_min_2/800/800',
-      'https://picsum.photos/seed/peace_min_3/800/800',
-      'https://picsum.photos/seed/peace_min_4/800/800',
-      'https://picsum.photos/seed/peace_min_5/800/800'
-    ],
+    images: [],
     colors: [
       { name: 'سبز زیتونی سیر', hex: '#313B2E' },
       { name: 'سپید استخوانی', hex: '#F5F2EB' },
       { name: 'آجری کویر', hex: '#7D4734' }
     ],
     sizes: ['S', 'M', 'L', 'XL'],
-    rating: 4.7,
-    reviewsCount: 19,
-    isPopular: true,
-    isNew: false
   },
   {
     id: 'sp-104',
@@ -155,25 +75,17 @@ export const PRODUCTS: Product[] = [
       'تن‌خور آزاد و رها جهت عبور بهینه هوا در روزهای گرم سال'
     ],
     category: 'graphic',
-    images: [
-      'https://picsum.photos/seed/hafez_shirt_1/800/800'
-    ],
+    images: [],
     colors: [
       { name: 'جغرافیای مشکی (ذغالی)', hex: '#1C1A1A' },
       { name: 'سپید استخوانی', hex: '#F5F2EB' }
     ],
     sizes: ['S', 'M', 'L', 'XL', 'XXL'],
-    rating: 5.0,
-    reviewsCount: 42,
-    isPopular: true,
-    isNew: true
   },
   {
     id: 'sp-105',
     name: 'تیشرت مینیاتور اساطیری «هما»',
     price: 496000,
-    originalPrice: 620000,
-    discountPercent: 20,
     description: 'برگرفته از کاشی‌کاری‌ها و مینیاتورهای دوره صفوی با بازآفرینی پرنده فرخنده همای سعادت در پس‌زمینه زوایای مدرن. این کار نفیس تداعی‌گر زیبایی اصیل موزه ملی است بر جامه مد امروز.',
     details: [
       'جنس پارچه: ۱۰۰٪ پنبه شانه شده بهاره با تکنولوژی ریسندگی پیشرفته',
@@ -183,19 +95,12 @@ export const PRODUCTS: Product[] = [
       'قد تیشرت بلندتر از استانداردهای بازاری جهت راحتی در شلوار'
     ],
     category: 'graphic',
-    images: [
-      'https://picsum.photos/seed/homa_shirt_1/800/800',
-      'https://picsum.photos/seed/homa_shirt_2/800/800'
-    ],
+    images: [],
     colors: [
       { name: 'خردلی اخرایی', hex: '#BA8D3D' },
       { name: 'جغرافیای مشکی (ذغالی)', hex: '#1C1A1A' }
     ],
     sizes: ['M', 'L', 'XL'],
-    rating: 4.6,
-    reviewsCount: 12,
-    isPopular: false,
-    isNew: true
   },
   {
     id: 'sp-106',
@@ -210,21 +115,12 @@ export const PRODUCTS: Product[] = [
       'طراحی خلوت و مجلسی متناسب استایل نیمه‌رسمی'
     ],
     category: 'calligraphy',
-    images: [
-      'https://picsum.photos/seed/eshgh_shirt_1/800/800',
-      'https://picsum.photos/seed/eshgh_shirt_2/800/800',
-      'https://picsum.photos/seed/eshgh_shirt_3/800/800',
-      'https://picsum.photos/seed/eshgh_shirt_4/800/800'
-    ],
+    images: [],
     colors: [
       { name: 'جغرافیای مشکی (ذغالی)', hex: '#1C1A1A' },
       { name: 'سپید استخوانی', hex: '#F5F2EB' },
       { name: 'زرشکی شیراز', hex: '#5E1B26' }
     ],
     sizes: ['S', 'M', 'L', 'XL'],
-    rating: 4.9,
-    reviewsCount: 31,
-    isPopular: true,
-    isNew: false
   }
-];
+] as const;

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Star, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Shirt, ChevronLeft, ChevronRight } from 'lucide-react';
 import { Product } from '../types';
 import { handleProductImageError } from '../lib/productImage';
 
@@ -59,24 +59,6 @@ export default function ProductCard({ theme = 'dark', product, onSelect }: Produ
       {/* 1. Header Row (Tags + Sizes) */}
       <div className="flex justify-between items-center z-10 w-full mb-3">
         <div className="flex gap-1.5 flex-wrap">
-          {product.discountPercent && (
-            <span className="bg-[#e61919]/10 border border-[#e61919]/25 text-[#e61919] dark:text-red-400 text-[9px] font-black px-2.5 py-0.5 rounded-full uppercase tracking-wider">
-              {product.discountPercent.toLocaleString('fa-IR')}٪ تخفیف
-            </span>
-          )}
-          {product.isNew ? (
-            <span className="bg-[#ba8d3d] text-[#0e0d0c] text-[9px] font-extrabold px-2.5 py-0.5 rounded-full uppercase tracking-wider">
-              طرح جدید
-            </span>
-          ) : product.isPopular ? (
-            <span className={`border text-[9px] font-extrabold px-2.5 py-0.5 rounded-full uppercase tracking-wider transition-colors ${
-              isDark 
-                ? 'bg-[#eed29d]/10 border-[#eed29d]/20 text-[#eed29d]' 
-                : 'bg-[#ba8d3d]/10 border-[#ba8d3d]/20 text-[#ba8d3d]'
-            }`}>
-              محدود / محبوب
-            </span>
-          ) : null}
         </div>
 
         {/* Sizes Badge Indicators */}
@@ -144,6 +126,11 @@ export default function ProductCard({ theme = 'dark', product, onSelect }: Produ
             }`}
           />
         ))}
+        {product.images.length === 0 && (
+          <div role="img" aria-label={`تصویر برای ${product.name} ثبت نشده است`} className="relative z-10 flex h-36 w-36 items-center justify-center rounded-full border border-white/10 bg-black/10 text-stone-500">
+            <Shirt size={44} strokeWidth={1} />
+          </div>
+        )}
 
         {/* Slideshow index dots (only relevant when multiple images exist) */}
         {product.images.length > 1 && (
@@ -187,25 +174,10 @@ export default function ProductCard({ theme = 'dark', product, onSelect }: Produ
           }`}>
             {product.name}
           </h4>
-          <div className="flex items-center gap-1.5 mt-1.5">
-            <div className="flex items-center">
-              <Star size={10} fill="#ba8d3d" stroke="none" />
-              <span className={`font-mono text-[9.5px] mr-1 mt-0.5 ${isDark ? 'text-[#eed29d]' : 'text-[#ba8d3d]'}`}>{product.rating}</span>
-            </div>
-            <span className={`text-[9.5px] ${isDark ? 'text-gray-600' : 'text-slate-300'}`}>•</span>
-            <span className={`text-[9.5px] font-sans ${isDark ? 'text-gray-400' : 'text-slate-500'}`}>{product.reviewsCount} نظر</span>
-          </div>
         </div>
 
         {/* Fully Readable Prominent Price Aligned Left */}
         <div className="flex flex-col items-end min-w-[85px] shrink-0">
-          {product.originalPrice && (
-            <span className={`font-mono text-[11px] line-through decoration-red-500/40 tracking-tight mb-1 ${
-              isDark ? 'text-gray-500' : 'text-slate-400'
-            }`}>
-              {product.originalPrice.toLocaleString('fa-IR')}
-            </span>
-          )}
           <span className={`font-mono text-lg md:text-xl font-black tracking-tight leading-none ${
             isDark ? 'text-[#eed29d]' : 'text-[#ba8d3d]'
           }`}>

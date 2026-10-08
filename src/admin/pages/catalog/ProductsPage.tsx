@@ -342,11 +342,7 @@ export const ProductsPage: React.FC = () => {
       render: (row) => (
         <div className="flex items-center gap-3">
           <div className="w-11 h-11 rounded-xl overflow-hidden bg-black border border-white/10 flex-shrink-0 relative">
-            <img
-              src={row.primaryImage || row.images?.[0] || 'https://picsum.photos/seed/thumb/100/100'}
-              alt={row.name}
-              className="w-full h-full object-cover"
-            />
+            {row.primaryImage || row.images?.[0] ? <img src={row.primaryImage || row.images[0]} alt={row.name} className="h-full w-full object-cover" /> : <Shirt size={20} aria-hidden="true" className="absolute inset-0 m-auto text-stone-500" />}
           </div>
           <div>
             <div className="font-bold text-white text-xs">{row.name}</div>
@@ -388,11 +384,6 @@ export const ProductsPage: React.FC = () => {
       render: (row) => (
         <div>
           <MoneyDisplay amount={row.basePriceTomans} size="sm" />
-          {row.originalPriceTomans && (
-            <div className="text-[10px] line-through text-stone-500 font-fanum">
-              {toFaDigits(row.originalPriceTomans.toLocaleString())}
-            </div>
-          )}
         </div>
       ),
     },

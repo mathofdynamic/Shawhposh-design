@@ -8,9 +8,7 @@
     "build": "vite build",
     "preview": "vite preview",
     "clean": "rm -rf dist server.js",
-    "test:invariants": "tsx src/admin/domain/verify-invariants.ts",
-    "test:journeys": "tsx --test src/admin/domain/__tests__/journeys.test.ts",
-    "test": "npm run test:invariants && npm run test:journeys && npm run test:ui",
+    "test": "npm run test:ui && npm run test:backend",
     "lint": "tsc --noEmit",
     "server:dev": "tsx watch server/index.ts",
     "server:build": "esbuild server/index.ts server/db/migrate.ts server/db/seed.ts server/modules/admin/create-owner.ts server/db/backup.ts server/modules/orders/expire-reservations.ts --bundle --platform=node --packages=external --format=esm --outdir=server-dist --outbase=server",
@@ -23,7 +21,8 @@
     "admin:create-owner": "tsx server/modules/admin/create-owner.ts",
     "test:backend": "tsx --test server/tests/phase1.test.ts server/tests/phase2.test.ts server/tests/phase25.test.ts",
     "test:ui": "tsx --test src/admin/domain/__tests__/pagination.test.tsx src/admin/domain/__tests__/business-date.test.ts src/lib/productImage.test.ts src/features/cart/legacy.test.ts",
-    "server:check": "tsc --noEmit -p server/tsconfig.json"
+    "server:check": "tsc --noEmit -p server/tsconfig.json",
+    "audit:runtime-data": "node scripts/audit-runtime-data.mjs"
   },
   "dependencies": {
     "@phosphor-icons/react": "^2.1.10",

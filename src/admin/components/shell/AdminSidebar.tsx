@@ -1,23 +1,9 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import {
-  ChevronDown,
-  ChevronLeft,
-  ChevronRight,
-  Shield,
-  PanelLeftClose,
-  PanelLeft,
-  ExternalLink,
-  Sparkles,
-} from 'lucide-react';
-import { ADMIN_GROUPS, ALL_ADMIN_ROUTES } from '../../router/routes';
-import { AdminGroupId, AdminNavGroupDef, AdminRouteDef } from '../../router/types';
+import React, { useEffect, useMemo, useState } from 'react';
+import { ChevronDown, ExternalLink, PanelLeft, PanelLeftClose } from 'lucide-react';
+import { ADMIN_GROUPS } from '../../router/routes';
+import type { AdminGroupId, StaffRole } from '../../router/types';
 import { useAdminRouter } from '../../router';
-import { useCatalogAdmin } from '../../features/CatalogProvider';
-import { StaffRole } from '../../domain/types';
-import { RoleKey } from '../../domain/rbac';
 import { AdminIcon } from './AdminIcon';
-import { toFaDigits } from '../../utils/formatters';
-import { listAdminOrders } from '../../features/commerceApi';
 
 export interface AdminSidebarProps {
   currentRole: StaffRole;
@@ -27,338 +13,67 @@ export interface AdminSidebarProps {
   isMobileDrawer?: boolean;
 }
 
-export const AdminSidebar: React.FC<AdminSidebarProps> = ({
-  currentRole,
-  isCompact,
-  onToggleCompact,
-  onCloseMobileDrawer,
-  isMobileDrawer = false,
-}) => {
+export const AdminSidebar: React.FC<AdminSidebarProps> = ({ currentRole, isCompact, onToggleCompact, onCloseMobileDrawer, isMobileDrawer = false }) => {
   const { currentPath, activeRoute, activeGroup, navigate, goBackToStore } = useAdminRouter();
-  const { state } = useCatalogAdmin();
-  const [pendingOrderCount, setPendingOrderCount] = useState<number | null>(null);
-
-  useEffect(() => {
-    let active = true;
-    const refreshPendingOrders = () => {
-      const query = new URLSearchParams({ status: 'awaiting_payment', page: '1', pageSize: '1' });
-      void listAdminOrders(query).then(result => {
-        if (active) setPendingOrderCount(result.pagination.total);
-      }).catch(() => {
-        if (active) setPendingOrderCount(null);
-      });
-    };
-    refreshPendingOrders();
-    const interval = window.setInterval(refreshPendingOrders, 60_000);
-    window.addEventListener('focus', refreshPendingOrders);
-    return () => {
-      active = false;
-      window.clearInterval(interval);
-      window.removeEventListener('focus', refreshPendingOrders);
-    };
-  }, [currentPath, currentRole]);
-
-  // Normalize legacy and modern roles for allowedRoles matching
-  const normalizedRole: RoleKey =
-    currentRole === 'super_admin'
-      ? 'owner'
-      : currentRole === 'designer_reviewer'
-      ? 'production'
-      : currentRole === 'production_operator'
-      ? 'production'
-      : currentRole === 'support_finance'
-      ? 'finance'
-      : (currentRole as RoleKey);
-
-  // User manual expansion preferences: Record<groupId, boolean>
-  const [userToggledGroups, setUserToggledGroups] = useState<Record<string, boolean>>(() => {
+  const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>(() => {
     try {
-      const saved = localStorage.getItem('shahpoosh_admin_sidebar_expanded_groups');
-      return saved ? JSON.parse(saved) : {};
-    } catch {
-      return {};
-    }
+      const value = localStorage.getItem('shahpoosh_admin_sidebar_expanded_groups');
+      return value ? JSON.parse(value) as Record<string, boolean> : {};
+    } catch { return {}; }
   });
 
-  // Find active group including parent group for detail routes
-  const currentActiveGroupId = useMemo(() => {
-    if (activeRoute?.groupId) return activeRoute.groupId;
-    if (activeGroup?.id) return activeGroup.id;
-    for (const g of ADMIN_GROUPS) {
-      if (
-        g.routes.some((r) => {
-          if (r.path === currentPath) return true;
-          if (r.path.includes(':')) {
-            const prefix = r.path.split('/:')[0];
-            return currentPath.startsWith(prefix);
-          }
-          if (currentPath.startsWith(r.path + '/')) return true;
-          return false;
-        })
-      ) {
-        return g.id;
-      }
-    }
-    return 'overview';
-  }, [activeGroup, activeRoute, currentPath]);
+  const currentGroup = activeRoute?.groupId || activeGroup?.id || 'overview';
+  const navigableGroups = useMemo(() => ADMIN_GROUPS.map(group => ({
+    ...group,
+    routes: group.routes.filter(route => route.showInNav !== false && !route.isDetail && (!route.allowedRoles || route.allowedRoles.includes(currentRole))),
+  })).filter(group => group.routes.length > 0), [currentRole]);
 
-  // Ensure active group is always visible upon route navigation
   useEffect(() => {
-    if (currentActiveGroupId) {
-      setUserToggledGroups((prev) => {
-        if (prev[currentActiveGroupId] === false) {
-          const updated = { ...prev };
-          delete updated[currentActiveGroupId];
-          try {
-            localStorage.setItem('shahpoosh_admin_sidebar_expanded_groups', JSON.stringify(updated));
-          } catch {}
-          return updated;
-        }
-        return prev;
+    if (expandedGroups[currentGroup] === false) {
+      setExpandedGroups(previous => {
+        const next = { ...previous, [currentGroup]: true };
+        try { localStorage.setItem('shahpoosh_admin_sidebar_expanded_groups', JSON.stringify(next)); } catch { /* preference is optional */ }
+        return next;
       });
     }
-  }, [currentActiveGroupId]);
+  }, [currentGroup, expandedGroups]);
 
-  const toggleGroup = (groupId: AdminGroupId) => {
-    setUserToggledGroups((prev) => {
-      const currentlyExpanded =
-        prev[groupId] !== undefined ? prev[groupId] : groupId === currentActiveGroupId;
-      const next = { ...prev, [groupId]: !currentlyExpanded };
-      try {
-        localStorage.setItem('shahpoosh_admin_sidebar_expanded_groups', JSON.stringify(next));
-      } catch {}
-      return next;
-    });
-  };
-
-  // Only unfinished demo modules use fixture-derived badges.
-  const badgeCounts = useMemo(() => {
-    const pendingDesigns = state.customDesigns.filter((d) => d.status === 'under_review').length;
-    const lowStock = state.variants.filter((v) => v.onHandStock - v.reservedStock <= 3).length;
-    const openTasks = state.tasks.filter((t) => t.status === 'todo' || t.status === 'in_progress').length;
-    const unverifiedPayments = state.payments.filter((payment) => payment.status === 'pending').length;
-    return {
-      pendingDesigns,
-      lowStock,
-      openTasks,
-      unverifiedPayments,
-    };
-  }, [state]);
-
-  const getBadgeValue = (key?: string): number | null => {
-    if (!key) return null;
-    if (key === 'pendingOrders') return pendingOrderCount && pendingOrderCount > 0 ? pendingOrderCount : null;
-    const count = (badgeCounts as Record<string, number>)[key];
-    return count && count > 0 ? count : null;
-  };
+  const toggleGroup = (groupId: AdminGroupId) => setExpandedGroups(previous => {
+    const currentlyExpanded = previous[groupId] ?? groupId === currentGroup;
+    const next = { ...previous, [groupId]: !currentlyExpanded };
+    try { localStorage.setItem('shahpoosh_admin_sidebar_expanded_groups', JSON.stringify(next)); } catch { /* preference is optional */ }
+    return next;
+  });
 
   return (
-    <aside
-      aria-label="ناوبری اصلی پنل مدیریت"
-      className={`h-full flex flex-col bg-[#110f0e] border-l border-white/10 transition-all duration-300 select-none text-right font-sans ${
-        isCompact && !isMobileDrawer ? 'w-16' : 'w-64'
-      }`}
-    >
-      {/* Brand & Workshop identity */}
-      <div className="h-16 flex items-center justify-between px-4 border-b border-white/10 shrink-0">
-        {!isCompact || isMobileDrawer ? (
-          <div className="flex items-center gap-2.5 min-w-0">
-            <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-[#ba8d3d] to-[#7f5c22] flex items-center justify-center text-stone-950 font-black text-sm shadow-md shrink-0">
-              ش
-            </div>
-            <div className="min-w-0">
-              <div className="text-xs font-bold text-white tracking-wide truncate">
-                شاه‌پوش · میز مدیریت
-              </div>
-              <div className="text-[10px] text-[#eed29d] tracking-wider truncate font-mono">
-                WORKSHOP OPERATIONS
-              </div>
-            </div>
-          </div>
-        ) : (
-          <div className="w-8 h-8 mx-auto rounded-xl bg-gradient-to-br from-[#ba8d3d] to-[#7f5c22] flex items-center justify-center text-stone-950 font-black text-sm shadow-md">
-            ش
-          </div>
-        )}
-
-        {!isMobileDrawer && (
-          <button
-            type="button"
-            onClick={onToggleCompact}
-            title={isCompact ? 'گسترش منو' : 'جمع‌کردن منو'}
-            className="p-1.5 text-stone-400 hover:text-white hover:bg-white/5 rounded-lg transition-colors cursor-pointer"
-          >
-            {isCompact ? <PanelLeft size={16} /> : <PanelLeftClose size={16} />}
-          </button>
-        )}
+    <aside aria-label="ناوبری پنل مدیریت" className={`flex h-full flex-col select-none border-l border-white/10 bg-[#110f0e] text-right font-sans transition-all duration-300 ${isCompact && !isMobileDrawer ? 'w-16' : 'w-64'}`}>
+      <div className="flex h-16 shrink-0 items-center justify-between border-b border-white/10 px-4">
+        {(!isCompact || isMobileDrawer) ? <div className="flex min-w-0 items-center gap-2.5"><span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-[#ba8d3d] text-sm font-black text-stone-950">ش</span><div className="min-w-0"><div className="truncate text-xs font-bold text-white">شهپوش · مدیریت</div><div className="truncate text-[10px] tracking-wider text-[#eed29d]">مدیریت فروشگاه</div></div></div> : <span className="mx-auto flex h-8 w-8 items-center justify-center rounded-xl bg-[#ba8d3d] text-sm font-black text-stone-950">ش</span>}
+        {!isMobileDrawer && <button type="button" onClick={onToggleCompact} title={isCompact ? 'گسترش منو' : 'جمع کردن منو'} className="rounded-lg p-1.5 text-stone-400 hover:bg-white/5 hover:text-white">{isCompact ? <PanelLeft size={16} /> : <PanelLeftClose size={16} />}</button>}
       </div>
 
-      {/* Navigation Groups List */}
-      <nav className="flex-1 overflow-y-auto px-2 py-3 space-y-4 focus:outline-none">
-        {ADMIN_GROUPS.map((group) => {
-          const navRoutes = group.routes.filter(
-            (r) => r.showInNav !== false && !r.isDetail && !r.path.includes(':') && !r.devOnly
-          );
-          if (navRoutes.length === 0) return null;
-
-          const isCurrentGroupActive = group.id === currentActiveGroupId;
-          const isGroupExpanded = isCompact
-            ? false
-            : userToggledGroups[group.id] !== undefined
-            ? userToggledGroups[group.id]
-            : isCurrentGroupActive;
-          const isGroupCollapsed = !isGroupExpanded && !isCompact;
-
-          return (
-            <div key={group.id} className="space-y-1">
-              {/* Group Header */}
-              {!isCompact || isMobileDrawer ? (
-                <button
-                  type="button"
-                  onClick={() => toggleGroup(group.id)}
-                  className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs sm:text-[13px] font-bold transition-colors cursor-pointer ${
-                    isCurrentGroupActive ? 'text-[#eed29d]' : 'text-stone-400 hover:text-stone-200'
-                  }`}
-                  aria-expanded={!isGroupCollapsed}
-                >
-                  <div className="flex items-center gap-2">
-                    <AdminIcon name={group.iconName} size={15} className="text-[#ba8d3d]" />
-                    <span className="text-xs sm:text-[13px] font-semibold">{group.titleFa}</span>
-                  </div>
-                  <ChevronDown
-                    size={13}
-                    className={`text-stone-500 transition-transform duration-200 ${
-                      isGroupCollapsed ? '-rotate-90' : ''
-                    }`}
-                  />
-                </button>
-              ) : (
-                <div
-                  className="w-full text-center py-1 text-stone-500 border-b border-white/5 mb-1"
-                  title={group.titleFa}
-                >
-                  <AdminIcon name={group.iconName} size={16} className="mx-auto text-[#ba8d3d]" />
-                </div>
-              )}
-
-              {/* Group Routes */}
-              {(!isGroupCollapsed || isCompact) && (
-                <div className="space-y-0.5">
-                  {navRoutes.map((route) => {
-                    const isActive =
-                      route.path === currentPath ||
-                      (currentPath.startsWith(route.path + '/') &&
-                        !navRoutes.some((other) => other !== route && other.path === currentPath));
-                    const badgeVal = getBadgeValue(route.badgeKey);
-                    const isRestrictedForRole =
-                      normalizedRole !== 'owner' &&
-                      currentRole !== 'super_admin' &&
-                      route.allowedRoles &&
-                      !route.allowedRoles.includes(currentRole) &&
-                      !route.allowedRoles.includes(normalizedRole as any);
-
-                    return (
-                      <button
-                        key={route.id}
-                        type="button"
-                        onClick={() => {
-                          navigate(route.path);
-                          if (isMobileDrawer && onCloseMobileDrawer) {
-                            onCloseMobileDrawer();
-                          }
-                        }}
-                        title={
-                          isCompact && !isMobileDrawer
-                            ? `${route.titleFa}${
-                                isRestrictedForRole ? ' (محدود به سایر نقش‌ها)' : ''
-                              }`
-                            : undefined
-                        }
-                        className={`w-full group flex items-center justify-between rounded-xl text-right transition-all cursor-pointer relative ${
-                          isCompact && !isMobileDrawer
-                            ? 'px-0 py-2.5 justify-center'
-                            : 'px-3 py-2 text-xs sm:text-[13px]'
-                        } ${
-                          isActive
-                            ? 'bg-[#ba8d3d]/20 text-white font-bold border border-[#ba8d3d]/40 shadow-sm'
-                            : 'text-stone-400 hover:text-stone-100 hover:bg-white/5'
-                        } ${isRestrictedForRole ? 'opacity-70' : ''}`}
-                        aria-current={isActive ? 'page' : undefined}
-                      >
-                        {/* Active Gold Indicator Bar */}
-                        {isActive && (
-                          <span className="absolute right-0 top-1.5 bottom-1.5 w-1 bg-[#ba8d3d] rounded-l-full" />
-                        )}
-
-                        <div className="flex items-center gap-2.5 min-w-0">
-                          <AdminIcon
-                            name={route.iconName}
-                            size={16}
-                            className={`shrink-0 transition-colors ${
-                              isActive
-                                ? 'text-[#ba8d3d]'
-                                : 'text-stone-400 group-hover:text-stone-200'
-                            }`}
-                          />
-                          {(!isCompact || isMobileDrawer) && (
-                            <span className="truncate">{route.shortTitleFa}</span>
-                          )}
-                        </div>
-
-                        {(!isCompact || isMobileDrawer) && (
-                          <div className="flex items-center gap-1.5 shrink-0">
-                            {badgeVal !== null && (
-                              <span
-                                className={`text-[10px] font-fanum font-bold px-1.5 py-0.2 rounded-full ${
-                                  route.badgeKey === 'lowStock'
-                                    ? 'bg-rose-500/20 text-rose-300 border border-rose-500/30'
-                                    : 'bg-[#ba8d3d]/25 text-[#eed29d] border border-[#ba8d3d]/30'
-                                }`}
-                              >
-                                {toFaDigits(badgeVal)}
-                              </span>
-                            )}
-                            {isRestrictedForRole && (
-                              <span
-                                title="این بخش در نقش کاربری انتخابی نیازمند ترفیع مجوز است."
-                                className="text-[9px] text-amber-400/70"
-                              >
-                                🔒
-                              </span>
-                            )}
-                          </div>
-                        )}
-                      </button>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-          );
+      <nav className="flex-1 space-y-4 overflow-y-auto px-2 py-3">
+        {navigableGroups.map(group => {
+          const active = group.id === currentGroup;
+          const expanded = !isCompact && (expandedGroups[group.id] ?? active);
+          return <section key={group.id} className="space-y-1">
+            {(!isCompact || isMobileDrawer) ? <button type="button" onClick={() => toggleGroup(group.id)} aria-expanded={expanded} className={`flex w-full items-center justify-between rounded-lg px-2.5 py-1.5 text-xs font-bold ${active ? 'text-[#eed29d]' : 'text-stone-400 hover:text-stone-200'}`}><span className="flex items-center gap-2"><AdminIcon name={group.iconName} size={15} className="text-[#ba8d3d]" />{group.titleFa}</span><ChevronDown size={13} className={`transition-transform ${expanded ? '' : '-rotate-90'}`} /></button> : <div title={group.titleFa} className="mb-1 border-b border-white/5 py-1 text-center"><AdminIcon name={group.iconName} size={16} className="mx-auto text-[#ba8d3d]" /></div>}
+            {(expanded || isCompact) && <div className="space-y-0.5">{group.routes.map(route => {
+              const isActive = route.path === currentPath || (route.isDetail && currentPath.startsWith(route.path.split('/:')[0] + '/'));
+              return <button key={route.id} type="button" title={isCompact && !isMobileDrawer ? route.titleFa : undefined} onClick={() => { navigate(route.path); if (isMobileDrawer) onCloseMobileDrawer?.(); }} aria-current={isActive ? 'page' : undefined} className={`relative flex w-full items-center rounded-xl text-right transition-colors ${isCompact && !isMobileDrawer ? 'justify-center px-0 py-2.5' : 'gap-2.5 px-3 py-2 text-xs'} ${isActive ? 'border border-[#ba8d3d]/40 bg-[#ba8d3d]/20 font-bold text-white' : 'text-stone-400 hover:bg-white/5 hover:text-stone-100'}`}>
+                {isActive && <span className="absolute right-0 top-1.5 bottom-1.5 w-1 rounded-l-full bg-[#ba8d3d]" />}
+                <AdminIcon name={route.iconName} size={16} className={isActive ? 'text-[#ba8d3d]' : 'text-stone-400'} />
+                {(!isCompact || isMobileDrawer) && <span className="truncate">{route.shortTitleFa}</span>}
+              </button>;
+            })}</div>}
+          </section>;
         })}
       </nav>
 
-      {/* Footer Storefront Link */}
-      <div className="p-3 border-t border-white/10 shrink-0 bg-[#0e0d0c]">
-        {(!isCompact || isMobileDrawer) ? (
-          <button
-            type="button"
-            onClick={goBackToStore}
-            className="w-full flex items-center justify-between px-3 py-2 bg-white/5 hover:bg-white/10 text-stone-300 hover:text-white rounded-xl text-xs transition-colors cursor-pointer"
-          >
-            <span className="font-medium">بازگشت به ویترین فروشگاه</span>
-            <ExternalLink size={13} className="text-[#ba8d3d]" />
-          </button>
-        ) : (
-          <button
-            type="button"
-            onClick={goBackToStore}
-            title="بازگشت به ویترین فروشگاه"
-            className="w-full p-2 text-stone-400 hover:text-white hover:bg-white/5 rounded-xl flex items-center justify-center transition-colors cursor-pointer"
-          >
-            <ExternalLink size={15} className="text-[#ba8d3d]" />
-          </button>
-        )}
+      <div className="shrink-0 border-t border-white/10 bg-[#0e0d0c] p-3">
+        <button type="button" onClick={goBackToStore} title={isCompact && !isMobileDrawer ? 'بازگشت به فروشگاه' : undefined} className={`flex w-full items-center justify-between rounded-xl bg-white/5 px-3 py-2 text-xs text-stone-300 transition-colors hover:bg-white/10 hover:text-white ${isCompact && !isMobileDrawer ? 'justify-center px-2' : ''}`}>
+          {(!isCompact || isMobileDrawer) && <span>بازگشت به فروشگاه</span>}<ExternalLink size={14} className="text-[#ba8d3d]" />
+        </button>
       </div>
     </aside>
   );

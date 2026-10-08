@@ -8,10 +8,7 @@ import ProductDetail from './components/ProductDetail';
 import PodDesigner from './components/PodDesigner';
 import Cart from './components/Cart';
 import Checkout from './components/Checkout';
-import ReviewScrollTicker from './components/ReviewScrollTicker';
-import InstagramFeed from './components/InstagramFeed';
 import { useCatalog } from './features/catalog/useCatalog';
-import { handleProductImageError } from './lib/productImage';
 import { api, post, ApiClientError } from './api/client';
 import { StaffAuth } from './admin/features/StaffAuth';
 import { CatalogProvider } from './admin/features/CatalogProvider';
@@ -44,6 +41,16 @@ function readLegacyCart(): CartItem[] {
 }
 
 export default function App() {
+  useEffect(() => {
+    try {
+      const legacyKeys = Object.keys(localStorage).filter(key =>
+        /^SHAHPOOSH_ADMIN_DB_V\d+$/i.test(key) ||
+        key === 'SHAWHPOSH_ADMIN_REPO_V1' ||
+        key === 'SHAWHPOSH_ADMIN_SYSTEM_SETTINGS_V1',
+      );
+      legacyKeys.forEach(key => localStorage.removeItem(key));
+    } catch { /* storage may be unavailable */ }
+  }, []);
   // Navigation Screen State
   const [activeTab, setActiveTab] = useState<string>(() => {
     if (typeof window !== 'undefined' && (window.location.hash.startsWith('#admin') || window.location.pathname.startsWith('/admin'))) {
@@ -243,14 +250,7 @@ export default function App() {
   // Shop state toggling
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState('');
-  const [sortBy, setSortBy] = useState<'default' | 'price-asc' | 'price-desc' | 'popular'>('default');
-
-  // Guest cart is a temporary, non-authoritative browser convenience.
-  useEffect(() => {
-    if (!user && authReady) {
-      try { localStorage.setItem('shahpoosh_cart', JSON.stringify(localCart)); } catch { /* cart remains in memory */ }
-    }
-  }, [localCart, user, authReady]);
+  const [sortBy, setSortBy] = useState<'default' | 'price-asc' | 'price-desc'>('default');
 
   const handleAddToCart = (newItem: Omit<CartItem, 'id'>) => {
     setCartError('');
@@ -358,7 +358,6 @@ export default function App() {
   const sortedProducts = [...filteredProducts].sort((a, b) => {
     if (sortBy === 'price-asc') return a.price - b.price;
     if (sortBy === 'price-desc') return b.price - a.price;
-    if (sortBy === 'popular') return b.rating - a.rating;
     return 0; // default
   });
 
@@ -429,11 +428,14 @@ export default function App() {
               <div className="animate-fade-in animate-duration-500">
             <Hero 
               theme={theme}
+              products={PRODUCTS}
               onStartDesign={() => setActiveTab('designer')} 
               onExploreProducts={() => setActiveTab('shop')} 
             />
             <BentoShowcase 
               theme={theme}
+              categories={catalogCategories}
+              productCount={PRODUCTS.length}
               onStartDesign={() => setActiveTab('designer')}
               onSelectCategory={(cat) => {
                 if (cat !== 'pod') {
@@ -506,15 +508,6 @@ export default function App() {
               </div>
             </section>
 
-            {/* Customer feedback remains unavailable until the real review module is implemented. */}
-            <div className="max-w-7xl mx-auto px-6 md:px-12 pb-24">
-              <ReviewScrollTicker isDark={isDark} />
-            </div>
-
-            {/* HIGH-END INTERACTIVE INSTAGRAM FEED GRID */}
-            <div className="max-w-7xl mx-auto px-6 md:px-12 pb-28">
-              <InstagramFeed isDark={isDark} />
-            </div>
           </div>
         )}
 
@@ -619,7 +612,6 @@ export default function App() {
                     }`}
                   >
                     <option value="default" className={isDark ? 'bg-[#0e0d0c]' : 'bg-white'}>مرتب‌سازی هوشمند</option>
-                    <option value="popular" className={isDark ? 'bg-[#0e0d0c]' : 'bg-white'}>محبوب‌ترین خریداران</option>
                     <option value="price-asc" className={isDark ? 'bg-[#0e0d0c]' : 'bg-white'}>قیمت: کم به زیاد</option>
                     <option value="price-desc" className={isDark ? 'bg-[#0e0d0c]' : 'bg-white'}>قیمت: زیاد به کم</option>
                   </select>
@@ -693,136 +685,24 @@ export default function App() {
           <div key={selectedProduct ? selectedProduct.id : 'new'} className="animate-fade-in animate-duration-500">
             <PodDesigner 
               theme={theme}
-              onAddToCart={handleAddToCart} 
+              products={PRODUCTS}
               initialProduct={selectedProduct} 
             />
           </div>
         )}
 
         {activeTab === 'about' && (
-          <section className="pt-32 pb-24 px-6 md:px-12">
-            <motion.div 
-              initial="hidden"
-              animate="visible"
-              variants={{
-                hidden: { opacity: 0 },
-                visible: {
-                  opacity: 1,
-                  transition: {
-                    staggerChildren: 0.1,
-                    delayChildren: 0.05
-                  }
-                }
-              }}
-              className="max-w-7xl mx-auto text-right"
-            >
-              
-              {/* Story Intro */}
-              <motion.div 
-                variants={{
-                  hidden: { opacity: 0, y: 24, filter: 'blur(8px)' },
-                  visible: { opacity: 1, y: 0, filter: 'blur(0px)', transition: { duration: 0.65, ease: [0.16, 1, 0.3, 1] } }
-                }}
-                className="mb-16"
-              >
-                <span className="text-[10px] text-gray-500 font-mono">ABOUT THE SHAHPOOSH PLATFORM</span>
-                <h1 className={`text-3xl md:text-5xl font-display font-medium tracking-tight mt-1 ${
-                  isDark ? 'text-white' : 'text-slate-900'
-                }`}>
-                  وقار گام‌های کهن، طراحی نوین خیابانی
-                </h1>
-                <p className={`text-xs md:text-sm mt-4 leading-relaxed max-w-4xl ${
-                  isDark ? 'text-gray-400' : 'text-slate-605'
-                }`}>
-                  شهپوش در سال ۱۴۰۳ با این ایده راسخ متولد شد که تیشرت‌های گرافیکی کژوال می‌توانند تریبونی شایسته برای درخشش هویت بصری غنی ایران زمین باشند. ما با ادغام تکنولوژی فوق پیشرفته چاپ دیجیتال مستقیم منسوجات (DTG) به صورت تقاضامحور (POD)، گامی موثر در حذف الگوهای کهنه صنعت مد برداشته‌ایم.
-                </p>
-              </motion.div>
-
-              {/* Features split row layout */}
-              <motion.div 
-                variants={{
-                  hidden: { opacity: 0, y: 24, filter: 'blur(6px)' },
-                  visible: { opacity: 1, y: 0, filter: 'blur(0px)', transition: { duration: 0.65, ease: [0.16, 1, 0.3, 1] } }
-                }}
-                className={`grid grid-cols-1 lg:grid-cols-2 gap-12 items-center mb-20 p-8 md:p-12 rounded-[2rem] border transition-colors duration-300 ${
-                  isDark ? 'bg-grid-lines bg-[#141211] border-white/5' : 'bg-[#fbf9f6] border-slate-200/65'
-                }`}
-              >
-                <div>
-                  <h2 className={`text-xl md:text-2xl font-display mb-4 ${
-                    isDark ? 'text-white' : 'text-slate-900'
-                  }`}>کارگاه چاپ مستقیم روی الیاف (DTG)</h2>
-                  <p className={`text-xs leading-relaxed mb-4 ${
-                    isDark ? 'text-gray-300' : 'text-slate-605'
-                  }`}>
-                    بر خلاف چسبیدگی‌های پلاستیکی چاپ‌های ارزان سیلک و ترنسفر، تکنیک چاپ مستقیم دیجیتال ما رنگ‌دانه‌های طبیعی جوهر را با شتاب حرارتی عمیقاً در بافت مولکولی پنبه تزریق می‌کند. نتیجه، لطافت کامل، عدم تعریق پوست و ثبات نقوش حتی پس از شستشو با ماشین لباسشویی است.
-                  </p>
-                  <ul className={`space-y-2 text-xs ${
-                    isDark ? 'text-gray-300' : 'text-slate-650'
-                  }`}>
-                    <li className="flex items-center gap-2">
-                      <span className="w-1.5 h-1.5 rounded-full bg-[#ba8d3d]" />
-                      <span>جوهرهای پودری ضد حساسیت و دوست‌دار زیست‌محیطی</span>
-                    </li>
-                    <li className="flex items-center gap-2">
-                      <span className="w-1.5 h-1.5 rounded-full bg-[#ba8d3d]" />
-                      <span>دقت تفکیک بالای ۱۲۰۰ دی‌پی‌آی خطوط بسیار باریک خوشنویسی</span>
-                    </li>
-                  </ul>
-                </div>
-                <div className={`aspect-[16/10] overflow-hidden rounded-2xl p-1 flex items-center justify-center border transition-colors duration-300 ${
-                  isDark ? 'bg-[#161514] border-white/5' : 'bg-white border-slate-200/60'
-                }`}>
-                  <img
-                    src="https://picsum.photos/seed/printing_tech/800/500"
-                    alt="مراحل تولید تیشرت در چاپ‌خانه"
-                    referrerPolicy="no-referrer"
-                    onError={handleProductImageError}
-                    className="w-full h-full object-cover opacity-80 hover:scale-105 transition-transform duration-700"
-                  />
-                </div>
-              </motion.div>
-
-              {/* Guarantees stats details */}
-              <motion.div 
-                variants={{
-                  hidden: { opacity: 0 },
-                  visible: {
-                    opacity: 1,
-                    transition: {
-                      staggerChildren: 0.05
-                    }
-                  }
-                }}
-                className="grid grid-cols-1 md:grid-cols-3 gap-6"
-              >
-                {[
-                  { title: 'مواد اولیه طبیعی', desc: 'استفاده انحصاری از مزارع مرغوب پنبه دیم کشور با تکنولوژی نساجی الیاف دو نخ گرم بالا.' },
-                  { title: 'ارسال با ضمانت پستی', desc: 'حمل فوری و اختصاصی محصولات در بسته‌بندی زیست‌تخریب‌پذیر به تمامی نقاط دور و نزدیک کشور.' },
-                  { title: 'طراحی مشارکتی', desc: 'همکاری مستقیم با کالیگرافرها و کارتونیست‌های خلاق ایرانی و تخصیص حق اثر عادلانه.' }
-                ].map((stat, i) => (
-                  <motion.div 
-                    key={i} 
-                    variants={{
-                      hidden: { opacity: 0, y: 20, filter: 'blur(4px)' },
-                      visible: { opacity: 1, y: 0, filter: 'blur(0px)', transition: { duration: 0.55, ease: [0.16, 1, 0.3, 1] } }
-                    }}
-                    className={`p-6.5 rounded-3xl border transition-colors duration-350 ${
-                      isDark ? 'bg-[#141211] border-white/5' : 'bg-[#fbf9f6] border-slate-200/60'
-                    } space-y-2`}
-                  >
-                    <span className="font-mono text-[9px] text-[#eed29d]">SHP-VALUE-PRO-0{i+1}</span>
-                    <h3 className={`text-xs font-bold ${
-                      isDark ? 'text-white' : 'text-slate-900'
-                    }`}>{stat.title}</h3>
-                    <p className={`text-[11px] leading-normal ${
-                      isDark ? 'text-gray-500' : 'text-slate-650'
-                    }`}>{stat.desc}</p>
-                  </motion.div>
-                ))}
-              </motion.div>
-
-            </motion.div>
+          <section className="min-h-[70vh] px-6 pb-24 pt-32 md:px-12">
+            <div className="mx-auto max-w-7xl text-right">
+              <span className="text-xs uppercase tracking-[0.18em] text-[#ba8d3d]">درباره شاه‌پوش</span>
+              <h1 className={`mt-3 text-3xl font-semibold md:text-5xl ${isDark ? 'text-white' : 'text-slate-900'}`}>فروشگاه شاه‌پوش</h1>
+              <p className={`mt-5 max-w-3xl text-sm leading-7 ${isDark ? 'text-stone-400' : 'text-slate-600'}`}>اطلاعات این صفحه از کاتالوگ ثبت‌شده در پایگاه داده فروشگاه می‌آید. تصویر محصول، جزئیات تولید و خدمات عملیاتی فقط پس از ثبت و تأیید نمایش داده می‌شوند.</p>
+              <div className="mt-10 grid gap-4 md:grid-cols-3">
+                <article className="rounded-2xl border border-white/10 bg-[#141211] p-6"><h2 className="font-semibold text-[#eed29d]">کاتالوگ</h2><p className="mt-3 text-sm leading-6 text-stone-400">نام، تنوع، قیمت و موجودی از کاتالوگ فعلی بارگذاری می‌شود.</p></article>
+                <article className="rounded-2xl border border-white/10 bg-[#141211] p-6"><h2 className="font-semibold text-[#eed29d]">پرداخت</h2><p className="mt-3 text-sm leading-6 text-stone-400">پرداخت آنلاین فعال نیست. سفارش به‌عنوان پرداخت‌شده یا تکمیل‌شده نمایش داده نمی‌شود.</p></article>
+                <article className="rounded-2xl border border-white/10 bg-[#141211] p-6"><h2 className="font-semibold text-[#eed29d]">پیش‌نمایش طراحی</h2><p className="mt-3 text-sm leading-6 text-stone-400">طراح، متن دلخواه را روی یکی از تنوع‌های کاتالوگ پیش‌نمایش می‌کند. ذخیره طرح و ثبت سفارش سفارشی فعال نیست.</p></article>
+              </div>
+            </div>
           </section>
         )}
 
@@ -982,7 +862,6 @@ export default function App() {
             </ul>
           </div>
 
-          {/* Dynamic trust certificates (Enamad) Mock Column 3 */}
           <div className="md:col-span-3 space-y-4">
             <h4 className="text-[11px] font-black tracking-wider text-[#ba8d3d] border-r-2 border-[#ba8d3d]/40 pr-2">وضعیت فروشگاه</h4>
             <div className="grid grid-cols-2 gap-3">

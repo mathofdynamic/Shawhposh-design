@@ -20,5 +20,3 @@ export * from './EmptyState';
 export * from './StatusTimeline';
 export * from './ChartContainer';
 export * from './FilePreview';
-export * from './PermissionGate';
-export * from './DemoModeNoticeBar';

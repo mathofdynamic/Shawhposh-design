@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react';
-import { X, Trash2, ShoppingBag, ArrowLeft, Sliders } from 'lucide-react';
+import { X, Trash2, ShoppingBag, ArrowLeft } from 'lucide-react';
 import { CartItem } from '../types';
-import { handleProductImageError, isDemoProductImage, storefrontProductImage } from '../lib/productImage';
+import { handleProductImageError, isPlaceholderProductImage, storefrontProductImage } from '../lib/productImage';
 
 interface CartProps {
   isOpen: boolean;
@@ -131,7 +131,7 @@ export default function Cart({ isOpen, onClose, cart, onUpdateQuantity, onRemove
                     <div className="w-20 h-20 rounded-xl bg-[#0e0d0c] border border-white/5 p-2 flex items-center justify-center shrink-0">
                       <img
                         src={storefrontProductImage(item.image)}
-                        alt={isDemoProductImage(item.image) ? 'تصویر محصول در دسترس نیست' : item.productName}
+                        alt={isPlaceholderProductImage(item.image) ? 'تصویر محصول در دسترس نیست' : item.productName}
                         referrerPolicy="no-referrer"
                         onError={handleProductImageError}
                         className="product-media-source w-full h-full object-contain"
@@ -163,12 +163,6 @@ export default function Cart({ isOpen, onClose, cart, onUpdateQuantity, onRemove
                             <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: item.color.hex }} />
                             <span>{item.color.name}</span>
                           </span>
-                          {item.isCustom && (
-                            <span className="text-[9px] px-2 py-0.5 rounded bg-[#ba8d3d]/10 border border-[#ba8d3d]/20 text-[#eed29d] flex items-center gap-1 font-semibold">
-                              <Sliders size={8} />
-                              <span>طرح سفارشی POD</span>
-                            </span>
-                          )}
                         </div>
                       </div>
 

@@ -3,34 +3,17 @@ export interface Product {
   slug?: string;
   variants?: {id:string;sku:string;colorHex:string;size:string;priceTomans:number|null;available:number}[];
   name: string;
-  price: number; // in Tomans (discounted price if discount is present)
-  originalPrice?: number; // optional, before discount
-  discountPercent?: number; // optional, discount percentage e.g., 10 for 10%
+  price: number;
   description: string;
   details: string[];
-  category: 'minimalist' | 'calligraphy' | 'graphic' | 'pod';
+  category: 'minimalist' | 'calligraphy' | 'graphic';
   images: string[];
   colors: { name: string; hex: string }[];
   sizes: string[];
-  rating: number;
-  reviewsCount: number;
-  isPopular?: boolean;
-  isNew?: boolean;
-}
-
-export interface CustomDesign {
-  text: string;
-  textColor: string;
-  textSize: number; // in percentage / scale
-  textPosition: { x: number; y: number }; // percentages
-  selectedGraphicId: string | null;
-  tshirtColor: string;
-  tshirtColorHex: string;
-  basePrice: number;
 }
 
 export interface CartItem {
-  id: string; // unique cart item id (product.id + color + size or custom design uuid)
+  id: string;
   productId: string;
   variantId?: string;
   sku?: string;
@@ -42,24 +25,7 @@ export interface CartItem {
   image: string;
   availableQuantity?: number;
   availabilityCode?: string | null;
-  isCustom?: boolean;
-  customDesign?: CustomDesign;
-}
-
-export interface Order {
-  id: string;
-  items: CartItem[];
-  totalPrice: number;
-  customerDetails: {
-    fullName: string;
-    phone: string;
-    email: string;
-    city: string;
-    address: string;
-    postalCode: string;
-  };
-  date: string;
-  status: 'pending' | 'processing' | 'shipped';
+  isCustom?: boolean; // Legacy marker used only to reject old local custom-design cart entries.
 }
 
 export interface User {

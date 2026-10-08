@@ -39,17 +39,6 @@ export default function Login({ theme, onLogin, onClose, onNavigateToSignup }: L
           <div className="absolute inset-0 opacity-[0.03] pointer-events-none" 
                style={{ backgroundImage: 'radial-gradient(circle, #ba8d3d 1px, transparent 1px)', backgroundSize: '24px 24px' }} />
           
-          <div className="absolute inset-x-0 bottom-0 top-[20%] opacity-[0.4] pointer-events-none filter mix-blend-luminosity grayscale contrast-125 hover:opacity-50 transition-all duration-1000">
-            <div 
-              className="w-full h-full bg-cover bg-center"
-              style={{ 
-                backgroundImage: "url('https://picsum.photos/seed/persiancarpet/1200/1800')",
-                maskImage: 'linear-gradient(to top, rgba(0,0,0,1) 30%, rgba(0,0,0,0) 90%)',
-                WebkitMaskImage: 'linear-gradient(to top, rgba(0,0,0,1) 30%, rgba(0,0,0,0) 90%)'
-              }}
-            />
-          </div>
-
           {/* Top Info */}
           <div className="z-10 flex items-center gap-3">
             <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-[#ba8d3d] to-[#eed29d] flex items-center justify-center shadow-[0_4px_12px_rgba(186,141,61,0.15)]">

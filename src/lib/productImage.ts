@@ -2,7 +2,7 @@ import type { SyntheticEvent } from 'react';
 
 export const PRODUCT_IMAGE_FALLBACK = '/product-image-unavailable.svg';
 
-export function isDemoProductImage(source: string | null | undefined) {
+export function isPlaceholderProductImage(source: string | null | undefined) {
   if (!source) return false;
   try {
     return new URL(source).hostname.toLowerCase() === 'picsum.photos';
@@ -12,12 +12,12 @@ export function isDemoProductImage(source: string | null | undefined) {
 }
 
 export function storefrontProductImages(sources: string[] | null | undefined) {
-  const actualImages = (sources ?? []).filter(source => Boolean(source) && !isDemoProductImage(source));
+  const actualImages = (sources ?? []).filter(source => Boolean(source) && !isPlaceholderProductImage(source));
   return actualImages.length ? actualImages : [PRODUCT_IMAGE_FALLBACK];
 }
 
 export function storefrontProductImage(source: string | null | undefined) {
-  return !source || isDemoProductImage(source) ? PRODUCT_IMAGE_FALLBACK : source;
+  return !source || isPlaceholderProductImage(source) ? PRODUCT_IMAGE_FALLBACK : source;
 }
 
 export function handleProductImageError(event: SyntheticEvent<HTMLImageElement>) {

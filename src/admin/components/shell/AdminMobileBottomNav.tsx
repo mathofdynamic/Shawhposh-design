@@ -1,5 +1,5 @@
 import React from 'react';
-import { LayoutDashboard, ShoppingBag, Palette, Box, Menu } from 'lucide-react';
+import { LayoutDashboard, ShoppingBag, Users, Box, Menu } from 'lucide-react';
 import { useAdminRouter } from '../../router';
 
 export interface AdminMobileBottomNavProps {
@@ -24,9 +24,9 @@ export const AdminMobileBottomNav: React.FC<AdminMobileBottomNavProps> = ({ onOp
     },
     {
       label: 'آتلیه',
-      icon: Palette,
-      path: '/admin/custom-studio/approval',
-      matchPrefix: '/admin/custom-studio',
+      icon: Users,
+      path: '/admin/customers/directory',
+      matchPrefix: '/admin/customers',
     },
     {
       label: 'انبار',
