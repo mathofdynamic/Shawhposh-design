@@ -3,7 +3,10 @@ export class ApiClientError extends Error {
 }
 export async function api<T>(path:string,options:RequestInit={}):Promise<T>{
   let response:Response;
-  try{response=await fetch('/api'+path,{credentials:'same-origin',...options,headers:{'Content-Type':'application/json',...options.headers}});}catch{throw new ApiClientError(0,'OFFLINE','ارتباط با سرور برقرار نشد.');}
+  const isFormData = typeof FormData !== 'undefined' && options.body instanceof FormData;
+  const headers = new Headers(options.headers);
+  if (!isFormData && !headers.has('Content-Type')) headers.set('Content-Type','application/json');
+  try{response=await fetch('/api'+path,{credentials:'same-origin',...options,headers});}catch{throw new ApiClientError(0,'OFFLINE','ارتباط با سرور برقرار نشد.');}
   const body=await response.json().catch(()=>null);
   if(!response.ok){
     if(response.status===401 && path.startsWith('/v1/admin/') && !path.startsWith('/v1/admin/auth/'))window.dispatchEvent(new Event('shawhposh:staff-session-expired'));

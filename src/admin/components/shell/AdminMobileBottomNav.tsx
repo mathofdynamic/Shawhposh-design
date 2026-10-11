@@ -39,7 +39,8 @@ export const AdminMobileBottomNav: React.FC<AdminMobileBottomNavProps> = ({ onOp
   return (
     <nav
       aria-label="نوار دسترسی سریع پایین موبایل"
-      className="lg:hidden relative z-40 h-14 shrink-0 bg-[#110f0e]/95 backdrop-blur-md border-t border-white/10 flex items-center justify-around px-2 font-sans"
+      className="lg:hidden fixed inset-x-0 bottom-0 z-40 h-14 bg-[#110f0e]/95 backdrop-blur-md border-t border-white/10 flex items-center justify-around px-2 pb-[env(safe-area-inset-bottom)] font-sans"
+      style={{ height: 'calc(3.5rem + env(safe-area-inset-bottom))' }}
     >
       {items.map((item) => {
         const Icon = item.icon;
@@ -51,6 +52,7 @@ export const AdminMobileBottomNav: React.FC<AdminMobileBottomNavProps> = ({ onOp
             key={item.path}
             type="button"
             onClick={() => navigate(item.path)}
+            aria-current={isActive ? 'page' : undefined}
             className={`flex flex-col items-center justify-center gap-1 flex-1 py-1 transition-colors cursor-pointer ${
               isActive ? 'text-[#eed29d]' : 'text-stone-400 hover:text-stone-200'
             }`}

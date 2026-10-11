@@ -131,6 +131,124 @@ export const checkoutIdempotency = sqliteTable('checkout_idempotency', {
   createdAt: timestamp('created_at', { withTimezone: true }).$defaultFn(() => new Date()).notNull(),
 }, t => [uniqueIndex('checkout_idempotency_user_key_unique').on(t.userId, t.key)]);
 
+export const paymentMethodConfigs = sqliteTable('payment_method_configs', {
+  method: text().primaryKey(),
+  enabled: boolean().default(false).notNull(),
+  bankName: text('bank_name'),
+  cardholderName: text('cardholder_name'),
+  cardNumber: text('card_number'),
+  accountIban: text('account_iban'),
+  instructions: text(),
+  manualReviewMessage: text('manual_review_message'),
+  manualReviewHoldHours: integer('manual_review_hold_hours'),
+  ...timestamps(),
+}, t => [
+  check('payment_method_code', sql`${t.method} in ('card_to_card','bale_wallet')`),
+  check('manual_review_hold_hours_range', sql`${t.manualReviewHoldHours} is null or ${t.manualReviewHoldHours} between 1 and 72`),
+  check('bale_has_no_card_settings', sql`${t.method} = 'card_to_card' or (${t.bankName} is null and ${t.cardholderName} is null and ${t.cardNumber} is null and ${t.accountIban} is null and ${t.instructions} is null and ${t.manualReviewMessage} is null and ${t.manualReviewHoldHours} is null)`),
+]);
+
+export const paymentAttempts = sqliteTable('payment_attempts', {
+  id: uuid().primaryKey().$defaultFn(() => randomUUID()),
+  orderId: uuid('order_id').references(() => orders.id).notNull(),
+  method: text().notNull(),
+  status: text().default('created').notNull(),
+  amountTomans: integer('amount_tomans').notNull(),
+  amountProviderUnits: integer('amount_provider_units'),
+  idempotencyKey: text('idempotency_key').notNull().unique(),
+  externalTransactionId: text('external_transaction_id'),
+  externalProviderReference: text('external_provider_reference'),
+  providerPayloadReference: text('provider_payload_reference'),
+  failureCode: text('failure_code'),
+  failureMessage: text('failure_message'),
+  methodSnapshot: jsonb('method_snapshot').$type<Record<string, unknown>>().notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).$defaultFn(() => new Date()).notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).$defaultFn(() => new Date()).notNull(),
+  expiresAt: timestamp('expires_at', { withTimezone: true }),
+  paidAt: timestamp('paid_at', { withTimezone: true }),
+  failedAt: timestamp('failed_at', { withTimezone: true }),
+}, t => [
+  check('payment_attempt_method', sql`${t.method} in ('card_to_card','bale_wallet')`),
+  check('payment_attempt_status', sql`${t.status} in ('created','awaiting_customer','pending_verification','verified','rejected','failed','expired')`),
+  check('payment_attempt_amounts', sql`${t.amountTomans} > 0 and (${t.amountProviderUnits} is null or ${t.amountProviderUnits} > 0)`),
+  uniqueIndex('payment_attempt_external_transaction_unique').on(t.externalTransactionId).where(sql`${t.externalTransactionId} is not null`),
+  index('payment_attempts_order_created_idx').on(t.orderId, t.createdAt),
+  index('payment_attempts_status_created_idx').on(t.status, t.createdAt),
+]);
+
+export const paymentEvents = sqliteTable('payment_events', {
+  id: uuid().primaryKey().$defaultFn(() => randomUUID()),
+  paymentAttemptId: uuid('payment_attempt_id').references(() => paymentAttempts.id).notNull(),
+  eventType: text('event_type').notNull(),
+  source: text().notNull(),
+  externalEventId: text('external_event_id'),
+  metadataSafeJson: jsonb('metadata_safe_json').$type<Record<string, unknown>>(),
+  createdAt: timestamp('created_at', { withTimezone: true }).$defaultFn(() => new Date()).notNull(),
+}, t => [
+  index('payment_events_attempt_created_idx').on(t.paymentAttemptId, t.createdAt),
+  uniqueIndex('payment_events_source_external_unique').on(t.source, t.externalEventId).where(sql`${t.externalEventId} is not null`),
+]);
+
+export const manualPaymentReceipts = sqliteTable('manual_payment_receipts', {
+  id: uuid().primaryKey().$defaultFn(() => randomUUID()),
+  paymentAttemptId: uuid('payment_attempt_id').references(() => paymentAttempts.id).notNull(),
+  storageKey: text('storage_key').notNull().unique(),
+  mimeType: text('mime_type').notNull(),
+  sizeBytes: integer('size_bytes').notNull(),
+  sha256: text().notNull(),
+  width: integer(),
+  height: integer(),
+  uploadedAt: timestamp('uploaded_at', { withTimezone: true }).$defaultFn(() => new Date()).notNull(),
+  reviewStatus: text('review_status').default('pending').notNull(),
+  reviewedByStaffId: uuid('reviewed_by_staff_id').references(() => staffUsers.id),
+  reviewedAt: timestamp('reviewed_at', { withTimezone: true }),
+  reviewNote: text('review_note'),
+}, t => [
+  check('receipt_mime_type', sql`${t.mimeType} = 'image/webp'`),
+  check('receipt_size_positive', sql`${t.sizeBytes} between 1 and 5242880`),
+  check('receipt_sha256_length', sql`length(${t.sha256}) = 64`),
+  check('receipt_review_status', sql`${t.reviewStatus} in ('pending','approved','rejected')`),
+  check('receipt_dimensions_positive', sql`(${t.width} is null or ${t.width} > 0) and (${t.height} is null or ${t.height} > 0)`),
+  uniqueIndex('one_pending_receipt_per_attempt').on(t.paymentAttemptId).where(sql`${t.reviewStatus} = 'pending'`),
+  index('manual_receipts_review_queue_idx').on(t.reviewStatus, t.uploadedAt),
+]);
+
+export const balePaymentSessions = sqliteTable('bale_payment_sessions', {
+  paymentAttemptId: uuid('payment_attempt_id').primaryKey().references(() => paymentAttempts.id),
+  invoicePayloadHash: text('invoice_payload_hash').notNull().unique(),
+  invoicePayload: text('invoice_payload'),
+  baleChatId: text('bale_chat_id'),
+  baleUserId: text('bale_user_id'),
+  invoiceMessageId: text('invoice_message_id'),
+  invoiceStatus: text('invoice_status').default('not_sent').notNull(),
+  claimedAt: timestamp('claimed_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).$defaultFn(() => new Date()).notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).$defaultFn(() => new Date()).notNull(),
+}, t => [
+  check('bale_invoice_status', sql`${t.invoiceStatus} in ('not_sent','sending','sent','unknown','failed')`),
+]);
+
+export const baleStartTokens = sqliteTable('bale_start_tokens', {
+  id: uuid().primaryKey().$defaultFn(() => randomUUID()),
+  paymentAttemptId: uuid('payment_attempt_id').references(() => paymentAttempts.id).notNull(),
+  tokenHash: text('token_hash').notNull().unique(),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  claimedAt: timestamp('claimed_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).$defaultFn(() => new Date()).notNull(),
+}, t => [index('bale_start_tokens_attempt_idx').on(t.paymentAttemptId, t.expiresAt)]);
+
+export const baleWebhookUpdates = sqliteTable('bale_webhook_updates', {
+  updateId: text('update_id').primaryKey(),
+  updateType: text('update_type').notNull(),
+  processingStatus: text('processing_status').default('processing').notNull(),
+  safeErrorCode: text('safe_error_code'),
+  createdAt: timestamp('created_at', { withTimezone: true }).$defaultFn(() => new Date()).notNull(),
+  processedAt: timestamp('processed_at', { withTimezone: true }),
+}, t => [
+  check('bale_webhook_processing_status', sql`${t.processingStatus} in ('processing','processed','failed')`),
+  index('bale_webhook_created_idx').on(t.createdAt),
+]);
+
 export const cartMigrations = sqliteTable('cart_migrations', {
   id: uuid().primaryKey().$defaultFn(() => randomUUID()), userId: uuid('user_id').references(() => users.id, { onDelete: 'cascade' }).notNull(),
   key: text().notNull(), payloadHash: text('payload_hash').notNull(),

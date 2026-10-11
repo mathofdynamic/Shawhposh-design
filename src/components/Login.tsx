@@ -75,8 +75,8 @@ export default function Login({ theme, onLogin, onClose, onNavigateToSignup }: L
                 </div>
                 <div className={`w-px h-8 ${isDark ? 'bg-white/5' : 'bg-slate-200'}`} />
                 <div>
-                  <div className="text-xl font-bold font-mono text-emerald-500">پرداخت آنلاین</div>
-                  <div className="text-[10px] text-gray-500 mt-0.5">در فاز بعد فعال می‌شود</div>
+                  <div className="text-xl font-bold font-mono text-emerald-500">روش‌های پرداخت</div>
+                  <div className="text-[10px] text-gray-500 mt-0.5">پس از پیکربندی واقعی فعال می‌شوند</div>
                 </div>
               </div>
             </div>

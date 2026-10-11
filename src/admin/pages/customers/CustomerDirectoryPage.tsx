@@ -60,7 +60,7 @@ export const CustomerDirectoryPage: React.FC = () => {
   ];
 
   return <section dir="rtl" className="space-y-5">
-    <AdminPageHeader title="فهرست مشتریان" description="حساب‌های ثبت‌شده واقعی؛ خرید پرداخت‌شده تا اتصال درگاه صفر می‌ماند." actions={<Button variant="outline" size="sm" leftIcon={<RefreshCw size={14} />} onClick={() => setReload(value => value + 1)}>به‌روزرسانی</Button>} />
+    <AdminPageHeader title="فهرست مشتریان" description="حساب‌های ثبت‌شده واقعی؛ هزینه‌کرد فقط از سفارش‌های پرداخت‌شده با تأیید دستی یا استعلام بله محاسبه می‌شود." actions={<Button variant="outline" size="sm" leftIcon={<RefreshCw size={14} />} onClick={() => setReload(value => value + 1)}>به‌روزرسانی</Button>} />
     {error && <div role="alert" className="rounded-xl border border-red-400/20 bg-red-500/10 p-4 text-sm text-red-200">{error}<button onClick={() => setReload(value => value + 1)} className="mr-3 underline">تلاش دوباره</button></div>}
     <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
       <KPICard title="مشتریان ثبت‌شده" value={error ? '—' : summary?.registeredCount ?? 0} icon={<Users size={17} />} isLoading={loading} />

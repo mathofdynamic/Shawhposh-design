@@ -41,7 +41,7 @@ export default function BentoShowcase({ theme = 'dark', categories, productCount
         </article>
 
         <div className={`flex items-center gap-4 rounded-2xl border p-5 lg:col-span-12 ${isDark ? 'border-amber-500/20 bg-amber-500/[0.04]' : 'border-amber-700/20 bg-amber-500/[0.04]'}`}>
-          <ShieldOff size={20} className="shrink-0 text-amber-400"/><p className={`text-sm leading-6 ${muted}`}>درگاه پرداخت فعال نیست؛ هیچ پرداخت یا خرید تکمیل‌شده‌ای در این نسخه نمایش داده نمی‌شود.</p>
+          <ShieldOff size={20} className="shrink-0 text-amber-400"/><p className={`text-sm leading-6 ${muted}`}>رسید کارت‌به‌کارت با بررسی دستی و پرداخت بله با استعلام رسمی تأیید می‌شود؛ سفارش تا آن زمان پرداخت‌شده نمایش داده نمی‌شود.</p>
         </div>
       </div>
     </div>

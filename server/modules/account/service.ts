@@ -1,7 +1,7 @@
 import { and, asc, desc, eq, ne, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import { db } from '../../db/connection';
-import { customerAddresses, orderEvents, orderItems, orders, users } from '../../db/schema';
+import { customerAddresses, manualPaymentReceipts, orderEvents, orderItems, orders, paymentAttempts, users } from '../../db/schema';
 import { ApiError } from '../../lib/errors';
 import { normalizePhone } from '../auth/service';
 
@@ -116,6 +116,8 @@ export function deleteAddress(userId: string, addressId: string) {
 
 export function orderDto(order: typeof orders.$inferSelect, includeInternal = false) {
   const items = db.select().from(orderItems).where(eq(orderItems.orderId, order.id)).all();
+  const latestPayment = includeInternal ? undefined : db.select().from(paymentAttempts).where(eq(paymentAttempts.orderId, order.id)).orderBy(desc(paymentAttempts.createdAt)).get();
+  const latestReceipt = latestPayment ? db.select().from(manualPaymentReceipts).where(eq(manualPaymentReceipts.paymentAttemptId, latestPayment.id)).orderBy(desc(manualPaymentReceipts.uploadedAt)).get() : undefined;
   const events = db.select().from(orderEvents).where(and(
     eq(orderEvents.orderId, order.id),
     ...(includeInternal ? [] : [sql`${orderEvents.eventType} in ('order_created','order_cancelled','reservation_released')`]),
@@ -127,6 +129,12 @@ export function orderDto(order: typeof orders.$inferSelect, includeInternal = fa
     shippingMethodId: order.shippingMethodId, shippingMethodCode: order.shippingMethodCode, shippingMethodName: order.shippingMethodName,
     subtotalTomans: order.subtotalTomans, discountTomans: order.discountTomans, shippingTomans: order.shippingTomans,
     totalTomans: order.totalTomans, orderStatus: order.orderStatus, paymentStatus: order.paymentStatus,
+    ...(!includeInternal ? { payment: latestPayment ? {
+      method: latestPayment.method, status: latestPayment.status, amountTomans: latestPayment.amountTomans,
+      createdAt: latestPayment.createdAt, paidAt: latestPayment.paidAt,
+      failureMessage: ['rejected', 'failed'].includes(latestPayment.status) ? latestPayment.failureMessage : null,
+      receipt: latestReceipt ? { status: latestReceipt.reviewStatus, reviewNote: latestReceipt.reviewStatus === 'rejected' ? latestReceipt.reviewNote : null } : null,
+    } : null } : {}),
     productionStatus: order.productionStatus, fulfillmentStatus: order.fulfillmentStatus, customerNote: order.customerNote,
     createdAt: order.createdAt, updatedAt: order.updatedAt, cancelledAt: order.cancelledAt,
     items: items.map(item => ({ id: item.id, productId: item.productId, variantId: item.variantId, sku: item.skuSnapshot,

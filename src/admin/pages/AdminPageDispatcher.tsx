@@ -3,6 +3,8 @@ import { useAdminRouter } from '../router';
 import { DashboardPage } from './overview/DashboardPage';
 import { OrdersPage } from './sales/OrdersPage';
 import { OrderDetailPage } from './sales/OrderDetailPage';
+import { PaymentsPage } from './sales/PaymentsPage';
+import { PaymentDetailPage } from './sales/PaymentDetailPage';
 import { ProductsPage } from './catalog/ProductsPage';
 import { ProductEditor } from './catalog/ProductEditor';
 import { VariantsPage } from './catalog/VariantsPage';
@@ -21,6 +23,8 @@ export const AdminPageDispatcher: React.FC = () => {
     case 'dashboard': return <DashboardPage />;
     case 'orders': return <OrdersPage />;
     case 'order-detail': return <OrderDetailPage orderIdProp={params.id} />;
+    case 'payments': return <PaymentsPage />;
+    case 'payment-detail': return <PaymentDetailPage paymentId={params.id} />;
     case 'products': return <ProductsPage />;
     case 'product-create': return <ProductEditor productId="new" />;
     case 'product-edit': return <ProductEditor productId={params.id} />;

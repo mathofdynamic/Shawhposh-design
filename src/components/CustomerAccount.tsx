@@ -1,12 +1,12 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { ArrowLeft, ArrowRight, MapPin, Package, Save, Trash2 } from 'lucide-react';
 import { ApiClientError } from '../api/client';
-import type { CustomerAddress, CustomerProfile } from '../features/account/api';
+import type { CustomerAddress, CustomerOrderSummary, CustomerProfile } from '../features/account/api';
 import { createAddress, deleteAddress, loadAccount, loadAddresses, loadCustomerOrders, updateAccount, updateAddress } from '../features/account/api';
 import type { User } from '../types';
 import { ConfirmDialog } from '../admin/components/ui';
+import { CustomerOrderPayment } from './CustomerOrderPayment';
 
-type OrderSummary = { id: string; orderNumber: string; orderStatus: string; paymentStatus: string; totalTomans: number; createdAt: string };
 
 interface CustomerAccountProps {
   theme: 'dark' | 'light';
@@ -21,7 +21,7 @@ export default function CustomerAccount({ theme, user, onBack, onUserUpdated }: 
   const isDark = theme === 'dark';
   const [profile, setProfile] = useState<CustomerProfile | null>(null);
   const [addresses, setAddresses] = useState<CustomerAddress[] | null>(null);
-  const [orders, setOrders] = useState<OrderSummary[] | null>(null);
+  const [orders, setOrders] = useState<CustomerOrderSummary[] | null>(null);
   const [orderPagination, setOrderPagination] = useState({ page: 1, pageSize: 20, total: 0, totalPages: 0 });
   const [orderPage, setOrderPage] = useState(1);
   const [fullName, setFullName] = useState(user.name);
@@ -59,7 +59,7 @@ export default function CustomerAccount({ theme, user, onBack, onUserUpdated }: 
       setAddressesError(addressResult.reason instanceof ApiClientError ? addressResult.reason.message : '\u0646\u0634\u0627\u0646\u06cc\u200c\u0647\u0627 \u062f\u0631\u06cc\u0627\u0641\u062a \u0646\u0634\u062f\u0646\u062f.');
     }
     if (orderResult.status === 'fulfilled') {
-      setOrders(orderResult.value.orders as OrderSummary[]);
+      setOrders(orderResult.value.orders);
       setOrderPagination(orderResult.value.pagination);
     } else {
       setOrders(null);
@@ -172,9 +172,10 @@ export default function CustomerAccount({ theme, user, onBack, onUserUpdated }: 
                 <h2 className={`flex items-center gap-2 text-base font-bold ${isDark ? 'text-white' : 'text-slate-900'}`}><Package size={16} className="text-[#ba8d3d]" /> سفارش‌های من</h2>
               </div>
               {orders === null ? <p role="alert" className="rounded-xl border border-red-400/20 bg-red-500/10 p-4 text-right text-sm text-red-200">{ordersError}<button onClick={() => void refresh()} className="mr-3 underline">{'\u0645\u062c\u062f\u062f \u062a\u0644\u0627\u0634 \u06a9\u0646\u06cc\u062f'}</button></p> : orders.length === 0 ? <p className="rounded-xl border border-dashed border-white/10 p-4 text-right text-sm text-stone-400">هنوز سفارشی ثبت نشده است.</p> : <div className="space-y-3">
-                {orders.map(order => <article key={order.id} className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-white/[0.08] p-4 text-sm">
-                  <span className="font-mono text-[#eed29d]">{Number(order.totalTomans).toLocaleString('fa-IR')} تومان</span>
-                  <div className="text-right"><strong className="block text-white">{order.orderNumber}</strong><span className="mt-1 block text-xs text-stone-400">{order.orderStatus === 'awaiting_payment' ? 'در انتظار پرداخت' : order.orderStatus === 'cancelled' ? 'لغوشده' : order.orderStatus} · {new Date(order.createdAt).toLocaleDateString('fa-IR')}</span></div>
+                {orders.map(order => <article key={order.id} className="rounded-2xl border border-white/[0.08] p-4 text-sm">
+                  <div className="flex flex-wrap items-center justify-between gap-3"><span className="font-mono text-[#eed29d]">{Number(order.totalTomans).toLocaleString('fa-IR')} تومان</span>
+                  <div className="text-right"><strong className="block text-white">{order.orderNumber}</strong><span className="mt-1 block text-xs text-stone-400">{order.orderStatus === 'awaiting_payment' ? 'در انتظار پرداخت' : order.orderStatus === 'cancelled' ? 'لغوشده' : order.orderStatus} · {new Date(order.createdAt).toLocaleDateString('fa-IR')}</span></div></div>
+                  <CustomerOrderPayment orderId={order.id} orderStatus={order.orderStatus} paymentStatus={order.paymentStatus} summary={order.payment} />
                 </article>)}
               </div>}
               {orders !== null && orderPagination.totalPages > 1 && <nav aria-label="پیمایش سفارش‌ها" className="mt-4 flex items-center justify-between gap-3 border-t border-white/[0.08] pt-4 text-xs text-stone-400">

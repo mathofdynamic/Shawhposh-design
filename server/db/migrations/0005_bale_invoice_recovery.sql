@@ -1,0 +1,1 @@
+ALTER TABLE `bale_payment_sessions` ADD `invoice_payload` text;

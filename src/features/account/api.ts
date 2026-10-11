@@ -35,6 +35,16 @@ export interface CustomerProfile {
   updatedAt: string;
 }
 
+export interface CustomerOrderSummary {
+  id: string;
+  orderNumber: string;
+  orderStatus: string;
+  paymentStatus: string;
+  totalTomans: number;
+  createdAt: string;
+  payment: null | { method: string; status: string; amountTomans: number; createdAt: string; paidAt: string | null; failureMessage: string | null; receipt: null | { status: string; reviewNote: string | null } };
+}
+
 export async function loadAccount() {
   return api<{ user: CustomerProfile }>('/v1/account');
 }
@@ -61,5 +71,5 @@ export async function deleteAddress(id: string) {
 
 export async function loadCustomerOrders(page = 1, pageSize = 20) {
   const query = new URLSearchParams({ page: String(page), pageSize: String(pageSize) });
-  return api<{ orders: Array<Record<string, unknown>>; pagination: { page: number; pageSize: number; total: number; totalPages: number } }>(`/v1/account/orders?${query.toString()}`);
+  return api<{ orders: CustomerOrderSummary[]; pagination: { page: number; pageSize: number; total: number; totalPages: number } }>(`/v1/account/orders?${query.toString()}`);
 }

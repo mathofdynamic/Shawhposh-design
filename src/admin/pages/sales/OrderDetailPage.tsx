@@ -145,7 +145,7 @@ export const OrderDetailPage: React.FC<OrderDetailPageProps> = ({ orderIdProp })
         <h2 className="mb-4 flex items-center gap-2 text-sm font-bold"><Package size={15} className="text-[#eed29d]" />تاریخچه سفارش</h2>
         <ol className="space-y-4">{[...currentOrder.timeline].reverse().map((event, index) => <li key={`${event.type}-${event.createdAt}-${index}`} className="flex gap-3 border-r border-[#ba8d3d]/30 pr-4 text-xs"><span className="mt-1 h-2 w-2 shrink-0 rounded-full bg-[#ba8d3d]" /><div><strong className="text-stone-200">{event.note || event.type}</strong><time className="mt-1 block text-[10px] text-stone-500">{new Date(event.createdAt).toLocaleString('fa-IR')}</time></div></li>)}</ol>
       </section>
-      <p className="rounded-xl border border-amber-400/15 bg-amber-500/5 p-3 text-xs text-amber-200">وضعیت پرداخت فقط پس از اتصال و تأیید درگاه تغییر می‌کند. امکان ثبت دستی پرداخت وجود ندارد.</p>
+      <p className="rounded-xl border border-amber-400/15 bg-amber-500/5 p-3 text-xs text-amber-200">تأیید پرداخت از صفحه پرداخت‌ها انجام می‌شود: رسید کارت‌به‌کارت نیازمند تطبیق بانکی است و پرداخت بله به استعلام رسمی وابسته است.</p>
     </>}
     <ConfirmDialog
       isOpen={showCancelConfirm && Boolean(currentOrder)}

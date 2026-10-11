@@ -77,7 +77,7 @@ export const OrdersPage: React.FC = () => {
   ];
 
   return <section dir="rtl" className="space-y-5">
-    <AdminPageHeader title="سفارش‌ها" description="سفارش‌های ثبت‌شده در پایگاه داده؛ پرداخت از طریق درگاه هنوز فعال نیست." actions={<Button variant="outline" size="sm" leftIcon={<RefreshCw size={14} />} onClick={() => setReload(value => value + 1)}>به‌روزرسانی</Button>} />
+    <AdminPageHeader title="سفارش‌ها" description="سفارش‌های ثبت‌شده واقعی؛ پرداخت فقط پس از بررسی رسید یا تأیید رسمی بله ثبت می‌شود." actions={<Button variant="outline" size="sm" leftIcon={<RefreshCw size={14} />} onClick={() => setReload(value => value + 1)}>به‌روزرسانی</Button>} />
     {error && <div role="alert" className="flex items-center justify-between gap-3 rounded-xl border border-red-400/20 bg-red-500/10 p-4 text-sm text-red-200"><span>{error}</span><Button size="sm" variant="outline" onClick={() => setReload(value => value + 1)}>تلاش دوباره</Button></div>}
     <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
       <SearchInput value={search} onChange={value => { setSearch(value); setPage(1); }} placeholder="شماره، نام، تلفن یا ایمیل" ariaLabel="جستجوی سفارش‌ها" />

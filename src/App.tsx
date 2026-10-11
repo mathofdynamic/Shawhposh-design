@@ -16,7 +16,7 @@ import { Product, CartItem, User as UserType } from './types';
 import Login from './components/Login';
 import Signup from './components/Signup';
 import CustomerAccount from './components/CustomerAccount';
-import { motion, AnimatePresence } from 'motion/react';
+import { motion, AnimatePresence, useReducedMotion } from 'motion/react';
 import { AdminRouterProvider } from './admin/router';
 import { AdminLayout } from './admin/AdminLayout';
 import { ToastProvider } from './admin/components/ui';
@@ -41,6 +41,7 @@ function readLegacyCart(): CartItem[] {
 }
 
 export default function App() {
+  const prefersReducedMotion = useReducedMotion();
   useEffect(() => {
     try {
       const legacyKeys = Object.keys(localStorage).filter(key =>
@@ -418,10 +419,10 @@ export default function App() {
         <AnimatePresence mode="wait">
           <motion.div
             key={activeTab}
-            initial={{ opacity: 0, y: 12 }}
+            initial={prefersReducedMotion ? false : { opacity: 0, y: 12 }}
             animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -12 }}
-            transition={{ duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
+            exit={prefersReducedMotion ? { opacity: 0 } : { opacity: 0, y: -12 }}
+            transition={prefersReducedMotion ? { duration: 0 } : { duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
             className="w-full"
           >
             {activeTab === 'home' && (
@@ -699,7 +700,7 @@ export default function App() {
               <p className={`mt-5 max-w-3xl text-sm leading-7 ${isDark ? 'text-stone-400' : 'text-slate-600'}`}>اطلاعات این صفحه از کاتالوگ ثبت‌شده در پایگاه داده فروشگاه می‌آید. تصویر محصول، جزئیات تولید و خدمات عملیاتی فقط پس از ثبت و تأیید نمایش داده می‌شوند.</p>
               <div className="mt-10 grid gap-4 md:grid-cols-3">
                 <article className="rounded-2xl border border-white/10 bg-[#141211] p-6"><h2 className="font-semibold text-[#eed29d]">کاتالوگ</h2><p className="mt-3 text-sm leading-6 text-stone-400">نام، تنوع، قیمت و موجودی از کاتالوگ فعلی بارگذاری می‌شود.</p></article>
-                <article className="rounded-2xl border border-white/10 bg-[#141211] p-6"><h2 className="font-semibold text-[#eed29d]">پرداخت</h2><p className="mt-3 text-sm leading-6 text-stone-400">پرداخت آنلاین فعال نیست. سفارش به‌عنوان پرداخت‌شده یا تکمیل‌شده نمایش داده نمی‌شود.</p></article>
+                <article className="rounded-2xl border border-white/10 bg-[#141211] p-6"><h2 className="font-semibold text-[#eed29d]">پرداخت</h2><p className="mt-3 text-sm leading-6 text-stone-400">رسید کارت‌به‌کارت پس از بررسی دستی و پرداخت بله پس از استعلام رسمی تأیید می‌شود. سفارش پیش از تأیید وجه، پرداخت‌شده نمایش داده نمی‌شود.</p></article>
                 <article className="rounded-2xl border border-white/10 bg-[#141211] p-6"><h2 className="font-semibold text-[#eed29d]">پیش‌نمایش طراحی</h2><p className="mt-3 text-sm leading-6 text-stone-400">طراح، متن دلخواه را روی یکی از تنوع‌های کاتالوگ پیش‌نمایش می‌کند. ذخیره طرح و ثبت سفارش سفارشی فعال نیست.</p></article>
               </div>
             </div>
@@ -876,12 +877,12 @@ export default function App() {
                 isDark ? 'bg-[#151312] border-white/5 hover:border-[#ba8d3d]/20 shadow-lg' : 'bg-white border-slate-200/80 hover:border-[#ba8d3d]/30 shadow-sm text-slate-800'
               }`}>
                 <div className="w-7 h-7 rounded-full bg-[#ba8d3d]/10 flex items-center justify-center text-[10px] text-[#ba8d3d] font-bold">پ</div>
-                <span className="text-[10px] text-[#eed29d] font-extrabold">پرداخت آنلاین</span>
-                <span className={`text-[8px] leading-normal ${isDark ? 'text-gray-500' : 'text-slate-550'}`}>در فاز بعد فعال می‌شود</span>
+                <span className="text-[10px] text-[#eed29d] font-extrabold">روش‌های پرداخت</span>
+                <span className={`text-[8px] leading-normal ${isDark ? 'text-gray-500' : 'text-slate-550'}`}>پس از پیکربندی واقعی فعال می‌شوند</span>
               </div>
             </div>
             <div className={`text-[9.5px] leading-relaxed transition-colors ${isDark ? 'text-gray-600' : 'text-slate-400'}`}>
-              درگاه پرداخت هنوز متصل نشده است؛ ثبت سفارش تا تعیین هزینه ارسال غیرفعال می‌ماند.
+              ثبت سفارش پس از تعیین هزینه ارسال و فعال‌سازی روش پرداخت در تنظیمات مدیریت در دسترس می‌شود.
             </div>
           </div>
 

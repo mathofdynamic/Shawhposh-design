@@ -4,8 +4,8 @@ import { z } from 'zod';
 import { config } from '../../config';
 import { db } from '../../db/connection';
 import {
-  carts, cartItems, checkoutIdempotency, customerAddresses, inventory, inventoryReservations,
-  orderEvents, orderItems, orderSequences, orders, productMedia, productVariants, products, shippingMethods,
+  balePaymentSessions, carts, cartItems, checkoutIdempotency, customerAddresses, inventory, inventoryReservations,
+  manualPaymentReceipts, orderEvents, orderItems, orderSequences, orders, paymentAttempts, paymentEvents, productMedia, productVariants, products, shippingMethods,
   stockMovements, users,
 } from '../../db/schema';
 import { ApiError } from '../../lib/errors';
@@ -317,7 +317,42 @@ export function expireReservations(now = new Date()) {
     let released = 0;
     for (const orderId of expiredOrderIds) {
       const order = tx.select().from(orders).where(eq(orders.id, orderId)).get();
-      if (!order || order.orderStatus !== 'awaiting_payment' || order.paymentStatus !== 'unpaid') continue;
+      if (!order || order.orderStatus !== 'awaiting_payment' || !['unpaid', 'pending'].includes(order.paymentStatus)) continue;
+      const attempts = tx.select().from(paymentAttempts).where(and(
+        eq(paymentAttempts.orderId, order.id), inArray(paymentAttempts.status, ['created', 'awaiting_customer', 'pending_verification']),
+      )).all();
+      const unresolvedBale = attempts.find(attempt => attempt.method === 'bale_wallet'
+        && attempt.status === 'pending_verification' && attempt.externalTransactionId);
+      if (unresolvedBale) {
+        const session = tx.select().from(balePaymentSessions).where(eq(balePaymentSessions.paymentAttemptId, unresolvedBale.id)).get();
+        const received = tx.select().from(paymentEvents).where(and(
+          eq(paymentEvents.paymentAttemptId, unresolvedBale.id), eq(paymentEvents.eventType, 'bale_payment_received'),
+        )).orderBy(desc(paymentEvents.createdAt)).get();
+        const evidence = received?.metadataSafeJson as Record<string, unknown> | null | undefined;
+        const hasMatchingReceipt = Boolean(session && evidence
+          && evidence.transactionId === unresolvedBale.externalTransactionId
+          && evidence.currency === 'IRR'
+          && evidence.totalAmount === unresolvedBale.amountProviderUnits
+          && evidence.payloadReference === session.invoicePayloadHash.slice(0, 16)
+          && evidence.baleUserId === session.baleUserId);
+        if (hasMatchingReceipt) {
+          const holdUntil = new Date(now.getTime() + config.CHECKOUT_RESERVATION_MINUTES * 60_000);
+          tx.update(paymentAttempts).set({ expiresAt: holdUntil, updatedAt: now }).where(eq(paymentAttempts.id, unresolvedBale.id)).run();
+          tx.update(inventoryReservations).set({ expiresAt: holdUntil })
+            .where(and(eq(inventoryReservations.orderId, order.id), eq(inventoryReservations.status, 'active'))).run();
+          continue;
+        }
+      }
+      for (const attempt of attempts) {
+        tx.update(paymentAttempts).set({ status: 'expired', failureCode: 'RESERVATION_EXPIRED',
+          failureMessage: 'Payment reservation expired before verification.', updatedAt: now, failedAt: now })
+          .where(and(eq(paymentAttempts.id, attempt.id), inArray(paymentAttempts.status, ['created', 'awaiting_customer', 'pending_verification']))).run();
+        tx.update(manualPaymentReceipts).set({ reviewStatus: 'rejected', reviewedAt: now,
+          reviewNote: 'مهلت بررسی پایان یافت و رزرو سفارش آزاد شد.' })
+          .where(and(eq(manualPaymentReceipts.paymentAttemptId, attempt.id), eq(manualPaymentReceipts.reviewStatus, 'pending'))).run();
+        tx.insert(paymentEvents).values({ paymentAttemptId: attempt.id, eventType: 'attempt_expired', source: 'system',
+          metadataSafeJson: { reason: 'reservation_expired' }, createdAt: now }).onConflictDoNothing().run();
+      }
       const active = tx.select().from(inventoryReservations).where(and(eq(inventoryReservations.orderId, order.id), eq(inventoryReservations.status, 'active'))).all();
       for (const reservation of active) {
         const before = tx.select().from(inventory).where(eq(inventory.variantId, reservation.variantId)).get();
@@ -334,7 +369,7 @@ export function expireReservations(now = new Date()) {
           note: 'مهلت پرداخت پایان یافت و رزرو موجودی آزاد شد.', metadata: { reservationId: reservation.id, quantity: reservation.quantity }, createdAt: now }).run();
         released++;
       }
-      tx.update(orders).set({ orderStatus: 'cancelled', cancelledAt: now, updatedAt: now }).where(eq(orders.id, order.id)).run();
+      tx.update(orders).set({ orderStatus: 'cancelled', paymentStatus: 'unpaid', cancelledAt: now, updatedAt: now }).where(eq(orders.id, order.id)).run();
       tx.insert(orderEvents).values({ orderId: order.id, eventType: 'order_cancelled', actorType: 'system', previousValue: 'awaiting_payment',
         newValue: 'cancelled', note: 'مهلت پرداخت پایان یافت.', createdAt: now }).run();
     }
