@@ -20,7 +20,7 @@
     "server:expire-reservations": "node server-dist/modules/orders/expire-reservations.js",
     "bale:webhook:set": "node server-dist/modules/payments/configure-webhook.js",
     "admin:create-owner": "tsx server/modules/admin/create-owner.ts",
-    "test:backend": "tsx --test server/tests/phase1.test.ts server/tests/phase2.test.ts server/tests/phase25.test.ts server/tests/phase3.test.ts",
+    "test:backend": "tsx --test server/tests/phase1.test.ts server/tests/phase2.test.ts server/tests/phase25.test.ts server/tests/phase3.test.ts server/tests/backupRetention.test.ts",
     "test:ui": "tsx --test src/admin/domain/__tests__/pagination.test.tsx src/admin/domain/__tests__/business-date.test.ts src/lib/productImage.test.ts src/features/cart/legacy.test.ts",
     "server:check": "tsc --noEmit -p server/tsconfig.json",
     "audit:runtime-data": "node scripts/audit-runtime-data.mjs"

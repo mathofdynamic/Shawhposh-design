@@ -22,7 +22,7 @@ Receipt images are decoded and re-encoded as WebP, stored privately under `PAYME
 
 ## Backups and restore
 
-The daily Shawhposh backup job archives the SQLite database and the private receipt directory under `/var/backups/shawhposh/`, with 14-day retention. Confirm that the existing `shawhposh-db-backup.timer` is active after deployment; a successful deploy alone does not prove the scheduler is running. The database and receipt archive are separate artifacts and both are required to restore payment history and evidence.
+The daily Shawhposh backup job archives the SQLite database and the private receipt directory under `/var/backups/shawhposh/`, with 14-day retention. Confirm that the existing `shawhposh-backup.timer` is active after deployment; a successful deploy alone does not prove the scheduler is running. The database and receipt archive are separate artifacts and both are required to restore payment history and evidence.
 
 For a restore, stop only `shawhposh-api`, preserve the current database and receipt directory, restore the matching SQLite backup to `/var/lib/shawhposh/shawhposh.sqlite`, and extract the matching receipt archive into `/var/lib/shawhposh/uploads/payment-receipts/`. Restore private permissions (`0700` directory, `0600` files), run SQLite `integrity_check` and `foreign_key_check`, then start the API and verify `/api/health` before reopening payments. Never restore only the database when receipt evidence is needed.
 

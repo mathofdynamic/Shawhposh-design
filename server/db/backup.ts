@@ -1,11 +1,16 @@
-import { chmodSync, existsSync, mkdirSync, readdirSync, statSync, unlinkSync } from 'node:fs';
-import { join, resolve } from 'node:path';
+import { chmodSync, existsSync, lstatSync, mkdirSync, readdirSync, realpathSync, unlinkSync } from 'node:fs';
+import { basename, join, resolve } from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { config } from '../config';
 import { sqlite } from './connection';
+import { getExpiredBackupNames, isBackupArtifactName } from './backupRetention';
 const directory=process.env.BACKUP_DIRECTORY;
 if(!directory)throw new Error('BACKUP_DIRECTORY required');
-const base=resolve(directory);mkdirSync(base,{recursive:true,mode:0o700});
+const expectedBase=resolve('/var/backups/shawhposh');
+const base=resolve(directory);
+if(base!==expectedBase||base==='/'||base===resolve('/var/backups'))throw new Error('BACKUP_DIRECTORY must be /var/backups/shawhposh');
+mkdirSync(base,{recursive:true,mode:0o700});
+if(realpathSync(base)!==expectedBase)throw new Error('BACKUP_DIRECTORY must not resolve through a symlink');
 const stamp=new Date().toISOString().replaceAll(':','-');
 const destination=join(base,`shawhposh-${stamp}.sqlite`);
 await sqlite.backup(destination);chmodSync(destination,0o600);sqlite.close();
@@ -15,6 +20,16 @@ const receiptArchive=join(base,`payment-receipts-${stamp}.tar.gz`);
 execFileSync('tar',['-czf',receiptArchive,'-C',receiptRoot,'.'],{stdio:'ignore'});
 chmodSync(receiptArchive,0o600);
 const cutoff=Date.now()-14*86400000;
-for(const name of readdirSync(base))if(/^shawhposh-[0-9T.Z-]+\.sqlite$/.test(name)||/^payment-receipts-[0-9T.Z-]+\.tar\.gz$/.test(name)){const path=join(base,name);if(statSync(path).mtimeMs<cutoff)unlinkSync(path);}
+const protectedNames=new Set([basename(destination),basename(receiptArchive)]);
+const entries=readdirSync(base).flatMap(name=>{
+  if(!isBackupArtifactName(name))return[];
+  const path=join(base,name);
+  const stat=lstatSync(path);
+  if(stat.isSymbolicLink()||!stat.isFile())return[];
+  return[{name,isRegularFile:true,modifiedAtMs:stat.mtimeMs}];
+});
+const expired=getExpiredBackupNames(entries,cutoff,protectedNames);
+for(const name of expired){unlinkSync(join(base,name));console.log(JSON.stringify({event:'backup_retention_removed',file:name}));}
 const receiptEntries=existsSync(receiptRoot)?readdirSync(receiptRoot).length:0;
-console.log(JSON.stringify({event:'backup_complete',database:'sqlite',receiptArchive:'tar.gz',receiptEntries,retentionDays:14}));
+const retained=readdirSync(base,{withFileTypes:true}).filter(entry=>entry.isFile()&&isBackupArtifactName(entry.name));
+console.log(JSON.stringify({event:'backup_complete',database:'sqlite',receiptArchive:'tar.gz',receiptEntries,retentionDays:14,protectedPair:[basename(destination),basename(receiptArchive)],expiredFilesRemoved:expired.length,retainedBackupFiles:retained.length}));
