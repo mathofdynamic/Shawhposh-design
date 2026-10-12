@@ -26,6 +26,31 @@ test('all runtime systemd services execute root-promoted code only', () => {
   }
 });
 
+test('every repository-controlled systemd executable is included in the promoted artifact model', () => {
+  const helper = read('promote_release.py');
+  const supportedFiles = helper.match(/SUPPORTED_FILES\s*=\s*\(([^)]*)\)/)?.[1];
+  assert.ok(supportedFiles, 'promotion helper declares its artifact allowlist');
+  const artifacts = new Set([...supportedFiles.matchAll(/"([^"]+)"/g)].map(match => match[1]));
+
+  for (const name of [
+    'shawhposh-api.service',
+    'shawhposh-backup.service',
+    'shawhposh-reservations.service',
+    'shawhposh-replicate.service',
+  ]) {
+    const unit = read(name);
+    const execStart = unit.match(/^ExecStart=(.+)$/m)?.[1];
+    assert.ok(execStart, `${name} has an executable command`);
+    const executable = execStart.match(/\/opt\/shawhposh\/current\/([^\s]+)/)?.[1];
+    assert.ok(executable, `${name} executes repository-controlled code from the protected tree`);
+    const promoted = [...artifacts].some(artifact =>
+      executable === artifact || (!artifact.includes('/') && executable.startsWith(`${artifact}/`)),
+    );
+    assert.ok(promoted, `${name} executable ${executable} is not copied by the promotion allowlist`);
+  }
+  assert.ok(artifacts.has('ops/replicate-backups.mjs'));
+});
+
 test('sudo policy requires owner authentication for SHA-scoped promotion', () => {
   const policy = read('sudoers.d/ubuntu-shawhposh');
   const hashPattern = '[0-9a-f]'.repeat(40);

@@ -26,8 +26,10 @@ HEALTH_RESOLVE = "shawhposh.ir:443:127.0.0.1"
 LOCK_PATH = Path("/run/lock/shawhposh-promote.lock")
 REQUIRED_ARTIFACTS = ("package.json", "server-dist", "node_modules")
 SUPPORTED_FILES = ("server-dist", "node_modules", "package.json", "ops/replicate-backups.mjs")
+SUPPORTED_NESTED_FILES = frozenset({"ops/replicate-backups.mjs"})
 FIXED_PATH = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 SHA_PATTERN = re.compile(r"[0-9a-f]{40}\Z")
+TEMP_RELEASE_PATTERN = re.compile(r"\.promoting-[0-9a-f]{40}-[0-9]+-[0-9a-f]{32}\Z")
 NOFOLLOW = getattr(os, "O_NOFOLLOW", 0)
 CLOEXEC = getattr(os, "O_CLOEXEC", 0)
 DIRECTORY = getattr(os, "O_DIRECTORY", 0)
@@ -113,6 +115,18 @@ def validate_protected_release(
     validate_sha(sha)
     if release.name != sha:
         raise PromotionError("Protected release directory name does not match its SHA.")
+    validate_protected_tree(release, sha, expected_uid=expected_uid, expected_gid=expected_gid)
+
+
+def validate_protected_tree(
+    release: Path,
+    sha: str,
+    *,
+    expected_uid: int = 0,
+    expected_gid: int = 0,
+) -> None:
+    """Validate a protected tree before it is assigned its final SHA directory name."""
+    validate_sha(sha)
     _path_without_symlink(release, uid=expected_uid, gid=expected_gid, directory=True)
     required = (
         release / "package.json",
@@ -188,6 +202,8 @@ def _copy_file(
     *,
     expected_uid: int,
     display: str,
+    destination_uid: int | None = None,
+    destination_gid: int | None = None,
 ) -> None:
     source_fd, initial = _source_file(source_parent_fd, name, expected_uid=expected_uid, display=display)
     destination_fd = -1
@@ -198,6 +214,11 @@ def _copy_file(
             os.O_WRONLY | os.O_CREAT | os.O_EXCL | NOFOLLOW | CLOEXEC,
             0o644,
             dir_fd=destination_parent_fd,
+        )
+        os.fchown(
+            destination_fd,
+            os.geteuid() if destination_uid is None else destination_uid,
+            os.getegid() if destination_gid is None else destination_gid,
         )
         while True:
             chunk = os.read(source_fd, 1024 * 1024)
@@ -232,7 +253,11 @@ def _copy_directory(
     *,
     expected_uid: int,
     display: str,
+    destination_uid: int | None = None,
+    destination_gid: int | None = None,
 ) -> None:
+    owner_uid = os.geteuid() if destination_uid is None else destination_uid
+    owner_gid = os.getegid() if destination_gid is None else destination_gid
     for name in sorted(os.listdir(source_fd)):
         if name in {".", ".."}:
             raise PromotionError(f"Invalid directory entry in staging release: {display}")
@@ -257,7 +282,10 @@ def _copy_directory(
                     child_destination_fd,
                     expected_uid=expected_uid,
                     display=child_display,
+                    destination_uid=owner_uid,
+                    destination_gid=owner_gid,
                 )
+                os.fchown(child_destination_fd, owner_uid, owner_gid)
                 os.fchmod(child_destination_fd, 0o755)
                 os.fsync(child_destination_fd)
             finally:
@@ -270,26 +298,90 @@ def _copy_directory(
                 name,
                 expected_uid=expected_uid,
                 display=child_display,
+                destination_uid=owner_uid,
+                destination_gid=owner_gid,
             )
         else:
             raise PromotionError(f"Symlink or special file refused in staging release: {child_display}")
 
 
-def _copy_top_level_file(source_root_fd: int, destination_root_fd: int, relative: str, *, uid: int) -> None:
-    parts = relative.split("/")
+def _nested_artifact_parts(relative: str) -> tuple[str, ...]:
+    if (
+        not isinstance(relative, str)
+        or relative.startswith("/")
+        or "\\" in relative
+        or relative not in SUPPORTED_NESTED_FILES
+    ):
+        raise PromotionError("Nested staging artifact is not allowlisted.")
+    parts = tuple(relative.split("/"))
+    if any(part in {"", ".", ".."} for part in parts):
+        raise PromotionError("Nested staging artifact contains an unsafe path component.")
+    return parts
+
+
+def _copy_top_level_file(
+    source_root_fd: int,
+    destination_root_fd: int,
+    relative: str,
+    *,
+    uid: int,
+    destination_uid: int | None = None,
+    destination_gid: int | None = None,
+) -> None:
+    parts = _nested_artifact_parts(relative)
     source_fd = source_root_fd
-    opened: list[int] = []
+    source_descriptors: list[int] = []
+    destination_descriptors: list[int] = []
     try:
+        owner_uid = os.geteuid() if destination_uid is None else destination_uid
+        owner_gid = os.getegid() if destination_gid is None else destination_gid
         for directory in parts[:-1]:
             source_fd = _source_directory(source_fd, directory, expected_uid=uid, display=relative)
-            opened.append(source_fd)
-        _copy_file(source_fd, destination_root_fd, parts[-1], expected_uid=uid, display=relative)
+            source_descriptors.append(source_fd)
+        destination_fd = destination_root_fd
+        for directory in parts[:-1]:
+            os.mkdir(directory, 0o755, dir_fd=destination_fd)
+            destination_fd = os.open(
+                directory,
+                os.O_RDONLY | DIRECTORY | NOFOLLOW | CLOEXEC,
+                dir_fd=destination_fd,
+            )
+            os.fchown(destination_fd, owner_uid, owner_gid)
+            os.fchmod(destination_fd, 0o755)
+            info = os.fstat(destination_fd)
+            if not _metadata_ok(
+                info,
+                uid=owner_uid,
+                gid=owner_gid,
+                directory=True,
+            ) or stat.S_IMODE(info.st_mode) != 0o755:
+                os.close(destination_fd)
+                raise PromotionError(f"Unsafe protected destination directory: {directory}")
+            destination_descriptors.append(destination_fd)
+        _copy_file(
+            source_fd,
+            destination_fd,
+            parts[-1],
+            expected_uid=uid,
+            display=relative,
+            destination_uid=owner_uid,
+            destination_gid=owner_gid,
+        )
+        os.fsync(destination_fd)
     finally:
-        for descriptor in reversed(opened):
+        for descriptor in reversed(destination_descriptors):
+            os.close(descriptor)
+        for descriptor in reversed(source_descriptors):
             os.close(descriptor)
 
 
-def _write_release_env(destination_fd: int, sha: str) -> None:
+def _write_release_env(
+    destination_fd: int,
+    sha: str,
+    *,
+    destination_uid: int | None = None,
+    destination_gid: int | None = None,
+) -> None:
     descriptor = os.open(
         RUNTIME_ENV_NAME,
         os.O_WRONLY | os.O_CREAT | os.O_EXCL | NOFOLLOW | CLOEXEC,
@@ -297,6 +389,11 @@ def _write_release_env(destination_fd: int, sha: str) -> None:
         dir_fd=destination_fd,
     )
     try:
+        os.fchown(
+            descriptor,
+            os.geteuid() if destination_uid is None else destination_uid,
+            os.getegid() if destination_gid is None else destination_gid,
+        )
         os.write(descriptor, f"APP_VERSION={sha}\n".encode("ascii"))
         os.fchmod(descriptor, 0o644)
         os.fsync(descriptor)
@@ -371,32 +468,61 @@ def _staging_release_fd(sha: str, *, staging_releases: Path = STAGING_RELEASES) 
         raise
 
 
-def _copy_staged_release(sha: str, releases_fd: int) -> Path:
-    parent_fd = source_fd = destination_fd = -1
+def _copy_staged_release_from_fds(
+    sha: str,
+    staged_fd: int,
+    releases_fd: int,
+    *,
+    runtime_releases: Path,
+    expected_source_uid: int,
+    expected_runtime_uid: int,
+    expected_runtime_gid: int,
+) -> Path:
+    validate_sha(sha)
+    destination_fd = -1
+    renamed = False
+    temporary_created = False
     temporary_name = f".promoting-{sha}-{os.getpid()}-{uuid.uuid4().hex}"
-    destination = runtime_release_path(sha)
+    destination = runtime_release_path(sha, runtime_releases)
     try:
-        if destination.exists() or destination.is_symlink():
+        try:
+            os.stat(sha, dir_fd=releases_fd, follow_symlinks=False)
+        except FileNotFoundError:
+            pass
+        else:
             raise PromotionError("Protected destination already exists; refusing to replace it.")
-        parent_fd, source_fd, ubuntu_uid = _staging_release_fd(sha)
+        source_info = os.fstat(staged_fd)
+        if not _metadata_ok(source_info, uid=expected_source_uid, directory=True):
+            raise PromotionError("Unsafe staging release directory.")
         for required in REQUIRED_ARTIFACTS:
-            info = os.stat(required, dir_fd=source_fd, follow_symlinks=False)
+            info = os.stat(required, dir_fd=staged_fd, follow_symlinks=False)
             if required == "server-dist" or required == "node_modules":
-                if not _metadata_ok(info, uid=ubuntu_uid, directory=True):
+                if not _metadata_ok(info, uid=expected_source_uid, directory=True):
                     raise PromotionError(f"Unsafe required staging directory: {required}")
-            elif not _metadata_ok(info, uid=ubuntu_uid, directory=False):
+            elif not _metadata_ok(info, uid=expected_source_uid, directory=False):
                 raise PromotionError(f"Unsafe required staging file: {required}")
         os.mkdir(temporary_name, 0o700, dir_fd=releases_fd)
+        temporary_created = True
         destination_fd = os.open(
             temporary_name, os.O_RDONLY | DIRECTORY | NOFOLLOW | CLOEXEC, dir_fd=releases_fd
         )
+        os.fchown(destination_fd, expected_runtime_uid, expected_runtime_gid)
         for artifact in SUPPORTED_FILES:
             if "/" in artifact:
-                _copy_top_level_file(source_fd, destination_fd, artifact, uid=ubuntu_uid)
+                _copy_top_level_file(
+                    staged_fd,
+                    destination_fd,
+                    artifact,
+                    uid=expected_source_uid,
+                    destination_uid=expected_runtime_uid,
+                    destination_gid=expected_runtime_gid,
+                )
                 continue
-            info = os.stat(artifact, dir_fd=source_fd, follow_symlinks=False)
+            info = os.stat(artifact, dir_fd=staged_fd, follow_symlinks=False)
             if stat.S_ISDIR(info.st_mode):
-                child_source_fd = _source_directory(source_fd, artifact, expected_uid=ubuntu_uid, display=artifact)
+                child_source_fd = _source_directory(
+                    staged_fd, artifact, expected_uid=expected_source_uid, display=artifact
+                )
                 os.mkdir(artifact, 0o755, dir_fd=destination_fd)
                 child_destination_fd = os.open(
                     artifact, os.O_RDONLY | DIRECTORY | NOFOLLOW | CLOEXEC, dir_fd=destination_fd
@@ -405,75 +531,155 @@ def _copy_staged_release(sha: str, releases_fd: int) -> Path:
                     _copy_directory(
                         child_source_fd,
                         child_destination_fd,
-                        expected_uid=ubuntu_uid,
+                        expected_uid=expected_source_uid,
                         display=artifact,
+                        destination_uid=expected_runtime_uid,
+                        destination_gid=expected_runtime_gid,
                     )
+                    os.fchown(child_destination_fd, expected_runtime_uid, expected_runtime_gid)
                     os.fchmod(child_destination_fd, 0o755)
                     os.fsync(child_destination_fd)
                 finally:
                     os.close(child_destination_fd)
                     os.close(child_source_fd)
             elif stat.S_ISREG(info.st_mode):
-                _copy_file(source_fd, destination_fd, artifact, expected_uid=ubuntu_uid, display=artifact)
+                _copy_file(
+                    staged_fd,
+                    destination_fd,
+                    artifact,
+                    expected_uid=expected_source_uid,
+                    display=artifact,
+                    destination_uid=expected_runtime_uid,
+                    destination_gid=expected_runtime_gid,
+                )
             else:
                 raise PromotionError(f"Unsupported staging artifact type: {artifact}")
-        _write_release_env(destination_fd, sha)
+        _write_release_env(
+            destination_fd,
+            sha,
+            destination_uid=expected_runtime_uid,
+            destination_gid=expected_runtime_gid,
+        )
         os.fchmod(destination_fd, 0o755)
         os.fsync(destination_fd)
         os.close(destination_fd)
         destination_fd = -1
+        temporary_path = runtime_releases / temporary_name
+        validate_protected_tree(
+            temporary_path,
+            sha,
+            expected_uid=expected_runtime_uid,
+            expected_gid=expected_runtime_gid,
+        )
         os.rename(temporary_name, sha, src_dir_fd=releases_fd, dst_dir_fd=releases_fd)
+        renamed = True
         os.fsync(releases_fd)
+        validate_protected_release(
+            destination,
+            sha,
+            expected_uid=expected_runtime_uid,
+            expected_gid=expected_runtime_gid,
+        )
     except Exception:
         if destination_fd >= 0:
             os.close(destination_fd)
             destination_fd = -1
-        _remove_owned_temporary_release(releases_fd, temporary_name)
+        if renamed or temporary_created:
+            _remove_created_release_tree(
+                releases_fd,
+                sha if renamed else temporary_name,
+                expected_uid=expected_runtime_uid,
+                expected_gid=expected_runtime_gid,
+            )
         raise
+    return destination
+
+
+def _copy_staged_release(sha: str, releases_fd: int) -> Path:
+    parent_fd = source_fd = -1
+    try:
+        parent_fd, source_fd, ubuntu_uid = _staging_release_fd(sha)
+        return _copy_staged_release_from_fds(
+            sha,
+            source_fd,
+            releases_fd,
+            runtime_releases=RUNTIME_RELEASES,
+            expected_source_uid=ubuntu_uid,
+            expected_runtime_uid=0,
+            expected_runtime_gid=0,
+        )
     finally:
         if source_fd >= 0:
             os.close(source_fd)
         if parent_fd >= 0:
             os.close(parent_fd)
-    validate_protected_release(destination, sha)
-    return destination
 
 
-def _remove_owned_temporary_release(releases_fd: int, name: str) -> None:
-    if not name.startswith(".promoting-") or "/" in name:
+def _remove_created_release_tree(
+    releases_fd: int,
+    name: str,
+    *,
+    expected_uid: int = 0,
+    expected_gid: int = 0,
+) -> None:
+    if (
+        "/" in name
+        or not (TEMP_RELEASE_PATTERN.fullmatch(name) or SHA_PATTERN.fullmatch(name))
+    ):
         return
     try:
         info = os.stat(name, dir_fd=releases_fd, follow_symlinks=False)
     except FileNotFoundError:
         return
-    if not _metadata_ok(info, uid=0, gid=0, directory=True):
+    if not _metadata_ok(info, uid=expected_uid, gid=expected_gid, directory=True):
         return
     descriptor = os.open(name, os.O_RDONLY | DIRECTORY | NOFOLLOW | CLOEXEC, dir_fd=releases_fd)
     try:
         for child in os.listdir(descriptor):
             child_info = os.stat(child, dir_fd=descriptor, follow_symlinks=False)
             if stat.S_ISDIR(child_info.st_mode) and not stat.S_ISLNK(child_info.st_mode):
-                _remove_owned_temporary_child(descriptor, child)
-            elif stat.S_ISREG(child_info.st_mode) and child_info.st_uid == 0 and child_info.st_nlink == 1:
+                _remove_owned_temporary_child(
+                    descriptor, child, expected_uid=expected_uid, expected_gid=expected_gid
+                )
+            elif (
+                stat.S_ISREG(child_info.st_mode)
+                and child_info.st_uid == expected_uid
+                and child_info.st_gid == expected_gid
+                and child_info.st_nlink == 1
+            ):
                 os.unlink(child, dir_fd=descriptor)
             else:
                 return
     finally:
         os.close(descriptor)
     os.rmdir(name, dir_fd=releases_fd)
+    os.fsync(releases_fd)
 
 
-def _remove_owned_temporary_child(parent_fd: int, name: str) -> None:
+def _remove_owned_temporary_child(
+    parent_fd: int,
+    name: str,
+    *,
+    expected_uid: int = 0,
+    expected_gid: int = 0,
+) -> None:
     info = os.stat(name, dir_fd=parent_fd, follow_symlinks=False)
-    if not _metadata_ok(info, uid=0, gid=0, directory=True):
+    if not _metadata_ok(info, uid=expected_uid, gid=expected_gid, directory=True):
         return
     descriptor = os.open(name, os.O_RDONLY | DIRECTORY | NOFOLLOW | CLOEXEC, dir_fd=parent_fd)
     try:
         for child in os.listdir(descriptor):
             child_info = os.stat(child, dir_fd=descriptor, follow_symlinks=False)
             if stat.S_ISDIR(child_info.st_mode) and not stat.S_ISLNK(child_info.st_mode):
-                _remove_owned_temporary_child(descriptor, child)
-            elif stat.S_ISREG(child_info.st_mode) and child_info.st_uid == 0 and child_info.st_nlink == 1:
+                _remove_owned_temporary_child(
+                    descriptor, child, expected_uid=expected_uid, expected_gid=expected_gid
+                )
+            elif (
+                stat.S_ISREG(child_info.st_mode)
+                and child_info.st_uid == expected_uid
+                and child_info.st_gid == expected_gid
+                and child_info.st_nlink == 1
+            ):
                 os.unlink(child, dir_fd=descriptor)
             else:
                 return

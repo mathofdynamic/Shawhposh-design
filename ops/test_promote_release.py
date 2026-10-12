@@ -10,6 +10,8 @@ from promote_release import (
     PromotionError,
     _atomic_switch,
     _copy_directory,
+    _copy_staged_release_from_fds,
+    _copy_top_level_file,
     _current_sha,
     main,
     runtime_release_path,
@@ -46,6 +48,55 @@ def make_release(root: Path, sha: str, uid: int, gid: int) -> Path:
             os.chown(path, uid, gid)
     os.chown(release, uid, gid)
     return release
+
+
+def make_staging_release(
+    root: Path,
+    sha: str,
+    uid: int,
+    gid: int,
+    *,
+    omit: str | None = None,
+    malformed: bool = False,
+) -> Path:
+    release = root / sha
+    for relative in (
+        "server-dist/db",
+        "server-dist/modules/orders",
+        "node_modules/example",
+        "ops",
+    ):
+        (release / relative).mkdir(parents=True, exist_ok=True)
+    package_type = "commonjs" if malformed else "module"
+    write_file(release / "package.json", f'{{"type":"{package_type}"}}\n'.encode())
+    write_file(release / "server-dist/index.js")
+    write_file(release / "server-dist/db/backup.js")
+    write_file(release / "server-dist/modules/orders/expire-reservations.js")
+    write_file(release / "node_modules/example/index.js")
+    if omit != "ops/replicate-backups.mjs":
+        write_file(release / "ops/replicate-backups.mjs")
+    for current, directories, files in os.walk(release):
+        Path(current).chmod(0o755)
+        os.chown(current, uid, gid)
+        for name in files:
+            path = Path(current) / name
+            os.chown(path, uid, gid)
+    os.chown(release, uid, gid)
+    return release
+
+
+def release_snapshot(release: Path) -> tuple[tuple[object, ...], ...]:
+    rows: list[tuple[object, ...]] = []
+    for current, directories, files in os.walk(release):
+        for name in directories:
+            path = Path(current) / name
+            info = path.stat()
+            rows.append((path.relative_to(release).as_posix(), "dir", info.st_mode & 0o777, info.st_uid, info.st_gid))
+        for name in files:
+            path = Path(current) / name
+            info = path.stat()
+            rows.append((path.relative_to(release).as_posix(), path.read_bytes(), info.st_mode & 0o777, info.st_uid, info.st_gid))
+    return tuple(sorted(rows, key=lambda row: str(row[0])))
 
 
 class PromoteReleaseTests(unittest.TestCase):
@@ -153,6 +204,188 @@ class PromoteReleaseTests(unittest.TestCase):
                 os.link(source / "index.js", source / "hardlink.js")
                 with self.assertRaisesRegex(PromotionError, "Unsafe staging file"):
                     _copy_directory(source_fd, destination_fd, expected_uid=uid, display="server-dist")
+            finally:
+                os.close(source_fd)
+                os.close(destination_fd)
+
+    @unittest.skipUnless(os.name == "posix", "protected promotion requires POSIX dirfd operations")
+    def test_realistic_staged_release_preserves_nested_artifact_and_passes_full_validator(self) -> None:
+        uid, gid = os.getuid(), os.getgid()
+        sha = "e" * 40
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            staging_root = root / "staging"
+            staging_root.mkdir()
+            staged = make_staging_release(staging_root, sha, uid, gid)
+            runtime_root = root / "runtime"
+            releases = runtime_root / "releases"
+            releases.mkdir(parents=True)
+            source_fd = os.open(staged, os.O_RDONLY | getattr(os, "O_DIRECTORY", 0))
+            releases_fd = os.open(releases, os.O_RDONLY | getattr(os, "O_DIRECTORY", 0))
+            try:
+                protected = _copy_staged_release_from_fds(
+                    sha,
+                    source_fd,
+                    releases_fd,
+                    runtime_releases=releases,
+                    expected_source_uid=uid,
+                    expected_runtime_uid=uid,
+                    expected_runtime_gid=gid,
+                )
+            finally:
+                os.close(source_fd)
+                os.close(releases_fd)
+
+            self.assertTrue((protected / "package.json").is_file())
+            self.assertTrue((protected / "server-dist/index.js").is_file())
+            self.assertTrue((protected / "node_modules").is_dir())
+            self.assertTrue((protected / "ops/replicate-backups.mjs").is_file())
+            self.assertFalse((protected / "replicate-backups.mjs").exists())
+            validate_protected_release(protected, sha, expected_uid=uid, expected_gid=gid)
+            self.assertEqual((protected / "ops").stat().st_mode & 0o777, 0o755)
+            self.assertEqual((protected / "ops/replicate-backups.mjs").stat().st_mode & 0o777, 0o644)
+            self.assertEqual((protected / "ops").stat().st_uid, uid)
+            self.assertEqual((protected / "ops").stat().st_gid, gid)
+            self.assertEqual((protected / "ops/replicate-backups.mjs").stat().st_uid, uid)
+            self.assertEqual((protected / "ops/replicate-backups.mjs").stat().st_gid, gid)
+
+    @unittest.skipUnless(os.name == "posix", "failure cleanup requires POSIX dirfd operations")
+    def test_failed_staging_copy_leaves_no_new_release_or_temp_and_preserves_current(self) -> None:
+        uid, gid = os.getuid(), os.getgid()
+        sha = "f" * 40
+        previous_sha = "1" * 40
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            staging_root = root / "staging"
+            staging_root.mkdir()
+            staged = make_staging_release(staging_root, sha, uid, gid, malformed=True)
+            runtime_root = root / "runtime"
+            releases = runtime_root / "releases"
+            releases.mkdir(parents=True)
+            previous = make_release(runtime_root, previous_sha, uid, gid)
+            previous_snapshot = release_snapshot(previous)
+            current = runtime_root / "current"
+            current.symlink_to(f"releases/{previous_sha}")
+            source_fd = os.open(staged, os.O_RDONLY | getattr(os, "O_DIRECTORY", 0))
+            releases_fd = os.open(releases, os.O_RDONLY | getattr(os, "O_DIRECTORY", 0))
+            try:
+                with self.assertRaises(PromotionError):
+                    _copy_staged_release_from_fds(
+                        sha,
+                        source_fd,
+                        releases_fd,
+                        runtime_releases=releases,
+                        expected_source_uid=uid,
+                        expected_runtime_uid=uid,
+                        expected_runtime_gid=gid,
+                    )
+            finally:
+                os.close(source_fd)
+                os.close(releases_fd)
+
+            self.assertFalse((releases / sha).exists())
+            self.assertEqual(list(releases.glob(".promoting-*")), [])
+            self.assertEqual(os.readlink(current), f"releases/{previous_sha}")
+            self.assertTrue(previous.is_dir())
+            self.assertEqual(release_snapshot(previous), previous_snapshot)
+            validate_protected_release(previous, previous_sha, expected_uid=uid, expected_gid=gid)
+
+    @unittest.skipUnless(os.name == "posix", "post-rename cleanup requires POSIX dirfd operations")
+    def test_failed_final_validation_removes_only_the_new_sha_release(self) -> None:
+        uid, gid = os.getuid(), os.getgid()
+        sha = "2" * 40
+        previous_sha = "3" * 40
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            staged = make_staging_release(root / "staging", sha, uid, gid)
+            runtime_root = root / "runtime"
+            releases = runtime_root / "releases"
+            releases.mkdir(parents=True)
+            previous = make_release(runtime_root, previous_sha, uid, gid)
+            previous_snapshot = release_snapshot(previous)
+            current = runtime_root / "current"
+            current.symlink_to(f"releases/{previous_sha}")
+            source_fd = os.open(staged, os.O_RDONLY | getattr(os, "O_DIRECTORY", 0))
+            releases_fd = os.open(releases, os.O_RDONLY | getattr(os, "O_DIRECTORY", 0))
+            try:
+                with (
+                    patch("promote_release.validate_protected_release", side_effect=PromotionError("injected final failure")),
+                    self.assertRaisesRegex(PromotionError, "injected final failure"),
+                ):
+                    _copy_staged_release_from_fds(
+                        sha,
+                        source_fd,
+                        releases_fd,
+                        runtime_releases=releases,
+                        expected_source_uid=uid,
+                        expected_runtime_uid=uid,
+                        expected_runtime_gid=gid,
+                    )
+            finally:
+                os.close(source_fd)
+                os.close(releases_fd)
+
+            self.assertFalse((releases / sha).exists())
+            self.assertEqual(list(releases.glob(".promoting-*")), [])
+            self.assertEqual(os.readlink(current), f"releases/{previous_sha}")
+            self.assertTrue(previous.is_dir())
+            self.assertEqual(release_snapshot(previous), previous_snapshot)
+            validate_protected_release(previous, previous_sha, expected_uid=uid, expected_gid=gid)
+
+    @unittest.skipUnless(os.name == "posix", "nested artifact checks require POSIX dirfd operations")
+    def test_nested_copy_rejects_unallowlisted_paths_and_unsafe_sources(self) -> None:
+        uid = os.getuid()
+        invalid_paths = ("../file", "ops/../file", "/absolute/file", "ops\\replicate-backups.mjs", "ops/other.mjs")
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            source = root / "source"
+            destination = root / "destination"
+            source.mkdir()
+            destination.mkdir()
+            (source / "ops").mkdir()
+            write_file(source / "ops/replicate-backups.mjs")
+            source_fd = os.open(source, os.O_RDONLY | getattr(os, "O_DIRECTORY", 0))
+            destination_fd = os.open(destination, os.O_RDONLY | getattr(os, "O_DIRECTORY", 0))
+            try:
+                for relative in invalid_paths:
+                    with self.subTest(relative=relative), self.assertRaises(PromotionError):
+                        _copy_top_level_file(source_fd, destination_fd, relative, uid=uid)
+
+                (source / "ops/replicate-backups.mjs").unlink()
+                (source / "ops").rmdir()
+                (source / "ops").symlink_to(root, target_is_directory=True)
+                with self.assertRaises(PromotionError):
+                    _copy_top_level_file(source_fd, destination_fd, "ops/replicate-backups.mjs", uid=uid)
+                (source / "ops").unlink()
+
+                ops = source / "ops"
+                ops.mkdir()
+                target = source / "replicate-target.mjs"
+                write_file(target)
+                (ops / "replicate-backups.mjs").symlink_to(target)
+                with self.assertRaises(PromotionError):
+                    _copy_top_level_file(source_fd, destination_fd, "ops/replicate-backups.mjs", uid=uid)
+                (ops / "replicate-backups.mjs").unlink()
+                (destination / "ops").rmdir()
+
+                unsafe = ops / "replicate-backups.mjs"
+                for mode in (0o664, 0o666):
+                    with self.subTest(mode=oct(mode)):
+                        write_file(unsafe)
+                        unsafe.chmod(mode)
+                        with self.assertRaisesRegex(PromotionError, "Unsafe staging file"):
+                            _copy_top_level_file(
+                                source_fd,
+                                destination_fd,
+                                "ops/replicate-backups.mjs",
+                                uid=uid,
+                            )
+                        unsafe.unlink()
+                        (destination / "ops").rmdir()
+
+                os.mkfifo(unsafe)
+                with self.assertRaisesRegex(PromotionError, "Unsafe staging file"):
+                    _copy_top_level_file(source_fd, destination_fd, "ops/replicate-backups.mjs", uid=uid)
             finally:
                 os.close(source_fd)
                 os.close(destination_fd)
