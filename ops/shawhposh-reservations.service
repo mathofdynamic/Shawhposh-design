@@ -4,13 +4,18 @@ After=local-fs.target
 
 [Service]
 Type=oneshot
-User=ubuntu
-Group=ubuntu
+User=shawhposh
+Group=shawhposh
 WorkingDirectory=/home/ubuntu/shawhposh/current
 EnvironmentFile=/var/lib/shawhposh/.env
-ExecStart=/usr/bin/env node /home/ubuntu/shawhposh/current/server-dist/modules/orders/expire-reservations.js
+ExecStart=/usr/bin/node /home/ubuntu/shawhposh/current/server-dist/modules/orders/expire-reservations.js
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict
 ProtectHome=read-only
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
 ReadWritePaths=/var/lib/shawhposh

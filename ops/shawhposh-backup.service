@@ -1,9 +1,10 @@
 [Unit]
 Description=Shawhposh SQLite online backup
+OnSuccess=shawhposh-replicate.service
 [Service]
 Type=oneshot
-User=ubuntu
-Group=ubuntu
+User=shawhposh
+Group=shawhposh
 WorkingDirectory=/home/ubuntu/shawhposh/current
 EnvironmentFile=/var/lib/shawhposh/.env
 Environment=BACKUP_DIRECTORY=/var/backups/shawhposh
@@ -13,4 +14,5 @@ Nice=10
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict
+ProtectHome=read-only
 ReadWritePaths=/var/lib/shawhposh /var/backups/shawhposh

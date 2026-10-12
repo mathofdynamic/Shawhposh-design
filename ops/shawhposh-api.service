@@ -1,0 +1,36 @@
+[Unit]
+Description=Shawhposh API
+After=network.target local-fs.target
+Wants=network.target
+StartLimitIntervalSec=60s
+StartLimitBurst=10
+
+[Service]
+Type=simple
+User=shawhposh
+Group=shawhposh
+WorkingDirectory=/home/ubuntu/shawhposh/current
+EnvironmentFile=/var/lib/shawhposh/.env
+Environment=NODE_ENV=production
+ExecStart=/usr/bin/node --max-old-space-size=96 /home/ubuntu/shawhposh/current/server-dist/index.js
+Restart=on-failure
+RestartSec=3s
+TimeoutStopSec=15s
+MemoryMax=160M
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+ReadWritePaths=/var/lib/shawhposh
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=shawhposh-api
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,28 @@
+[Unit]
+Description=Verify and replicate the latest Shawhposh backup pair off-host
+ConditionPathExists=/etc/shawhposh/offsite.env
+ConditionPathExists=/etc/shawhposh/rclone.conf
+
+[Service]
+Type=oneshot
+User=shawhposh
+Group=shawhposh
+WorkingDirectory=/home/ubuntu/shawhposh/current
+EnvironmentFile=/etc/shawhposh/offsite.env
+Environment=RCLONE_CONFIG=%d/rclone.conf
+LoadCredential=rclone.conf:/etc/shawhposh/rclone.conf
+ExecStart=/usr/bin/node /home/ubuntu/shawhposh/current/ops/replicate-backups.mjs
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+ReadOnlyPaths=/var/backups/shawhposh
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=shawhposh-backup-replication

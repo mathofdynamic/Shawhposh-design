@@ -8,7 +8,7 @@
     "build": "vite build",
     "preview": "vite preview",
     "clean": "rm -rf dist server.js",
-    "test": "npm run test:ui && npm run test:backend",
+    "test": "npm run test:ui && npm run test:backend && npm run test:ops",
     "lint": "tsc --noEmit",
     "server:dev": "tsx watch server/index.ts",
     "server:build": "esbuild server/index.ts server/db/migrate.ts server/db/seed.ts server/modules/admin/create-owner.ts server/db/backup.ts server/modules/orders/expire-reservations.ts server/modules/payments/configure-webhook.ts --bundle --platform=node --packages=external --format=esm --outdir=server-dist --outbase=server",
@@ -21,6 +21,7 @@
     "bale:webhook:set": "node server-dist/modules/payments/configure-webhook.js",
     "admin:create-owner": "tsx server/modules/admin/create-owner.ts",
     "test:backend": "tsx --test server/tests/phase1.test.ts server/tests/phase2.test.ts server/tests/phase25.test.ts server/tests/phase3.test.ts server/tests/backupRetention.test.ts",
+    "test:ops": "node --test ops/replicate-backups.test.mjs",
     "test:ui": "tsx --test src/admin/domain/__tests__/pagination.test.tsx src/admin/domain/__tests__/business-date.test.ts src/lib/productImage.test.ts src/features/cart/legacy.test.ts",
     "server:check": "tsc --noEmit -p server/tsconfig.json",
     "audit:runtime-data": "node scripts/audit-runtime-data.mjs"
