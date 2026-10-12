@@ -5,10 +5,11 @@ OnSuccess=shawhposh-replicate.service
 Type=oneshot
 User=shawhposh
 Group=shawhposh
-WorkingDirectory=/home/ubuntu/shawhposh/current
+WorkingDirectory=/opt/shawhposh/current
 EnvironmentFile=/var/lib/shawhposh/.env
+EnvironmentFile=/opt/shawhposh/current/release.env
 Environment=BACKUP_DIRECTORY=/var/backups/shawhposh
-ExecStart=/usr/bin/node /home/ubuntu/shawhposh/current/server-dist/db/backup.js
+ExecStart=/usr/bin/node /opt/shawhposh/current/server-dist/db/backup.js
 UMask=0077
 Nice=10
 NoNewPrivileges=true

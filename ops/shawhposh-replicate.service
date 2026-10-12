@@ -7,11 +7,12 @@ ConditionPathExists=/etc/shawhposh/rclone.conf
 Type=oneshot
 User=shawhposh
 Group=shawhposh
-WorkingDirectory=/home/ubuntu/shawhposh/current
+WorkingDirectory=/opt/shawhposh/current
 EnvironmentFile=/etc/shawhposh/offsite.env
+EnvironmentFile=/opt/shawhposh/current/release.env
 Environment=RCLONE_CONFIG=%d/rclone.conf
 LoadCredential=rclone.conf:/etc/shawhposh/rclone.conf
-ExecStart=/usr/bin/node /home/ubuntu/shawhposh/current/ops/replicate-backups.mjs
+ExecStart=/usr/bin/node /opt/shawhposh/current/ops/replicate-backups.mjs
 UMask=0077
 NoNewPrivileges=true
 PrivateTmp=true

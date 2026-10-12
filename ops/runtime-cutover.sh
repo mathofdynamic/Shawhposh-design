@@ -8,6 +8,10 @@ export PATH
 readonly API_ROOT=/home/ubuntu/shawhposh
 readonly API_RELEASES=/home/ubuntu/shawhposh/releases
 readonly API_CURRENT=/home/ubuntu/shawhposh/current
+readonly RUNTIME_ROOT=/opt/shawhposh
+readonly RUNTIME_RELEASES=/opt/shawhposh/releases
+readonly RUNTIME_CURRENT=/opt/shawhposh/current
+readonly PROMOTION_HELPER=/usr/local/sbin/shawhposh-promote-release
 readonly WEB_ROOT=/var/www/shawhposh
 readonly WEB_RELEASES=/var/www/shawhposh/releases
 readonly WEB_CURRENT=/var/www/shawhposh/current
@@ -25,9 +29,13 @@ readonly RESERVATION_TIMER=shawhposh-reservations.timer
 readonly REPLICATION_UNIT=shawhposh-replicate.service
 readonly OLD_PRODUCTION_SHA=2ede63d7d207735dce0958464f4e6462f80494e1
 readonly DOMAIN=shawhposh.ir
-# ubuntu controls deployed releases. Exact passwordless restart/backup commands therefore treat ubuntu as a trusted deployer; they do not isolate the runtime from a compromised ubuntu process.
-readonly OLD_SUDO_POLICY='ubuntu ALL=(root) NOPASSWD: /usr/sbin/nginx -t, /usr/bin/systemctl reload nginx, /usr/bin/systemctl start shawhposh-backup.service'
-readonly NEW_SUDO_POLICY='ubuntu ALL=(root) NOPASSWD: /usr/sbin/nginx -t, /usr/bin/systemctl reload nginx, /usr/bin/systemctl start shawhposh-backup.service, /usr/bin/systemctl restart shawhposh-api.service'
+readonly SHA_SUDO_ARGUMENT=$(python3 -c 'print("[0-9a-f]" * 40)')
+readonly OLD_SUDO_POLICY_3='ubuntu ALL=(root) NOPASSWD: /usr/sbin/nginx -t, /usr/bin/systemctl reload nginx, /usr/bin/systemctl start shawhposh-backup.service'
+readonly OLD_SUDO_POLICY_4='ubuntu ALL=(root) NOPASSWD: /usr/sbin/nginx -t, /usr/bin/systemctl reload nginx, /usr/bin/systemctl start shawhposh-backup.service, /usr/bin/systemctl restart shawhposh-api.service'
+readonly NEW_PASSWORDLESS_POLICY='ubuntu ALL=(root) NOPASSWD: /usr/sbin/nginx -t, /usr/bin/systemctl reload nginx'
+readonly NEW_SUDO_POLICY="Defaults:ubuntu timestamp_timeout=0
+ubuntu ALL=(root) NOPASSWD: /usr/sbin/nginx -t, /usr/bin/systemctl reload nginx
+ubuntu ALL=(root) PASSWD: /usr/local/sbin/shawhposh-promote-release $SHA_SUDO_ARGUMENT"
 
 DRY_RUN=0
 for argument in "$@"; do
@@ -53,6 +61,7 @@ readonly CANDIDATE_SHA=${CANDIDATE_RELEASE##*/}
 
 SNAPSHOT_DIR=
 ORIGINAL_API_RELEASE=
+ORIGINAL_RUNTIME_SHA=
 BACKUP_TIMER_WAS_ACTIVE=0
 RESERVATION_TIMER_WAS_ACTIVE=0
 CUTOVER_ACTIVE=0
@@ -62,9 +71,10 @@ PM2_API_STOPPED=0
 API_UNIT_START_ATTEMPTED=0
 API_HEALTHY=0
 UNITS_INSTALLED=0
+PROMOTION_HELPER_INSTALLED=0
 
 verify_passwordless_sudo_allowlist() {
-  local expected_one=$1 expected_two=${2:-} listing
+  local listing
   listing=$(sudo -n -l -U ubuntu 2>/dev/null) || { log 'SUDO' 'Could not inspect ubuntu sudo permissions without prompting.' >&2; return 1; }
   printf '%s\n' "$listing" | python3 -c '
 import re,sys
@@ -79,7 +89,26 @@ actual={re.sub(r"\s+", " ", line.strip()) for line in sys.stdin if "NOPASSWD:" i
 if len(actual)!=1 or next(iter(actual)) not in allowed:
  print("Unexpected passwordless sudo allowlist; refusing the cutover.",file=sys.stderr)
  sys.exit(1)
-' "$expected_one" "$expected_two"
+' "$@"
+}
+
+verify_password_required_promotion_rule() {
+  local listing
+  listing=$(sudo -n -l -U ubuntu 2>/dev/null) || { log 'SUDO' 'Could not inspect promotion sudo permissions without prompting.' >&2; return 1; }
+  printf '%s\n' "$listing" | python3 -c '
+import re,sys
+expected="/usr/local/sbin/shawhposh-promote-release "+sys.argv[1]
+matches=[]
+for raw in sys.stdin:
+ line=re.sub(r"\s+", " ", raw.strip())
+ if "/usr/local/sbin/shawhposh-promote-release" in line:
+  matches.append(line)
+if len(matches)!=1 or "NOPASSWD:" in matches[0]:
+ print("Promotion must require owner sudo authentication exactly once.",file=sys.stderr); sys.exit(1)
+line=re.sub(r"^\(root\)\s+(?:PASSWD:\s+)?", "", matches[0])
+if line!=expected:
+ print("Promotion sudo rule is not limited to one 40-hex SHA argument.",file=sys.stderr); sys.exit(1)
+' "$SHA_SUDO_ARGUMENT"
 }
 
 pm2_as_ubuntu() {
@@ -334,15 +363,22 @@ restore_sudo_policy() {
   fi
 }
 
-set_api_current() {
-  local target=$1 temporary=/home/ubuntu/shawhposh/.current-runtime-cutover.$$.tmp
-  [[ $target == "$API_RELEASES"/* && -d $target && ! -L $target ]] || { log 'CUTOVER' "Refusing release target outside the API release root: $target" >&2; return 1; }
-  [[ ! -e $temporary && ! -L $temporary ]] || { log 'CUTOVER' "Refusing unexpected temporary deployment path: $temporary" >&2; return 1; }
-  runuser -u ubuntu -- /usr/bin/ln -s -- "$target" "$temporary"
-  if ! runuser -u ubuntu -- /usr/bin/mv -Tf -- "$temporary" "$API_CURRENT"; then
-    if [[ -L $temporary && $(readlink -- "$temporary") == "$target" ]]; then
-      unlink -- "$temporary"
+restore_promotion_helper() {
+  local target=$PROMOTION_HELPER state
+  state=$(<"$SNAPSHOT_DIR/promotion-helper.state")
+  if [[ $state == present ]]; then
+    if [[ -e $target || -L $target ]]; then
+      [[ -f $target && ! -L $target ]] || { log 'ROLLBACK' "Unexpected promotion-helper path type: $target"; return 1; }
     fi
+    install -o root -g root -m 0755 -- "$SNAPSHOT_DIR/promotion-helper" "$target"
+  elif [[ $state == absent ]]; then
+    if [[ -e $target || -L $target ]]; then
+      [[ -f $target && ! -L $target && $(stat -c '%U:%G' -- "$target") == 'root:root' ]] \
+        || { log 'ROLLBACK' "Refusing to unlink an unexpected promotion helper: $target"; return 1; }
+      unlink -- "$target"
+    fi
+  else
+    log 'ROLLBACK' 'Saved promotion-helper state is ambiguous; leaving it untouched.'
     return 1
   fi
 }
@@ -396,14 +432,19 @@ restore_old_timers() {
 rollback_incomplete_cutover() {
   local rollback_ok=1
   log 'ROLLBACK' 'The new API did not complete acceptance checks; restoring the prior release and PM2 API.'
+  if (( API_LINK_CHANGE_STARTED )); then
+    if [[ -x $PROMOTION_HELPER ]]; then
+      "$PROMOTION_HELPER" "$OLD_PRODUCTION_SHA" || rollback_ok=0
+    else
+      rollback_ok=0
+    fi
+    [[ -L $RUNTIME_CURRENT && $(readlink -e -- "$RUNTIME_CURRENT") == "$RUNTIME_RELEASES/$OLD_PRODUCTION_SHA" ]] || rollback_ok=0
+  fi
   if (( API_UNIT_START_ATTEMPTED )); then
     systemctl stop "$API_UNIT" >/dev/null 2>&1 || true
     if systemctl is-enabled --quiet "$API_UNIT"; then
       systemctl disable "$API_UNIT" >/dev/null || rollback_ok=0
     fi
-  fi
-  if (( API_LINK_CHANGE_STARTED )) && [[ -n $ORIGINAL_API_RELEASE ]]; then
-    set_api_current "$ORIGINAL_API_RELEASE" || rollback_ok=0
   fi
   if (( OWNERSHIP_CHANGE_STARTED )); then
     restore_runtime_ownership_to_ubuntu || rollback_ok=0
@@ -413,6 +454,9 @@ rollback_incomplete_cutover() {
       restore_unit "$unit" || rollback_ok=0
     done
     systemctl daemon-reload || rollback_ok=0
+  fi
+  if (( PROMOTION_HELPER_INSTALLED )) && [[ -n $SNAPSHOT_DIR ]]; then
+    restore_promotion_helper || rollback_ok=0
   fi
   if (( PM2_API_STOPPED )); then
     pm2_as_ubuntu restart shawhposh-api >/dev/null || rollback_ok=0
@@ -450,13 +494,41 @@ validate_preflight() {
   for path in "$STATE_ROOT" "$API_ROOT" "$WEB_ROOT" "$BACKUP_ROOT"; do assert_real_directory "$path"; done
   assert_real_directory "$API_RELEASES"
   assert_real_directory "$WEB_RELEASES"
+  assert_real_directory /opt
+  assert_real_directory /usr/local/sbin
+  [[ $(stat -c '%U:%G:%a' /opt) == 'root:root:755' ]] || die '/opt ownership or mode is unexpected.'
+  if [[ -e $RUNTIME_ROOT || -L $RUNTIME_ROOT ]]; then
+    assert_real_directory "$RUNTIME_ROOT"
+    [[ $(stat -c '%U:%G:%a' "$RUNTIME_ROOT") == 'root:root:755' ]] || die 'Protected runtime root ownership or mode is unexpected.'
+    if [[ -e $RUNTIME_RELEASES || -L $RUNTIME_RELEASES ]]; then
+      assert_real_directory "$RUNTIME_RELEASES"
+      [[ $(stat -c '%U:%G:%a' "$RUNTIME_RELEASES") == 'root:root:755' ]] || die 'Protected runtime releases ownership or mode is unexpected.'
+    elif [[ -e $RUNTIME_CURRENT || -L $RUNTIME_CURRENT ]]; then
+      die 'Runtime current exists without its protected releases directory.'
+    fi
+    if [[ -e $RUNTIME_CURRENT || -L $RUNTIME_CURRENT ]]; then
+      [[ -L $RUNTIME_CURRENT && $(stat -c '%U:%G:%F' -- "$RUNTIME_CURRENT") == 'root:root:symbolic link' ]] \
+        || die 'Runtime current is not a root-owned symlink.'
+      local runtime_target
+      runtime_target=$(readlink -e -- "$RUNTIME_CURRENT")
+      [[ $(dirname -- "$runtime_target") == "$RUNTIME_RELEASES" && $(basename -- "$runtime_target") =~ ^[0-9a-f]{40}$ ]] \
+        || die 'Runtime current points outside a SHA-named protected release.'
+      [[ $(stat -c '%U:%G:%a' -- "$runtime_target") == 'root:root:755' ]] || die 'Active runtime release is not root-owned and protected.'
+      ORIGINAL_RUNTIME_SHA=$(basename -- "$runtime_target")
+    fi
+  fi
   [[ $(dirname -- "$CANDIDATE_RELEASE") == "$API_RELEASES" && -d $CANDIDATE_RELEASE && ! -L $CANDIDATE_RELEASE ]] \
     || die 'Run this script from the staged, versioned API release directory.'
   [[ $CANDIDATE_SHA =~ ^[0-9a-f]{40}$ ]] || die 'The staged API release directory must be named by its 40-character commit SHA.'
   [[ $(realpath -e -- "$CANDIDATE_RELEASE") == "$CANDIDATE_RELEASE" ]] || die 'The staged API release resolves through an unexpected symlink.'
   [[ $(stat -c '%U' -- "$CANDIDATE_RELEASE") == ubuntu ]] || die 'The staged API release must remain ubuntu-managed.'
-  [[ -f $CANDIDATE_RELEASE/server-dist/index.js && -f $CANDIDATE_RELEASE/server-dist/db/backup.js \
-    && -f $CANDIDATE_RELEASE/server-dist/modules/orders/expire-reservations.js ]] || die 'The staged release is missing built server artifacts.'
+  [[ -f $CANDIDATE_RELEASE/package.json && -d $CANDIDATE_RELEASE/node_modules \
+    && -f $CANDIDATE_RELEASE/server-dist/index.js && -f $CANDIDATE_RELEASE/server-dist/db/backup.js \
+    && -f $CANDIDATE_RELEASE/server-dist/modules/orders/expire-reservations.js \
+    && -f $CANDIDATE_RELEASE/ops/replicate-backups.mjs ]] || die 'The staged release is missing required runtime artifacts.'
+  assert_source_file "$CANDIDATE_RELEASE/package.json"
+  [[ $(stat -c '%U' -- "$CANDIDATE_RELEASE/node_modules") == ubuntu && ! -L $CANDIDATE_RELEASE/node_modules ]] \
+    || die 'The staged node_modules directory must be a real ubuntu-managed directory.'
   for artifact in "$CANDIDATE_RELEASE/server-dist/index.js" "$CANDIDATE_RELEASE/server-dist/db/backup.js" \
     "$CANDIDATE_RELEASE/server-dist/modules/orders/expire-reservations.js"; do
     assert_source_file "$artifact"
@@ -466,17 +538,20 @@ validate_preflight() {
   done
   assert_source_file "$CANDIDATE_RELEASE/ops/sudoers.d/ubuntu-shawhposh"
   assert_source_file "$CANDIDATE_RELEASE/ops/runtime-cutover.sh"
+  assert_source_file "$CANDIDATE_RELEASE/ops/promote_release.py"
+  assert_source_file "$CANDIDATE_RELEASE/ops/replicate-backups.mjs"
   [[ $(<"$CANDIDATE_RELEASE/ops/sudoers.d/ubuntu-shawhposh") == "$NEW_SUDO_POLICY" ]] || die 'The prepared sudo policy differs from the reviewed exact-command allowlist.'
   visudo -cf /etc/sudoers >/dev/null || die 'The existing sudo policy does not validate.'
   local current_sudo_policy=/etc/sudoers.d/ubuntu-shawhposh
   if [[ -e $current_sudo_policy || -L $current_sudo_policy ]]; then
     [[ -f $current_sudo_policy && ! -L $current_sudo_policy ]] || die 'The existing Shawhposh sudo policy has an unexpected file type.'
-    [[ $(<"$current_sudo_policy") == "$OLD_SUDO_POLICY" || $(<"$current_sudo_policy") == "$NEW_SUDO_POLICY" ]] \
+    [[ $(<"$current_sudo_policy") == "$OLD_SUDO_POLICY_3" || $(<"$current_sudo_policy") == "$OLD_SUDO_POLICY_4" \
+      || $(<"$current_sudo_policy") == "$NEW_SUDO_POLICY" ]] \
       || die 'The existing Shawhposh sudo policy differs from both reviewed allowlists.'
     [[ $(stat -c '%U:%G:%a' -- "$current_sudo_policy") == 'root:root:440' ]] || die 'The existing Shawhposh sudo policy permissions are unexpected.'
     visudo -cf "$current_sudo_policy" >/dev/null || die 'The existing Shawhposh sudo policy does not validate.'
   fi
-  verify_passwordless_sudo_allowlist "$OLD_SUDO_POLICY" "$NEW_SUDO_POLICY"
+  verify_passwordless_sudo_allowlist "$OLD_SUDO_POLICY_3" "$OLD_SUDO_POLICY_4" "$NEW_PASSWORDLESS_POLICY"
   assert_private_file "$DATABASE_FILE"
   assert_private_file "$ENV_FILE"
   check_env_value_without_printing DATABASE_PATH "$DATABASE_FILE"
@@ -491,13 +566,18 @@ validate_preflight() {
   [[ ! -e /etc/shawhposh/offsite.env && ! -L /etc/shawhposh/offsite.env \
     && ! -e /etc/shawhposh/rclone.conf && ! -L /etc/shawhposh/rclone.conf ]] \
     || die 'Off-host config already exists; refusing to install a backup OnSuccess hook.'
-  [[ -L $API_CURRENT ]] || die 'The API current path is not the expected deployment symlink.'
+  [[ -L $API_CURRENT ]] || die 'The legacy PM2 API current path is not the expected staging symlink.'
   ORIGINAL_API_RELEASE=$(readlink -e -- "$API_CURRENT")
   [[ $(dirname -- "$ORIGINAL_API_RELEASE") == "$API_RELEASES" && -d $ORIGINAL_API_RELEASE ]] || die 'API current points outside the versioned release tree.'
   [[ $(basename -- "$ORIGINAL_API_RELEASE") == "$OLD_PRODUCTION_SHA" || $ORIGINAL_API_RELEASE == "$CANDIDATE_RELEASE" ]] \
     || die 'The active API release changed from the reviewed production baseline.'
   assert_real_directory "$API_RELEASES/$OLD_PRODUCTION_SHA"
-  [[ -f $API_RELEASES/$OLD_PRODUCTION_SHA/server-dist/index.js ]] || die 'The known-good production API rollback artifact is missing.'
+  [[ -f $API_RELEASES/$OLD_PRODUCTION_SHA/package.json && -d $API_RELEASES/$OLD_PRODUCTION_SHA/node_modules \
+    && -f $API_RELEASES/$OLD_PRODUCTION_SHA/server-dist/index.js \
+    && -f $API_RELEASES/$OLD_PRODUCTION_SHA/server-dist/db/backup.js \
+    && -f $API_RELEASES/$OLD_PRODUCTION_SHA/server-dist/modules/orders/expire-reservations.js \
+    && -f $API_RELEASES/$OLD_PRODUCTION_SHA/ops/replicate-backups.mjs ]] \
+    || die 'The known-good production API rollback release is missing required runtime artifacts.'
   [[ -L $WEB_CURRENT ]] || die 'The frontend current path is not the expected deployment symlink.'
   local web_target
   web_target=$(readlink -e -- "$WEB_CURRENT")
@@ -514,8 +594,10 @@ validate_preflight() {
       [[ $(stat -c '%U:%G:%a' -- "$DATABASE_FILE$suffix") == 'ubuntu:ubuntu:600' ]] || die "SQLite sidecar ownership/mode is unexpected: $DATABASE_FILE$suffix"
     fi
   done
-  [[ ! -e /home/ubuntu/shawhposh/.current-runtime-cutover.$$.tmp && ! -L /home/ubuntu/shawhposh/.current-runtime-cutover.$$.tmp ]] \
-    || die 'A temporary API release symlink already exists; inspect it before retrying.'
+  if [[ -e $PROMOTION_HELPER || -L $PROMOTION_HELPER ]]; then
+    [[ -f $PROMOTION_HELPER && ! -L $PROMOTION_HELPER && $(stat -c '%U:%G:%a' -- "$PROMOTION_HELPER") == 'root:root:755' ]] \
+      || die 'Existing root promotion helper has an unexpected owner, mode, or file type.'
+  fi
   getent passwd www-data >/dev/null || die 'Nginx worker identity www-data is missing.'
   systemctl is-active --quiet nginx || die 'Nginx is not active.'
   systemctl is-active --quiet auditd || die 'auditd is not active.'
@@ -541,12 +623,23 @@ validate_preflight() {
     | python3 -c 'import json,sys; d=json.load(sys.stdin); ok=d.get("methods")==[]; print("active_payment_methods=%d" % len(d.get("methods",[]))); sys.exit(0 if ok else 1)'
   curl --fail --silent --show-error --max-time 8 --resolve "$DOMAIN:443:127.0.0.1" "https://$DOMAIN/api/v1/shipping/methods" \
     | python3 -c 'import json,sys; d=json.load(sys.stdin); methods=d.get("shippingMethods",[]); print("active_shipping_methods=%d" % len(methods)); sys.exit(0 if methods==[] else 1)'
-  local available_kib backup_available_kib
+  local available_kib backup_available_kib runtime_available_kib runtime_required_kib runtime_old_kib
   available_kib=$(df -Pk "$STATE_ROOT" | awk 'NR==2 {print $4}')
   [[ $available_kib =~ ^[0-9]+$ ]] && (( available_kib >= 1048576 )) || die 'Less than 1 GiB is available on the Shawhposh state filesystem.'
   backup_available_kib=$(df -Pk "$BACKUP_ROOT" | awk 'NR==2 {print $4}')
   [[ $backup_available_kib =~ ^[0-9]+$ ]] && (( backup_available_kib >= 1048576 )) || die 'Less than 1 GiB is available on the Shawhposh backup filesystem.'
-  log 'PRECHECK' "Available space: state=${available_kib} KiB backups=${backup_available_kib} KiB."
+  runtime_available_kib=$(df -Pk /opt | awk 'NR==2 {print $4}')
+  runtime_required_kib=$(du -sk -- "$CANDIDATE_RELEASE/package.json" "$CANDIDATE_RELEASE/server-dist" "$CANDIDATE_RELEASE/node_modules" "$CANDIDATE_RELEASE/ops/replicate-backups.mjs" \
+    | awk '{ total += $1 } END { print total + 0 }')
+  if [[ $CANDIDATE_SHA != "$OLD_PRODUCTION_SHA" ]]; then
+    runtime_old_kib=$(du -sk -- "$API_RELEASES/$OLD_PRODUCTION_SHA/package.json" "$API_RELEASES/$OLD_PRODUCTION_SHA/server-dist" "$API_RELEASES/$OLD_PRODUCTION_SHA/node_modules" "$API_RELEASES/$OLD_PRODUCTION_SHA/ops/replicate-backups.mjs" \
+      | awk '{ total += $1 } END { print total + 0 }')
+    runtime_required_kib=$((runtime_required_kib + runtime_old_kib))
+  fi
+  [[ $runtime_available_kib =~ ^[0-9]+$ && $runtime_required_kib =~ ^[0-9]+$ ]] \
+    && (( runtime_available_kib >= runtime_required_kib + 262144 )) \
+    || die 'Insufficient /opt space for protected copies of the current and rollback releases.'
+  log 'PRECHECK' "Available space: state=${available_kib} KiB backups=${backup_available_kib} KiB runtime=${runtime_available_kib} KiB; protected release estimate=${runtime_required_kib} KiB."
   systemd-analyze verify \
     "$CANDIDATE_RELEASE/ops/$API_UNIT" \
     "$CANDIDATE_RELEASE/ops/$BACKUP_UNIT" \
@@ -580,6 +673,14 @@ capture_unit_snapshot() {
     install -o root -g root -m 0644 -- "$CANDIDATE_RELEASE/ops/$unit" "$SNAPSHOT_DIR/candidate/$unit"
   done
   install -o root -g root -m 0440 -- "$CANDIDATE_RELEASE/ops/sudoers.d/ubuntu-shawhposh" "$SNAPSHOT_DIR/candidate/ubuntu-shawhposh"
+  if [[ -e $PROMOTION_HELPER || -L $PROMOTION_HELPER ]]; then
+    [[ -f $PROMOTION_HELPER && ! -L $PROMOTION_HELPER ]] || die 'Existing promotion helper path has an unexpected type.'
+    cp -p -- "$PROMOTION_HELPER" "$SNAPSHOT_DIR/promotion-helper"
+    printf 'present\n' > "$SNAPSHOT_DIR/promotion-helper.state"
+  else
+    printf 'absent\n' > "$SNAPSHOT_DIR/promotion-helper.state"
+  fi
+  install -o root -g root -m 0755 -- "$CANDIDATE_RELEASE/ops/promote_release.py" "$SNAPSHOT_DIR/candidate/shawhposh-promote-release"
   systemd-analyze verify \
     "$SNAPSHOT_DIR/candidate/$API_UNIT" \
     "$SNAPSHOT_DIR/candidate/$BACKUP_UNIT" \
@@ -588,7 +689,9 @@ capture_unit_snapshot() {
     "$SNAPSHOT_DIR/candidate/$REPLICATION_UNIT" \
     "$SNAPSHOT_DIR/candidate/$RESERVATION_TIMER"
   visudo -cf "$SNAPSHOT_DIR/candidate/ubuntu-shawhposh"
-  printf 'candidate_release=%s\nprevious_api_release=%s\n' "$CANDIDATE_RELEASE" "$ORIGINAL_API_RELEASE" > "$SNAPSHOT_DIR/manifest.txt"
+  /usr/bin/python3 -c 'import ast,sys; ast.parse(open(sys.argv[1], encoding="utf-8").read())' "$SNAPSHOT_DIR/candidate/shawhposh-promote-release"
+  printf 'candidate_release=%s\nprevious_api_release=%s\nprevious_runtime_sha=%s\n' \
+    "$CANDIDATE_RELEASE" "$ORIGINAL_API_RELEASE" "$ORIGINAL_RUNTIME_SHA" > "$SNAPSHOT_DIR/manifest.txt"
   chmod 0600 "$SNAPSHOT_DIR"/*.state "$SNAPSHOT_DIR"/manifest.txt
   log 'PRECHECK' "Rollback configuration snapshot: $SNAPSHOT_DIR"
 }
@@ -677,13 +780,40 @@ apply_runtime_permissions() {
   runuser -u shawhposh -- test -w "$DATABASE_FILE" || die 'Runtime user cannot write the SQLite database.'
   runuser -u shawhposh -- test -w "$RECEIPT_ROOT" || die 'Runtime user cannot write receipt storage.'
   runuser -u shawhposh -- test -w "$BACKUP_ROOT" || die 'Runtime user cannot write backup storage.'
-  runuser -u shawhposh -- test ! -w "$CANDIDATE_RELEASE" || die 'Runtime user can modify the deployed release directory.'
-  runuser -u shawhposh -- test ! -w "$CANDIDATE_RELEASE/server-dist" || die 'Runtime user can modify the deployed server artifact directory.'
   runuser -u ubuntu -- test ! -w "$DATABASE_FILE" || die 'ubuntu can still write the production database.'
   runuser -u ubuntu -- test ! -w "$RECEIPT_ROOT" || die 'ubuntu can still write payment receipts.'
   runuser -u ubuntu -- test ! -w "$BACKUP_ROOT" || die 'ubuntu can still write Shawhposh backups.'
-  runuser -u shawhposh -- test ! -w "$CANDIDATE_RELEASE/server-dist/index.js" || die 'Runtime account can modify its deployed application code.'
-  log 'PERMISSIONS' 'State, env, receipts, backups, and deployment-code permissions verified.'
+  log 'PERMISSIONS' 'Runtime state ownership and ubuntu data-access denial verified.'
+}
+
+verify_active_runtime_release() {
+  local sha=$1 release path
+  [[ $sha =~ ^[0-9a-f]{40}$ ]] || die 'Active runtime release identifier is invalid.'
+  release="$RUNTIME_RELEASES/$sha"
+  [[ $(readlink -e -- "$RUNTIME_CURRENT") == "$release" ]] || die 'Runtime current does not point inside protected releases.'
+  [[ $(stat -c '%U:%G:%a' -- "$RUNTIME_ROOT") == 'root:root:755' ]] || die 'Runtime root ownership/mode is incorrect.'
+  [[ $(stat -c '%U:%G:%a' -- "$RUNTIME_RELEASES") == 'root:root:755' ]] || die 'Runtime releases ownership/mode is incorrect.'
+  [[ $(stat -c '%U:%G:%a' -- "$release") == 'root:root:755' ]] || die 'Active release is not root-owned and protected.'
+  [[ $(stat -c '%U:%G:%F' -- "$RUNTIME_CURRENT") == 'root:root:symbolic link' ]] || die 'Runtime current symlink is not root-owned.'
+  for path in \
+    "$RUNTIME_CURRENT/package.json" \
+    "$RUNTIME_CURRENT/server-dist/index.js" \
+    "$RUNTIME_CURRENT/server-dist/db/backup.js" \
+    "$RUNTIME_CURRENT/server-dist/modules/orders/expire-reservations.js" \
+    "$RUNTIME_CURRENT/ops/replicate-backups.mjs"; do
+    [[ $(stat -c '%U:%G' -- "$path") == 'root:root' ]] || die "Runtime artifact is not root-owned: $path"
+    runuser -u ubuntu -- test ! -w "$path" || die "ubuntu can write active runtime code: $path"
+    runuser -u shawhposh -- test ! -w "$path" || die "Runtime account can write executable code: $path"
+  done
+  runuser -u ubuntu -- test ! -w /opt/shawhposh/current/server-dist/index.js || die 'ubuntu can write active API code.'
+  runuser -u shawhposh -- test ! -w /opt/shawhposh/current/server-dist/index.js || die 'shawhposh can write active API code.'
+  runuser -u ubuntu -- test ! -w /opt/shawhposh/current/server-dist/db/backup.js || die 'ubuntu can write active backup code.'
+  runuser -u shawhposh -- test ! -w /opt/shawhposh/current/server-dist/db/backup.js || die 'shawhposh can write active backup code.'
+  runuser -u ubuntu -- test ! -w /opt/shawhposh/current/server-dist/modules/orders/expire-reservations.js || die 'ubuntu can write active reservation code.'
+  runuser -u shawhposh -- test ! -w /opt/shawhposh/current/server-dist/modules/orders/expire-reservations.js || die 'shawhposh can write active reservation code.'
+  runuser -u ubuntu -- test ! -w "$RUNTIME_ROOT" || die 'ubuntu can replace the protected runtime current symlink.'
+  runuser -u shawhposh -- test ! -w "$RUNTIME_ROOT" || die 'Runtime account can replace the protected current symlink.'
+  log 'PERMISSIONS' "Active release $sha is root-owned; ubuntu and runtime cannot edit code or replace current."
 }
 
 install_units() {
@@ -701,6 +831,18 @@ install_units() {
     "/etc/systemd/system/$RESERVATION_TIMER" \
     "/etc/systemd/system/$REPLICATION_UNIT"
   systemctl daemon-reload
+}
+
+install_promotion_helper() {
+  local temporary=/usr/local/sbin/.shawhposh-promote-release.runtime-cutover
+  [[ ! -e $temporary && ! -L $temporary ]] || die "Unexpected temporary promotion-helper path exists: $temporary"
+  PROMOTION_HELPER_INSTALLED=1
+  log 'PROMOTION' "Installing reviewed SHA-only helper at $PROMOTION_HELPER."
+  install -o root -g root -m 0755 -- "$SNAPSHOT_DIR/candidate/shawhposh-promote-release" "$temporary"
+  /usr/bin/python3 -c 'import ast,sys; ast.parse(open(sys.argv[1], encoding="utf-8").read())' "$temporary" \
+    || die 'Installed promotion helper failed Python syntax validation.'
+  mv -Tf -- "$temporary" "$PROMOTION_HELPER"
+  [[ $(stat -c '%U:%G:%a' -- "$PROMOTION_HELPER") == 'root:root:755' ]] || die 'Promotion helper ownership/mode validation failed.'
 }
 
 wait_for_health() {
@@ -725,12 +867,13 @@ verify_payment_shipping_disabled() {
 install_sudo_policy() {
   local source=$SNAPSHOT_DIR/candidate/ubuntu-shawhposh
   local target=/etc/sudoers.d/ubuntu-shawhposh temporary=/etc/sudoers.d/.ubuntu-shawhposh.runtime-cutover
-  log 'SUDO' 'Installing /etc/sudoers.d/ubuntu-shawhposh with the reviewed exact-command policy; password-required sudo is unchanged.'
+  log 'SUDO' 'Installing passwordless Nginx-only commands and a password-required 40-hex SHA-only promotion rule; sudo authentication caching is disabled.'
   if [[ -e $temporary || -L $temporary ]]; then die "Unexpected temporary sudoers path exists: $temporary"; fi
   if [[ -e $target || -L $target ]]; then
     [[ -f $target && ! -L $target ]] || die 'Installed Shawhposh sudo policy is not a regular file.'
     if ! cmp -s -- "$target" "$source"; then
-      [[ $(<"$target") == "$OLD_SUDO_POLICY" ]] || die 'Existing Shawhposh sudo policy differs from the known reviewed baseline; refusing to replace it.'
+      [[ $(<"$target") == "$OLD_SUDO_POLICY_3" || $(<"$target") == "$OLD_SUDO_POLICY_4" ]] \
+        || die 'Existing Shawhposh sudo policy differs from the known reviewed baseline; refusing to replace it.'
     fi
   fi
   install -o root -g root -m 0440 -- "$source" "$temporary"
@@ -745,18 +888,18 @@ install_sudo_policy() {
     visudo -cf /etc/sudoers || die 'The previous sudo policy did not validate after restoration.'
     die 'New sudo policy validation failed; old policy restored.'
   fi
-  if ! verify_passwordless_sudo_allowlist "$NEW_SUDO_POLICY"; then
+  if ! verify_passwordless_sudo_allowlist "$NEW_PASSWORDLESS_POLICY" || ! verify_password_required_promotion_rule; then
     restore_sudo_policy || true
     visudo -cf /etc/sudoers || true
-    die 'Passwordless sudo differs from the new exact allowlist; prior policy restored.'
+    die 'Installed sudo rules differ from the reviewed Nginx-only passwordless and SHA-scoped password-required policy; prior policy restored.'
   fi
-  log 'SUDO' 'Scoped policy installed; ordinary password-required sudo was left unchanged.'
+  log 'SUDO' 'Passwordless sudo is limited to Nginx checks; release promotion prompts the owner and disables sudo timestamp caching.'
 }
 
 main() {
   validate_preflight
   if (( DRY_RUN )); then
-    log 'DRY RUN' 'No production changes were made. Planned: save rollback unit snapshot; pause the two existing timers; run and verify a fresh local DB/receipt backup; create/validate the service user; install prepared systemd units; assign only the exact Shawhposh state paths; switch the API current symlink to this staged release; cut over PM2 to systemd with rollback on health failure; verify data and services; install the exact sudo policy.'
+    log 'DRY RUN' 'No production changes were made. Planned: save rollback snapshots; pause only Shawhposh timers; create and verify a fresh DB/receipt backup; create/validate the runtime user; install units and root-owned promotion helper; prepare protected copies of the rollback and candidate releases; move state ownership; promote old then candidate release through the helper; verify runtime code write denial, services, data, and site; install the SHA-scoped sudo policy.'
     log 'DRY RUN' 'Off-host replication configuration and timers remain untouched and disabled.'
     return 0
   fi
@@ -793,19 +936,27 @@ main() {
 
   create_or_verify_runtime_user
   install_units
-  log 'API CUTOVER' 'Stopping only the Shawhposh PM2 API and switching to the staged versioned release.'
+  install_promotion_helper
+  log 'PROMOTION' "Preparing rollback release $OLD_PRODUCTION_SHA and candidate $CANDIDATE_SHA under $RUNTIME_RELEASES."
+  "$PROMOTION_HELPER" --prepare "$OLD_PRODUCTION_SHA"
+  if [[ $CANDIDATE_SHA != "$OLD_PRODUCTION_SHA" ]]; then
+    "$PROMOTION_HELPER" --prepare "$CANDIDATE_SHA"
+  fi
+  log 'API CUTOVER' 'Stopping only the Shawhposh PM2 API; no systemd service will execute from the ubuntu staging tree.'
   pm2_other_snapshot > "$SNAPSHOT_DIR/pm2-unrelated-before.json"
   PM2_API_STOPPED=1
   pm2_as_ubuntu stop shawhposh-api >/dev/null
-  if [[ $ORIGINAL_API_RELEASE != "$CANDIDATE_RELEASE" ]]; then
-    log 'API CUTOVER' "$API_CURRENT -> $CANDIDATE_RELEASE"
-    set_api_current "$CANDIDATE_RELEASE"
-    API_LINK_CHANGE_STARTED=1
-  fi
   apply_runtime_permissions
   API_UNIT_START_ATTEMPTED=1
-  systemctl start "$API_UNIT"
-  wait_for_health || die 'New systemd API health/database check failed.'
+  log 'API CUTOVER' "Promoting the known-good protected rollback release $OLD_PRODUCTION_SHA first."
+  "$PROMOTION_HELPER" "$OLD_PRODUCTION_SHA"
+  API_LINK_CHANGE_STARTED=1
+  ORIGINAL_RUNTIME_SHA=$OLD_PRODUCTION_SHA
+  if [[ $CANDIDATE_SHA != "$OLD_PRODUCTION_SHA" ]]; then
+    log 'API CUTOVER' "Promoting candidate release $CANDIDATE_SHA; the helper will restore $OLD_PRODUCTION_SHA if health fails."
+    "$PROMOTION_HELPER" "$CANDIDATE_SHA" || die 'Candidate promotion failed; the helper restored the previous root-owned runtime release.'
+  fi
+  verify_active_runtime_release "$CANDIDATE_SHA"
   [[ $(systemctl is-active "$API_UNIT") == active ]] || die 'The dedicated API service is not active.'
   [[ $(systemctl show -p User --value "$API_UNIT") == shawhposh ]] || die 'The API systemd unit is not configured for the runtime user.'
   local api_pid api_owner
@@ -849,7 +1000,7 @@ main() {
 
   log 'VERIFY' 'Checking database counts, permissions, live routes, and disabled commerce methods.'
   verify_database "$DATABASE_FILE"
-  [[ $(readlink -e -- "$API_CURRENT") == "$CANDIDATE_RELEASE" ]] || die 'The API current symlink does not point to the staged commit.'
+  verify_active_runtime_release "$CANDIDATE_SHA"
   [[ $(stat -c '%U:%G:%a' -- "$STATE_ROOT") == 'shawhposh:shawhposh:700' ]] || die 'State-directory ownership/mode is incorrect.'
   [[ $(stat -c '%U:%G:%a' -- "$UPLOAD_ROOT") == 'shawhposh:shawhposh:700' ]] || die 'Upload-directory ownership/mode is incorrect.'
   assert_private_file "$DATABASE_FILE"
@@ -890,7 +1041,7 @@ main() {
   CUTOVER_ACTIVE=0
   log 'VERIFY' 'Runtime cutover completed. Shipping/payment remain disabled; off-host replication remains unconfigured.'
   log 'VERIFY' "Rollback configuration snapshot: $SNAPSHOT_DIR"
-  log 'VERIFY' "Active API release: $(readlink -e -- "$API_CURRENT")"
+  log 'VERIFY' "Active protected API release: $(readlink -e -- "$RUNTIME_CURRENT")"
   log 'VERIFY' 'Retained database and receipt backups; no business rows were created or deleted.'
 }
 

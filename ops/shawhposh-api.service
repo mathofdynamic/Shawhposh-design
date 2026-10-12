@@ -9,10 +9,11 @@ StartLimitBurst=10
 Type=simple
 User=shawhposh
 Group=shawhposh
-WorkingDirectory=/home/ubuntu/shawhposh/current
+WorkingDirectory=/opt/shawhposh/current
 EnvironmentFile=/var/lib/shawhposh/.env
+EnvironmentFile=/opt/shawhposh/current/release.env
 Environment=NODE_ENV=production
-ExecStart=/usr/bin/node --max-old-space-size=96 /home/ubuntu/shawhposh/current/server-dist/index.js
+ExecStart=/usr/bin/node --max-old-space-size=96 /opt/shawhposh/current/server-dist/index.js
 Restart=on-failure
 RestartSec=3s
 TimeoutStopSec=15s

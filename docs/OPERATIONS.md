@@ -2,13 +2,19 @@
 
 ## Backups
 
-Run the normal backup job with `sudo systemctl start shawhposh-backup.service`. It writes the SQLite database and private receipt archive under `/var/backups/shawhposh/`, keeps 14 days, and protects the pair created by the current successful run. Do not delete backup files with `rm`, `find -delete`, or a separate cleanup job.
+The scheduled backup job writes the SQLite database and private receipt archive under `/var/backups/shawhposh/`, keeps 14 days, and protects the pair created by the current successful run. An owner can run it manually with `sudo systemctl start shawhposh-backup.service`; this is not passwordless for the deployment account. Do not delete backup files with `rm`, `find -delete`, or a separate cleanup job.
 
 Check deletion auditing with `sudo ausearch --input-logs --key shawhposh_protected_ops --interpret`. The audit rules cover unlink, rename, and directory removal under the API, frontend, backup, and persistent-data paths.
 
 ## Runtime identity
 
-The production API, reservation expiry job, and backup job should run as the non-login `shawhposh` system user. Keep release files owned by `ubuntu` and readable/executable by the runtime account; keep `/var/lib/shawhposh` and its SQLite/WAL files private to `shawhposh`. The `.env` file should be `root:shawhposh` mode `0640`, with `/var/lib/shawhposh` remaining mode `0700` and owned by the runtime user. Do not start the systemd units until the account, data ownership, environment-file access, and rollback have been prepared and verified. `ops/shawhposh-api.service` replaces only the Shawhposh PM2 process; unrelated PM2 applications remain under their existing owners. The prepared sudo policy adds only the exact `/usr/bin/systemctl restart shawhposh-api.service` command to the existing three-command allowlist; it does not grant arbitrary systemctl access.
+The API, reservation expiry job, backup job, and optional replication job run as the non-login `shawhposh` system user. Runtime code belongs under `/opt/shawhposh/releases/<40-character-sha>` and `/opt/shawhposh/current`; root owns these paths and promoted files are not writable by `ubuntu` or `shawhposh`. Persistent state under `/var/lib/shawhposh` belongs to the runtime user. The `.env` file is `root:shawhposh` mode `0640`. Keep receipts and backups private to `shawhposh`.
+
+## Runtime releases
+
+Stage and validate Linux-compatible releases under `/home/ubuntu/shawhposh/releases/<SHA>`. Staging is untrusted and must never be a systemd working directory or executable path. The root-owned `/usr/local/sbin/shawhposh-promote-release` accepts only a 40-character lowercase hexadecimal release ID, copies an allowlisted runtime artifact set into `/opt/shawhposh/releases/<SHA>`, validates the protected tree, atomically updates `/opt/shawhposh/current`, restarts only `shawhposh-api.service`, and restores the prior protected release if health verification fails.
+
+Promotion requires owner-authenticated `sudo`; `timestamp_timeout=0` prevents reusing a cached sudo authorization. Passwordless sudo is limited to Nginx config validation and reload. Before promotion, the owner must review and approve the staged release. The SHA constrains the release directory name; it is not a cryptographic artifact signature. Keep frontend releases on the existing static deployment path. After the initial cutover, application rollback must promote a previously validated release from `/opt/shawhposh/releases`, never point production back into the ubuntu staging tree.
 
 ## Off-host backups
 
@@ -20,4 +26,4 @@ The replication helper is `ops/replicate-backups.mjs`. It requires an absolute `
 
 ## Releases
 
-Release pruning is not scheduled. Review candidates first with `ops/retain-releases.sh --dry-run PREVIOUS_API_SHA PREVIOUS_WEB_SHA`, supplying the exact previously verified release IDs. The script is limited to the two exact Shawhposh release roots, refuses symlink/ambiguous entries, preserves the active and supplied previous release, and keeps up to five releases. `--apply` prompts for each exact release name; do not replace it with broad `rm -rf` or `find -delete` commands.
+Release pruning is not scheduled. `ops/retain-releases.sh` applies only to the ubuntu staging API and static frontend release roots; it never manages `/opt/shawhposh`. Review staging/frontend candidates first with `ops/retain-releases.sh --dry-run PREVIOUS_API_SHA PREVIOUS_WEB_SHA`, supplying exact verified IDs. The script refuses symlink/ambiguous entries, preserves the supplied staging/frontend releases, and keeps up to five. `--apply` prompts for each exact release name. Protected runtime releases are retained for rollback and must not be pruned by this script or a broad `rm -rf`/`find -delete` command.
