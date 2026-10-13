@@ -384,8 +384,8 @@ class PromoteReleaseTests(unittest.TestCase):
                             )
                         unsafe.unlink()
                         destination_ops = destination / "ops"
-                if destination_ops.exists():
-                    destination_ops.rmdir()
+                        if destination_ops.exists():
+                            destination_ops.rmdir()
 
                 os.mkfifo(unsafe)
                 with self.assertRaisesRegex(PromotionError, "Unsafe staging file"):
