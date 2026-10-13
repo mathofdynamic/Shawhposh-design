@@ -360,6 +360,7 @@ class PromoteReleaseTests(unittest.TestCase):
 
                 ops = source / "ops"
                 ops.mkdir()
+                ops.chmod(0o755)
                 target = source / "replicate-target.mjs"
                 write_file(target)
                 (ops / "replicate-backups.mjs").symlink_to(target)
