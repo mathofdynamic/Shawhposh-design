@@ -51,19 +51,64 @@ test('every repository-controlled systemd executable is included in the promoted
   assert.ok(artifacts.has('ops/replicate-backups.mjs'));
 });
 
-test('sudo policy requires owner authentication for SHA-scoped promotion', () => {
+test('sudo policy permits only the SHA-scoped automatic deployment helper', () => {
   const policy = read('sudoers.d/ubuntu-shawhposh');
-  const hashPattern = '[0-9a-f]'.repeat(40);
-  assert.ok(policy.includes(`/usr/local/sbin/shawhposh-promote-release ${hashPattern}`));
   assert.ok(policy.includes('Defaults:ubuntu timestamp_timeout=0'));
-  assert.ok(policy.includes('ubuntu ALL=(root) NOPASSWD: /usr/sbin/nginx -t, /usr/bin/systemctl reload nginx'));
-  assert.ok(policy.includes('ubuntu ALL=(root) PASSWD: /usr/local/sbin/shawhposh-promote-release'));
-  assert.ok(!policy.includes('NOPASSWD: /usr/local/sbin/shawhposh-promote-release'));
-  assert.ok(!policy.includes('systemctl restart shawhposh-api.service'));
-  assert.ok(!policy.includes('systemctl start shawhposh-backup.service'));
-  assert.ok(!policy.includes('systemctl *'));
-  assert.ok(!policy.includes('/bin/bash'));
-  assert.ok(!policy.includes('--prepare'));
+  assert.match(policy, /^ubuntu ALL=\(root\) NOPASSWD: \/usr\/local\/sbin\/shawhposh-deploy \^\[0-9a-f\]\{40\}\$$/m);
+  assert.doesNotMatch(policy, /nginx|systemctl/);
+  assert.doesNotMatch(policy, /PASSWD:.*shawhposh-promote-release/);
+  assert.doesNotMatch(policy, /(?:^|, )(?:\/bin\/bash|\/bin\/sh|\/usr\/bin\/(?:python|node|env|find|rm)|\/usr\/bin\/systemctl \*)/m);
+  assert.equal((policy.match(/NOPASSWD:/g) ?? []).length, 1);
+});
+
+test('automatic deployment helper uses trusted main source and a fixed API service only', () => {
+  const helper = read('automated_deploy.py');
+  assert.match(helper, /REPOSITORY_URL = "https:\/\/github\.com\/mathofdynamic\/Shawhposh-design\.git"/);
+  assert.match(helper, /TRUSTED_BRANCH = "refs\/remotes\/origin\/main"/);
+  assert.match(helper, /merge-base", "--is-ancestor"/);
+  assert.match(helper, /PrivateNetwork=\{'no' if network else 'yes'\}/);
+  assert.match(helper, /MANUAL MIGRATION REQUIRED/);
+  assert.match(helper, /systemctl", "restart", SERVICE_NAME/);
+  assert.match(helper, /SERVICE_NAME = "shawhposh-api\.service"/);
+  assert.match(helper, /_atomic_switch\(root_fd, previous_sha\)/);
+  assert.ok(!helper.includes('/home/ubuntu/shawhposh/releases'));
+  assert.ok(!helper.includes('shell=True'));
+  assert.doesNotMatch(helper, /systemctl[^\n]*\b(?:restart|start|stop|enable|disable)\b[^\n]*[+*]/);
+});
+
+test('automatic deployment wrapper runs isolated Python from the fixed root-owned library path', () => {
+  const wrapper = read('shawhposh-deploy');
+  assert.match(wrapper, /^#!\/usr\/bin\/python3 -I$/m);
+  assert.match(wrapper, /sys\.dont_write_bytecode = True/);
+  assert.match(wrapper, /sys\.path\.insert\(0, "\/usr\/local\/lib\/shawhposh-deploy"\)/);
+  assert.match(wrapper, /from automated_deploy import main/);
+  assert.ok(!wrapper.includes('os.system'));
+  assert.ok(!wrapper.includes('subprocess'));
+});
+
+test('one-time installer refuses the current PM2-era state and restores failed sudo policy changes', () => {
+  const installer = read('install-automated-deploy.sh');
+  assert.ok(installer.includes('The dedicated API service is not active; complete runtime cutover first.'));
+  assert.ok(installer.includes('The running API process is not owned by shawhposh.'));
+  assert.ok(installer.includes('policy_changed=0'));
+  assert.ok(installer.includes('trap restore_previous_sudo_policy EXIT'));
+  assert.ok(installer.includes('policy_committed=1'));
+  assert.ok(installer.includes('sudo -ll -U ubuntu'));
+  assert.ok(installer.includes('blocks != [("root", expected)]'));
+  assert.ok(installer.includes('Unexpected file in root-owned deployment library'));
+  assert.ok(!installer.includes('__pycache__'));
+  assert.match(installer, /ubuntu ALL=\(root\) NOPASSWD: \$DEPLOY_COMMAND \$SHA_SUDO_ARGUMENT/);
+  assert.ok(installer.includes("readonly SHA_SUDO_ARGUMENT='^[0-9a-f]{40}$'"));
+  assert.ok(!installer.includes('NOPASSWD: ALL'));
+});
+
+test('automated deployment Python policy and command construction tests pass', () => {
+  const python = process.platform === 'win32' ? 'python' : 'python3';
+  const result = spawnSync(python, [join(directory, 'test_automated_deploy.py')], {
+    cwd: dirname(directory),
+    encoding: 'utf8',
+  });
+  assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
 });
 
 test('promotion helper has a fixed staging and protected runtime boundary', () => {

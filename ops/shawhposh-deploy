@@ -1,0 +1,9 @@
+#!/usr/bin/python3 -I
+import sys
+
+sys.dont_write_bytecode = True
+sys.path.insert(0, "/usr/local/lib/shawhposh-deploy")
+
+from automated_deploy import main
+
+raise SystemExit(main(sys.argv[1:]))

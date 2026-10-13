@@ -20,6 +20,7 @@ RUNTIME_ROOT = Path("/opt/shawhposh")
 RUNTIME_RELEASES = RUNTIME_ROOT / "releases"
 RUNTIME_CURRENT = RUNTIME_ROOT / "current"
 RUNTIME_ENV_NAME = "release.env"
+AUTOMATED_METADATA_NAME = "automated-deployment.json"
 SERVICE_NAME = "shawhposh-api.service"
 HEALTH_URL = "https://shawhposh.ir/api/health"
 HEALTH_RESOLVE = "shawhposh.ir:443:127.0.0.1"
@@ -401,6 +402,33 @@ def _write_release_env(
         os.close(descriptor)
 
 
+def _write_automated_metadata(
+    destination_fd: int,
+    content: bytes,
+    *,
+    destination_uid: int,
+    destination_gid: int,
+) -> None:
+    descriptor = os.open(
+        AUTOMATED_METADATA_NAME,
+        os.O_WRONLY | os.O_CREAT | os.O_EXCL | NOFOLLOW | CLOEXEC,
+        0o644,
+        dir_fd=destination_fd,
+    )
+    try:
+        os.fchown(descriptor, destination_uid, destination_gid)
+        view = memoryview(content)
+        while view:
+            written = os.write(descriptor, view)
+            if written <= 0:
+                raise PromotionError("Could not write automated release metadata.")
+            view = view[written:]
+        os.fchmod(descriptor, 0o644)
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
+
+
 def _ensure_protected_roots(runtime_root: Path = RUNTIME_ROOT) -> tuple[int, int]:
     opt = Path("/opt")
     opt_info = _path_without_symlink(opt, uid=0, gid=0, directory=True)
@@ -477,6 +505,7 @@ def _copy_staged_release_from_fds(
     expected_source_uid: int,
     expected_runtime_uid: int,
     expected_runtime_gid: int,
+    automated_metadata: bytes | None = None,
 ) -> Path:
     validate_sha(sha)
     destination_fd = -1
@@ -560,6 +589,13 @@ def _copy_staged_release_from_fds(
             destination_uid=expected_runtime_uid,
             destination_gid=expected_runtime_gid,
         )
+        if automated_metadata is not None:
+            _write_automated_metadata(
+                destination_fd,
+                automated_metadata,
+                destination_uid=expected_runtime_uid,
+                destination_gid=expected_runtime_gid,
+            )
         os.fchmod(destination_fd, 0o755)
         os.fsync(destination_fd)
         os.close(destination_fd)
