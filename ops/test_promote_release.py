@@ -366,7 +366,9 @@ class PromoteReleaseTests(unittest.TestCase):
                 with self.assertRaises(PromotionError):
                     _copy_top_level_file(source_fd, destination_fd, "ops/replicate-backups.mjs", uid=uid)
                 (ops / "replicate-backups.mjs").unlink()
-                (destination / "ops").rmdir()
+                destination_ops = destination / "ops"
+                if destination_ops.exists():
+                    destination_ops.rmdir()
 
                 unsafe = ops / "replicate-backups.mjs"
                 for mode in (0o664, 0o666):
@@ -381,7 +383,9 @@ class PromoteReleaseTests(unittest.TestCase):
                                 uid=uid,
                             )
                         unsafe.unlink()
-                        (destination / "ops").rmdir()
+                        destination_ops = destination / "ops"
+                if destination_ops.exists():
+                    destination_ops.rmdir()
 
                 os.mkfifo(unsafe)
                 with self.assertRaisesRegex(PromotionError, "Unsafe staging file"):
