@@ -28,6 +28,8 @@ readonly RESERVATION_UNIT=shawhposh-reservations.service
 readonly RESERVATION_TIMER=shawhposh-reservations.timer
 readonly REPLICATION_UNIT=shawhposh-replicate.service
 readonly OLD_PRODUCTION_SHA=2ede63d7d207735dce0958464f4e6462f80494e1
+readonly BOOTSTRAP_RUNTIME_SHA=c45e3c67fe986a362c4cb46e2a9859568f8b0a8f
+readonly BOOTSTRAP_CONTEXT_VALUE='AUTOMATE_SHAWHPosh-v1'
 readonly DOMAIN=shawhposh.ir
 readonly SHA_SUDO_ARGUMENT=$(python3 -c 'print("[0-9a-f]" * 40)')
 readonly OLD_SUDO_POLICY_3='ubuntu ALL=(root) NOPASSWD: /usr/sbin/nginx -t, /usr/bin/systemctl reload nginx, /usr/bin/systemctl start shawhposh-backup.service'
@@ -38,10 +40,12 @@ ubuntu ALL=(root) NOPASSWD: /usr/sbin/nginx -t, /usr/bin/systemctl reload nginx
 ubuntu ALL=(root) PASSWD: /usr/local/sbin/shawhposh-promote-release $SHA_SUDO_ARGUMENT"
 
 DRY_RUN=0
+BOOTSTRAP_EXECUTION=0
 for argument in "$@"; do
   case "$argument" in
     --dry-run) DRY_RUN=1 ;;
-    *) printf 'Usage: sudo bash ops/runtime-cutover.sh [--dry-run]\n' >&2; exit 2 ;;
+    --execute-from-bootstrap) BOOTSTRAP_EXECUTION=1 ;;
+    *) printf 'Usage: sudo bash ops/runtime-cutover.sh [--dry-run] [--execute-from-bootstrap]\n' >&2; exit 2 ;;
   esac
 done
 
@@ -56,8 +60,15 @@ fi
 
 readonly SCRIPT_REALPATH=$(readlink -e -- "${BASH_SOURCE[0]}")
 readonly SCRIPT_DIR=$(dirname -- "$SCRIPT_REALPATH")
-readonly CANDIDATE_RELEASE=$(dirname -- "$SCRIPT_DIR")
-readonly CANDIDATE_SHA=${CANDIDATE_RELEASE##*/}
+if (( BOOTSTRAP_EXECUTION )); then
+  [[ ${SHAWHPOSH_BOOTSTRAP_CONTEXT:-} == "$BOOTSTRAP_CONTEXT_VALUE" ]] \
+    || { printf '[ABORT] Bootstrap execution requires the root bootstrap context.\n' >&2; exit 2; }
+  readonly CANDIDATE_RELEASE=/home/ubuntu/shawhposh/releases/$BOOTSTRAP_RUNTIME_SHA
+  readonly CANDIDATE_SHA=$BOOTSTRAP_RUNTIME_SHA
+else
+  readonly CANDIDATE_RELEASE=$(dirname -- "$SCRIPT_DIR")
+  readonly CANDIDATE_SHA=${CANDIDATE_RELEASE##*/}
+fi
 
 SNAPSHOT_DIR=
 ORIGINAL_API_RELEASE=
@@ -65,11 +76,11 @@ ORIGINAL_RUNTIME_SHA=
 BACKUP_TIMER_WAS_ACTIVE=0
 RESERVATION_TIMER_WAS_ACTIVE=0
 CUTOVER_ACTIVE=0
+CUTOVER_ACCEPTED=0
 OWNERSHIP_CHANGE_STARTED=0
 API_LINK_CHANGE_STARTED=0
 PM2_API_STOPPED=0
 API_UNIT_START_ATTEMPTED=0
-API_HEALTHY=0
 UNITS_INSTALLED=0
 PROMOTION_HELPER_INSTALLED=0
 
@@ -124,6 +135,11 @@ health_is_connected() {
   health_json | python3 -c 'import json,sys; d=json.load(sys.stdin); ok=d.get("status")=="ok" and d.get("database")=="connected"; print("status=%s database=%s version=%s" % (d.get("status","unknown"),d.get("database","unknown"),d.get("version","unknown"))); sys.exit(0 if ok else 1)'
 }
 
+health_has_version() {
+  local expected=$1
+  health_json | python3 -c 'import json,sys; d=json.load(sys.stdin); ok=d.get("status")=="ok" and d.get("database")=="connected" and d.get("version")==sys.argv[1]; print("expected_version=%s actual_version=%s"%(sys.argv[1],d.get("version","unknown"))); sys.exit(0 if ok else 1)' "$expected"
+}
+
 verify_public_catalog() {
   curl --fail --silent --show-error --max-time 8 --resolve "$DOMAIN:443:127.0.0.1" "https://$DOMAIN/api/v1/products" \
     | python3 -c 'import json,sys; d=json.load(sys.stdin); products=d.get("products",[]); ok=len(products)==6 and all(p.get("variants") for p in products); print("public_products=%d" % len(products)); sys.exit(0 if ok else 1)'
@@ -160,6 +176,22 @@ import json,sys
 apps=json.load(sys.stdin)
 items=sorted((p.get("name",""),int(p.get("pid",0)),p.get("pm2_env",{}).get("status","unknown")) for p in apps if p.get("name")!="shawhposh-api")
 print(json.dumps(items,separators=(",",":")))
+'
+}
+
+pm2_api_exists() {
+  pm2_as_ubuntu jlist | python3 -c 'import json,sys; apps=json.load(sys.stdin); sys.exit(0 if any(p.get("name")=="shawhposh-api" for p in apps) else 1)'
+}
+
+pm2_api_metadata() {
+  pm2_as_ubuntu jlist | python3 -c '
+import json,sys
+apps=[p for p in json.load(sys.stdin) if p.get("name")=="shawhposh-api"]
+if len(apps)!=1: sys.exit("Expected exactly one PM2 API process for rollback metadata.")
+p=apps[0]; e=p.get("pm2_env",{})
+keys=("pm_cwd","pm_exec_path","exec_interpreter","exec_mode","instances","node_args","args","autorestart","max_restarts","restart_delay","kill_timeout")
+out={"name":p.get("name"),"pid":p.get("pid"),"status":e.get("status"),"config":{k:e.get(k) for k in keys}}
+print(json.dumps(out,sort_keys=True,separators=(",",":")))
 '
 }
 
@@ -459,7 +491,18 @@ rollback_incomplete_cutover() {
     restore_promotion_helper || rollback_ok=0
   fi
   if (( PM2_API_STOPPED )); then
-    pm2_as_ubuntu restart shawhposh-api >/dev/null || rollback_ok=0
+    if pm2_api_exists; then
+      pm2_as_ubuntu restart shawhposh-api >/dev/null || rollback_ok=0
+    else
+      local legacy_ecosystem=$API_RELEASES/$OLD_PRODUCTION_SHA/ops/ecosystem.cjs
+      if [[ -f $legacy_ecosystem && ! -L $legacy_ecosystem ]]; then
+        pm2_as_ubuntu start "$legacy_ecosystem" --only shawhposh-api >/dev/null || rollback_ok=0
+        pm2_as_ubuntu save >/dev/null || rollback_ok=0
+      else
+        log 'ROLLBACK' 'The verified legacy PM2 ecosystem file is missing; cannot recreate the deleted PM2 entry.'
+        rollback_ok=0
+      fi
+    fi
     health_is_connected >/dev/null || rollback_ok=0
   fi
   restore_old_timers || rollback_ok=0
@@ -473,10 +516,10 @@ rollback_incomplete_cutover() {
 on_error() {
   local line=${1:-unknown} status=${2:-1}
   trap - ERR
-  if (( CUTOVER_ACTIVE && !API_HEALTHY )); then
+  if (( CUTOVER_ACTIVE && !CUTOVER_ACCEPTED )); then
     rollback_incomplete_cutover || true
   elif (( CUTOVER_ACTIVE )); then
-    log 'FAIL' 'The API passed its cutover health gate; no automatic rollback was attempted after later-stage failure.'
+    log 'FAIL' 'Runtime acceptance already passed; the healthy systemd runtime was preserved.'
   fi
   log 'FAIL' "Stopped at line $line with exit status $status. Review logs before retrying."
   exit "$status"
@@ -540,14 +583,15 @@ validate_preflight() {
   assert_source_file "$CANDIDATE_RELEASE/ops/runtime-cutover.sh"
   assert_source_file "$CANDIDATE_RELEASE/ops/promote_release.py"
   assert_source_file "$CANDIDATE_RELEASE/ops/replicate-backups.mjs"
-  [[ $(<"$CANDIDATE_RELEASE/ops/sudoers.d/ubuntu-shawhposh") == "$NEW_SUDO_POLICY" ]] || die 'The prepared sudo policy differs from the reviewed exact-command allowlist.'
+  [[ $(<"$CANDIDATE_RELEASE/ops/sudoers.d/ubuntu-shawhposh") == "$AUTOMATED_SUDO_POLICY" ]] \
+    || die 'The prepared automated-deploy sudo policy differs from the reviewed SHA-only allowlist.'
   visudo -cf /etc/sudoers >/dev/null || die 'The existing sudo policy does not validate.'
   local current_sudo_policy=/etc/sudoers.d/ubuntu-shawhposh
   if [[ -e $current_sudo_policy || -L $current_sudo_policy ]]; then
     [[ -f $current_sudo_policy && ! -L $current_sudo_policy ]] || die 'The existing Shawhposh sudo policy has an unexpected file type.'
     [[ $(<"$current_sudo_policy") == "$OLD_SUDO_POLICY_3" || $(<"$current_sudo_policy") == "$OLD_SUDO_POLICY_4" \
       || $(<"$current_sudo_policy") == "$NEW_SUDO_POLICY" ]] \
-      || die 'The existing Shawhposh sudo policy differs from both reviewed allowlists.'
+      || die 'The existing Shawhposh sudo policy differs from the reviewed pre-cutover allowlists.'
     [[ $(stat -c '%U:%G:%a' -- "$current_sudo_policy") == 'root:root:440' ]] || die 'The existing Shawhposh sudo policy permissions are unexpected.'
     visudo -cf "$current_sudo_policy" >/dev/null || die 'The existing Shawhposh sudo policy does not validate.'
   fi
@@ -576,7 +620,8 @@ validate_preflight() {
     && -f $API_RELEASES/$OLD_PRODUCTION_SHA/server-dist/index.js \
     && -f $API_RELEASES/$OLD_PRODUCTION_SHA/server-dist/db/backup.js \
     && -f $API_RELEASES/$OLD_PRODUCTION_SHA/server-dist/modules/orders/expire-reservations.js \
-    && -f $API_RELEASES/$OLD_PRODUCTION_SHA/ops/replicate-backups.mjs ]] \
+    && -f $API_RELEASES/$OLD_PRODUCTION_SHA/ops/replicate-backups.mjs \
+    && -f $API_RELEASES/$OLD_PRODUCTION_SHA/ops/ecosystem.cjs && ! -L $API_RELEASES/$OLD_PRODUCTION_SHA/ops/ecosystem.cjs ]] \
     || die 'The known-good production API rollback release is missing required runtime artifacts.'
   [[ -L $WEB_CURRENT ]] || die 'The frontend current path is not the expected deployment symlink.'
   local web_target
@@ -615,6 +660,7 @@ validate_preflight() {
   pm2_api_owner_check
   log 'PRECHECK' 'Existing PM2 API:'
   health_is_connected
+  health_has_version "$OLD_PRODUCTION_SHA" || die 'The current PM2 API is not the reviewed production commit.'
   log 'PRECHECK' 'Checking current web routes and commerce methods.'
   curl --fail --silent --show-error --max-time 8 --resolve "$DOMAIN:443:127.0.0.1" "https://$DOMAIN/" >/dev/null
   curl --fail --silent --show-error --max-time 8 --resolve "$DOMAIN:443:127.0.0.1" "https://$DOMAIN/admin/payments" >/dev/null
@@ -656,6 +702,18 @@ capture_unit_snapshot() {
   [[ ! -e $SNAPSHOT_DIR && ! -L $SNAPSHOT_DIR ]] || die "Rollback snapshot path already exists: $SNAPSHOT_DIR"
   install -d -o root -g root -m 0700 -- "$SNAPSHOT_DIR"
   install -d -o root -g root -m 0700 -- "$SNAPSHOT_DIR/candidate"
+  pm2_api_metadata > "$SNAPSHOT_DIR/pm2-api-before.json"
+  chmod 0600 -- "$SNAPSHOT_DIR/pm2-api-before.json"
+  {
+    for unit in "$STATE_ROOT" "$DATABASE_FILE" "$ENV_FILE" "$UPLOAD_ROOT" "$RECEIPT_ROOT" "$BACKUP_ROOT" "$API_CURRENT" "$WEB_CURRENT"; do
+      if [[ -e $unit || -L $unit ]]; then
+        stat -c '%n|%U:%G:%a|%F|%N' -- "$unit"
+      else
+        printf '%s|absent\n' "$unit"
+      fi
+    done
+  } > "$SNAPSHOT_DIR/ownership-before.txt"
+  chmod 0600 -- "$SNAPSHOT_DIR/ownership-before.txt"
   for unit in "$API_UNIT" "$BACKUP_UNIT" "$BACKUP_TIMER" "$RESERVATION_UNIT" "$RESERVATION_TIMER" "$REPLICATION_UNIT" ubuntu-shawhposh; do
     if [[ $unit == ubuntu-shawhposh ]]; then
       if [[ -e /etc/sudoers.d/$unit || -L /etc/sudoers.d/$unit ]]; then
@@ -672,7 +730,9 @@ capture_unit_snapshot() {
   for unit in "$API_UNIT" "$BACKUP_UNIT" "$BACKUP_TIMER" "$RESERVATION_UNIT" "$RESERVATION_TIMER" "$REPLICATION_UNIT"; do
     install -o root -g root -m 0644 -- "$CANDIDATE_RELEASE/ops/$unit" "$SNAPSHOT_DIR/candidate/$unit"
   done
-  install -o root -g root -m 0440 -- "$CANDIDATE_RELEASE/ops/sudoers.d/ubuntu-shawhposh" "$SNAPSHOT_DIR/candidate/ubuntu-shawhposh"
+  printf '%s\n' "$NEW_SUDO_POLICY" > "$SNAPSHOT_DIR/candidate/ubuntu-shawhposh"
+  chown root:root "$SNAPSHOT_DIR/candidate/ubuntu-shawhposh"
+  chmod 0440 "$SNAPSHOT_DIR/candidate/ubuntu-shawhposh"
   if [[ -e $PROMOTION_HELPER || -L $PROMOTION_HELPER ]]; then
     [[ -f $PROMOTION_HELPER && ! -L $PROMOTION_HELPER ]] || die 'Existing promotion helper path has an unexpected type.'
     cp -p -- "$PROMOTION_HELPER" "$SNAPSHOT_DIR/promotion-helper"
@@ -848,8 +908,8 @@ install_promotion_helper() {
 wait_for_health() {
   local attempt
   for attempt in {1..30}; do
-    if health_json 2>/dev/null | python3 -c 'import json,sys; d=json.load(sys.stdin); sys.exit(0 if d.get("status")=="ok" and d.get("database")=="connected" else 1)' 2>/dev/null; then
-      health_is_connected
+    if health_json 2>/dev/null | python3 -c 'import json,sys; d=json.load(sys.stdin); sys.exit(0 if d.get("status")=="ok" and d.get("database")=="connected" and d.get("version")==sys.argv[1] else 1)' "$CANDIDATE_SHA" 2>/dev/null; then
+      health_has_version "$CANDIDATE_SHA"
       return 0
     fi
     sleep 1
@@ -905,10 +965,14 @@ main() {
   fi
 
   [[ -t 0 ]] || die 'The cutover requires an owner at an interactive terminal.'
-  printf '[CONFIRM] This will change Shawhposh service ownership and switch the production API. Type CUTOVER to continue: ' >&2
-  local confirmation
-  IFS= read -r confirmation
-  [[ $confirmation == CUTOVER ]] || die 'Owner confirmation did not match; no production changes were made.'
+  if (( BOOTSTRAP_EXECUTION )); then
+    log 'CONFIRM' 'Bootstrap owner confirmation has already authorized this runtime cutover.'
+  else
+    printf '[CONFIRM] This will change Shawhposh service ownership and switch the production API. Type CUTOVER to continue: ' >&2
+    local confirmation
+    IFS= read -r confirmation
+    [[ $confirmation == CUTOVER ]] || die 'Owner confirmation did not match; no production changes were made.'
+  fi
 
   capture_unit_snapshot
   local original_backup_pair backup_start backup_pair_now backup_db backup_receipts redirect artifact
@@ -966,7 +1030,6 @@ main() {
   [[ $api_owner == shawhposh ]] || die "API process owner is $api_owner, expected shawhposh."
   [[ $(pm2_other_snapshot) == "$(<"$SNAPSHOT_DIR/pm2-unrelated-before.json")" ]] || die 'An unrelated PM2 application changed during API startup.'
   systemctl enable "$API_UNIT" >/dev/null
-  API_HEALTHY=1
   log 'API CUTOVER' "Healthy API PID $api_pid runs as $api_owner."
   log 'API CUTOVER' 'Removing only the stopped Shawhposh PM2 entry after systemd acceptance.'
   pm2_as_ubuntu delete shawhposh-api >/dev/null
@@ -1015,6 +1078,7 @@ main() {
     fi
   done
   health_is_connected
+  health_has_version "$CANDIDATE_SHA" || die 'The public API version does not match the protected runtime candidate.'
   /usr/sbin/nginx -t >/dev/null || die 'Nginx configuration validation failed after cutover.'
   curl --fail --silent --show-error --max-time 8 --resolve "$DOMAIN:443:127.0.0.1" "https://$DOMAIN/" >/dev/null
   curl --fail --silent --show-error --max-time 8 --resolve "$DOMAIN:443:127.0.0.1" "https://$DOMAIN/admin/payments" >/dev/null
@@ -1038,6 +1102,7 @@ main() {
   fi
 
   install_sudo_policy
+  CUTOVER_ACCEPTED=1
   CUTOVER_ACTIVE=0
   log 'VERIFY' 'Runtime cutover completed. Shipping/payment remain disabled; off-host replication remains unconfigured.'
   log 'VERIFY' "Rollback configuration snapshot: $SNAPSHOT_DIR"

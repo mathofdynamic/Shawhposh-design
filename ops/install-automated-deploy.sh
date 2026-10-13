@@ -88,17 +88,31 @@ git_as_ubuntu_from() {
   runuser -u ubuntu -- env -i HOME=/home/ubuntu PATH=/usr/bin:/bin GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_GLOBAL=/dev/null \
     /usr/bin/git -c core.fsmonitor=false -c core.hooksPath=/dev/null -C "$path" "$@"
 }
-repo_root=$(git_as_ubuntu_from "$(dirname -- "$script_path")/.." rev-parse --show-toplevel)
-repo_root=$(realpath -e -- "$repo_root")
-[[ $(stat -c '%U' -- "$repo_root") == ubuntu && $repo_root == /home/ubuntu/shawhposh/* ]] || die 'Install source must be an ubuntu-owned Shawhposh checkout.'
-git_as_ubuntu() { git_as_ubuntu_from "$repo_root" "$@"; }
-[[ $(git_as_ubuntu config --local --get remote.origin.url) == "$REPOSITORY_URL" || $(git_as_ubuntu config --local --get remote.origin.url) == "$REPOSITORY_URL.git" ]] \
-  || die 'The source checkout does not point to the approved Shawhposh GitHub repository.'
-[[ $(git_as_ubuntu branch --show-current) == main ]] || die 'Install from a clean main checkout.'
-[[ $(git_as_ubuntu rev-parse HEAD) == $(git_as_ubuntu rev-parse origin/main) ]] \
-  || die 'Local main does not match the locally fetched origin/main; update as ubuntu before installation.'
-[[ -z $(git_as_ubuntu status --porcelain --untracked-files=all) ]] \
-  || die 'The install checkout is not clean; commit/review changes before installation.'
+if [[ ${SHAWHPOSH_BOOTSTRAP_CONTEXT:-} == 'AUTOMATE_SHAWHPosh-v1' ]]; then
+  bootstrap_source_root=${SHAWHPOSH_BOOTSTRAP_SOURCE_ROOT:-}
+  [[ ${EUID:-$(id -u)} -eq 0 ]] || die 'Bootstrap install source is root-only.'
+  [[ $bootstrap_source_root =~ ^/root/shawhposh-production-automation-[0-9]{8}T[0-9]{6}Z/trusted$ ]] \
+    || die 'Bootstrap install source path is outside the fixed root-only snapshot.'
+  [[ -d $bootstrap_source_root && ! -L $bootstrap_source_root && $(realpath -e -- "$bootstrap_source_root") == "$bootstrap_source_root" \
+    && $(stat -c '%U:%G:%a' -- "$bootstrap_source_root") == root:root:700 ]] \
+    || die 'Bootstrap install source directory is not a protected root-owned snapshot.'
+  repo_root=$bootstrap_source_root
+  log 'Using root-owned, hash-verified bootstrap artifacts.'
+else
+  repo_root=$(git_as_ubuntu_from "$(dirname -- "$script_path")/.." rev-parse --show-toplevel)
+  repo_root=$(realpath -e -- "$repo_root")
+  [[ $(stat -c '%U' -- "$repo_root") == ubuntu && $repo_root == /home/ubuntu/shawhposh/* ]] || die 'Install source must be an ubuntu-owned Shawhposh checkout.'
+  git_as_ubuntu() { git_as_ubuntu_from "$repo_root" "$@"; }
+  [[ $(git_as_ubuntu config --local --get remote.origin.url) == "$REPOSITORY_URL" || $(git_as_ubuntu config --local --get remote.origin.url) == "$REPOSITORY_URL.git" ]] \
+    || die 'The source checkout does not point to the approved Shawhposh GitHub repository.'
+  source_branch=$(git_as_ubuntu branch --show-current)
+  [[ $source_branch == main || -z $source_branch ]] \
+    || die 'Install from main or a clean detached origin/main release checkout.'
+  [[ $(git_as_ubuntu rev-parse HEAD) == $(git_as_ubuntu rev-parse origin/main) ]] \
+    || die 'The source checkout does not match its locally fetched origin/main commit.'
+  [[ -z $(git_as_ubuntu status --porcelain --untracked-files=all) ]] \
+    || die 'The install checkout is not clean; commit/review changes before installation.'
+fi
 
 for source in \
   "$repo_root/ops/automated_deploy.py" \
@@ -106,6 +120,9 @@ for source in \
   "$repo_root/ops/shawhposh-deploy" \
   "$repo_root/ops/sudoers.d/ubuntu-shawhposh"; do
   require_source_file "$source"
+  if [[ ${SHAWHPOSH_BOOTSTRAP_CONTEXT:-} == 'AUTOMATE_SHAWHPosh-v1' ]]; then
+    [[ $(stat -c '%U:%G:%a' -- "$source") == root:root:600 ]] || die "Bootstrap artifact is not a private root-owned file: $source"
+  fi
 done
 
 [[ $(id -un ubuntu 2>/dev/null || true) == ubuntu ]] || die 'Expected deployment account ubuntu is missing.'

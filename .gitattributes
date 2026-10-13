@@ -1,1 +1,2 @@
 ops/retain-releases.sh text eol=lf
+ops/bootstrap-production-automation.sh text eol=lf
