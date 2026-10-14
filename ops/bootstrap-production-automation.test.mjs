@@ -46,6 +46,31 @@ function runPhaseHarness(cutoverStatus, installerStatus, verifyStatus) {
   });
 }
 
+function runResumeHarness(alreadyInstalled, installerStatus = 0, verifyStatus = 0) {
+  const source = [
+    'source "$1"',
+    'RESUME_RUNTIME=1',
+    `RESUME_FINAL_INSTALL=${alreadyInstalled ? 1 : 0}`,
+    'events=""',
+    'record() { events="$events $1"; }',
+    'prepare_resume_runtime_snapshot() { record retry-snapshot; }',
+    'verify_runtime() { record runtime-check; return 0; }',
+    'run_cutover_preflight() { record unexpected-cutover-preflight; return 99; }',
+    'perform_runtime_cutover() { record unexpected-cutover; return 99; }',
+    'snapshot_preinstall_sudo_policy() { record policy-snapshot; return 0; }',
+    'perform_automated_deploy_install() { record install; return "$MOCK_INSTALL"; }',
+    'verify_final_install() { record final-verify; return "$MOCK_VERIFY"; }',
+    'restore_preinstall_sudo_policy() { record restore; return 0; }',
+    'if run_bootstrap_phases; then result=0; else result=$?; fi',
+    'printf "RESULT=%s ACCEPTED=%s EVENTS=%s\\n" "$result" "$CUTOVER_ACCEPTED" "$events"',
+  ].join('\n');
+  return spawnSync(bash, ['-c', source, 'bootstrap-resume-test', join(directory, 'bootstrap-production-automation.sh')], {
+    cwd: root,
+    encoding: 'utf8',
+    env: { ...process.env, MOCK_INSTALL: String(installerStatus), MOCK_VERIFY: String(verifyStatus) },
+  });
+}
+
 test('bootstrap is pinned to the reviewed runtime release and asks for one exact confirmation', () => {
   assert.ok(bootstrap.includes('EXPECTED_RUNTIME_SHA=c45e3c67fe986a362c4cb46e2a9859568f8b0a8f'));
   assert.ok(bootstrap.includes('EXPECTED_RUNTIME_RELEASE=/home/ubuntu/shawhposh/releases/c45e3c67fe986a362c4cb46e2a9859568f8b0a8f'));
@@ -137,6 +162,21 @@ test('successful bootstrap completes cutover before installing and verifying dep
   assert.equal(result.status, 0, result.stderr);
   assert.match(result.stdout, /RESULT=0 ACCEPTED=1 EVENTS= preflight cutover snapshot install verify/);
   assert.match(result.stdout, /AUTOMATED DEPLOY INSTALL: SUCCESS/);
+});
+
+test('retry after accepted runtime skips cutover and retries only deploy-helper installation', { skip: !bashAvailable }, () => {
+  const result = runResumeHarness(false, 17);
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /RESULT=1 ACCEPTED=1 EVENTS= retry-snapshot runtime-check policy-snapshot install restore/);
+  assert.doesNotMatch(result.stdout, /unexpected-cutover/);
+  assert.match(result.stdout, /Healthy runtime preserved/);
+});
+
+test('retry after completed deploy install verifies it and skips a second install', { skip: !bashAvailable }, () => {
+  const result = runResumeHarness(true);
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /RESULT=0 ACCEPTED=1 EVENTS= retry-snapshot runtime-check final-verify/);
+  assert.doesNotMatch(result.stdout.match(/EVENTS=.*$/m)?.[0] ?? '', /policy-snapshot|install|unexpected-cutover/);
 });
 
 test('runtime cutover internal mode is root-only, fixed-SHA, single-confirmation, and rollback-gated', () => {

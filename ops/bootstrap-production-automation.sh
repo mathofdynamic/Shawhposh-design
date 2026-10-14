@@ -25,6 +25,11 @@ readonly REPLICATION_UNIT=shawhposh-replicate.service
 readonly DEPLOY_COMMAND=/usr/local/sbin/shawhposh-deploy
 readonly SUDOERS_TARGET=/etc/sudoers.d/ubuntu-shawhposh
 readonly BOOTSTRAP_CONTEXT_VALUE='AUTOMATE_SHAWHPosh-v1'
+readonly BOOTSTRAP_RUNNER_CONTEXT_VALUE='SHAWHPOSH_BOOTSTRAP_RUNNER-v1'
+readonly BOOTSTRAP_RUNNER_CONFIRMATION='AUTOMATE SHAWHPosh'
+readonly BOOTSTRAP_RUNNER_PATH=/usr/local/sbin/shawhposh-bootstrap
+readonly BOOTSTRAP_RUNNER_SUDOERS=/etc/sudoers.d/ubuntu-shawhposh-bootstrap
+readonly BOOTSTRAP_RUNNER_SUDO_POLICY='ubuntu ALL=(root) NOPASSWD: /usr/local/sbin/shawhposh-bootstrap ^[0-9a-f]{40}$'
 readonly FINAL_SUDO_POLICY='Defaults:ubuntu timestamp_timeout=0
 ubuntu ALL=(root) NOPASSWD: /usr/local/sbin/shawhposh-deploy ^[0-9a-f]{40}$'
 readonly PRE_CUTOVER_SUDO_POLICY_3='ubuntu ALL=(root) NOPASSWD: /usr/sbin/nginx -t, /usr/bin/systemctl reload nginx, /usr/bin/systemctl start shawhposh-backup.service'
@@ -43,6 +48,9 @@ INSTALLER_SCRIPT=
 BOOTSTRAP_SNAPSHOT=
 CUTOVER_SNAPSHOT_DIR=
 CUTOVER_ACCEPTED=0
+RUNNER_MODE=0
+RESUME_RUNTIME=0
+RESUME_FINAL_INSTALL=0
 declare -A CONTROLLER_HASHES=()
 
 log() { printf '[%s] %s\n' "$1" "$2"; }
@@ -91,15 +99,49 @@ validate_artifacts() {
 }
 
 bootstrap_preflight() {
-  local runtime_head controller_sha branch file mode
+  local runtime_head controller_sha branch file mode trusted_root git_root requested_sha workspace source_owner
   (( EUID == 0 )) || die 'Run with owner-authenticated sudo: sudo bash ops/bootstrap-production-automation.sh'
-  [[ -t 0 && -t 1 ]] || die 'Bootstrap requires an interactive terminal.'
-  [[ $# -eq 0 ]] || die 'This bootstrap accepts no arguments.'
   [[ -f ${BASH_SOURCE[0]} && ! -L ${BASH_SOURCE[0]} ]] || die 'Bootstrap must be invoked from a regular file.'
   SCRIPT_REALPATH=$(readlink -e -- "${BASH_SOURCE[0]}")
-  CONTROLLER_RELEASE=$(dirname -- "$(dirname -- "$SCRIPT_REALPATH")")
-  [[ $(dirname -- "$CONTROLLER_RELEASE") == "$API_RELEASES" && $(basename -- "$CONTROLLER_RELEASE") =~ ^[0-9a-f]{40}$ ]] \
-    || die 'Run only from a versioned Shawhposh release under the fixed release root.'
+  if [[ ${SHAWHPOSH_BOOTSTRAP_RUNNER_CONTEXT:-} == "$BOOTSTRAP_RUNNER_CONTEXT_VALUE" ]]; then
+    RUNNER_MODE=1
+    [[ $# -eq 1 && $1 == --trusted-runner ]] || die 'Trusted runner mode accepts only its fixed internal argument.'
+    trusted_root=${SHAWHPOSH_BOOTSTRAP_TRUSTED_ROOT:-}
+    git_root=${SHAWHPOSH_BOOTSTRAP_GIT_ROOT:-}
+    requested_sha=${SHAWHPOSH_BOOTSTRAP_REQUESTED_SHA:-}
+    workspace=${SHAWHPOSH_BOOTSTRAP_WORKSPACE:-}
+    [[ $requested_sha =~ ^[0-9a-f]{40}$ ]] || die 'Trusted runner did not provide a valid requested SHA.'
+    [[ $workspace =~ ^/var/tmp/shawhposh-bootstrap-[A-Za-z0-9_-]+$ \
+      && $trusted_root == "$workspace/trusted" && $git_root == "$workspace/checkout" ]] \
+      || die 'Trusted runner source is outside its fixed private workspace.'
+    [[ $(realpath -e -- "$workspace") == "$workspace" && $(stat -c '%U:%G:%a' -- "$workspace") == root:root:700 ]] \
+      || die 'Trusted runner workspace is not a private root-owned directory.'
+    [[ -d $git_root && ! -L $git_root && $(realpath -e -- "$git_root") == "$git_root" \
+      && $(stat -c '%U:%G' -- "$git_root") == root:root ]] || die 'Trusted Git checkout is not root-owned.'
+    [[ $SCRIPT_REALPATH == "$trusted_root/ops/bootstrap-production-automation.sh" \
+      && -d $trusted_root && ! -L $trusted_root && $(realpath -e -- "$trusted_root") == "$trusted_root" \
+      && $(stat -c '%U:%G:%a' -- "$trusted_root") == root:root:700 ]] \
+      || die 'Bootstrap controller is not in the private root-owned trusted directory.'
+    [[ $(stat -c '%U:%G:%a' -- "$SCRIPT_REALPATH") == root:root:600 ]] \
+      || die 'Trusted bootstrap controller has unexpected ownership or mode.'
+    [[ $(/usr/bin/git -c core.hooksPath=/dev/null -c core.fsmonitor=false -C "$git_root" remote get-url origin) == "$REPOSITORY_URL.git" \
+      && $(/usr/bin/git -c core.hooksPath=/dev/null -c core.fsmonitor=false -C "$git_root" rev-parse HEAD) == "$requested_sha" ]] \
+      || die 'Trusted Git checkout identity or requested SHA is invalid.'
+    /usr/bin/git -c core.hooksPath=/dev/null -c core.fsmonitor=false -C "$git_root" merge-base --is-ancestor "$requested_sha" origin/main \
+      || die 'Requested bootstrap commit is not reachable from fixed origin/main.'
+    CONTROLLER_RELEASE=$trusted_root
+    controller_sha=$requested_sha
+    branch=detached
+  else
+    [[ -t 0 && -t 1 ]] || die 'Bootstrap requires an interactive terminal.'
+    [[ $# -eq 0 ]] || die 'This bootstrap accepts no arguments.'
+    CONTROLLER_RELEASE=$(dirname -- "$(dirname -- "$SCRIPT_REALPATH")")
+    [[ $(dirname -- "$CONTROLLER_RELEASE") == "$API_RELEASES" && $(basename -- "$CONTROLLER_RELEASE") =~ ^[0-9a-f]{40}$ ]] \
+      || die 'Run only from a versioned Shawhposh release under the fixed release root.'
+    controller_sha=$(basename -- "$CONTROLLER_RELEASE")
+    check_checkout "$CONTROLLER_RELEASE" "$controller_sha" yes
+    branch=$(git_as_ubuntu_from "$CONTROLLER_RELEASE" branch --show-current)
+  fi
   CUTOVER_SCRIPT=$CONTROLLER_RELEASE/ops/runtime-cutover.sh
   INSTALLER_SCRIPT=$CONTROLLER_RELEASE/ops/install-automated-deploy.sh
 
@@ -108,15 +150,25 @@ bootstrap_preflight() {
     || die 'Fixed runtime commit is no longer reachable from origin/main.'
   runtime_head=$(git_as_ubuntu_from "$EXPECTED_RUNTIME_RELEASE" rev-parse HEAD)
   [[ $runtime_head == "$EXPECTED_RUNTIME_SHA" ]] || die 'Fixed runtime candidate is not the approved c45 commit.'
-  controller_sha=$(basename -- "$CONTROLLER_RELEASE")
-  check_checkout "$CONTROLLER_RELEASE" "$controller_sha" yes
-  branch=$(git_as_ubuntu_from "$CONTROLLER_RELEASE" branch --show-current)
   log 'PRECHECK' "bootstrap_source=$controller_sha branch=${branch:-detached} runtime_candidate=$runtime_head"
 
-  validate_artifacts "$CONTROLLER_RELEASE" controller
+  if (( RUNNER_MODE )); then
+    for file in ops/bootstrap-production-automation.sh ops/runtime-cutover.sh ops/install-automated-deploy.sh \
+      ops/automated_deploy.py ops/promote_frontend.py ops/promote_release.py ops/replicate-backups.mjs \
+      ops/shawhposh-deploy ops/sudoers.d/ubuntu-shawhposh ops/shawhposh-api.service \
+      ops/shawhposh-backup.service ops/shawhposh-backup.timer ops/shawhposh-reservations.service \
+      ops/shawhposh-reservations.timer ops/shawhposh-replicate.service; do
+      require_file "$CONTROLLER_RELEASE/$file"
+      [[ $(stat -c '%U:%G:%a' -- "$CONTROLLER_RELEASE/$file") == root:root:600 ]] \
+        || die "Trusted controller artifact has unsafe ownership or mode: $file"
+    done
+  else
+    validate_artifacts "$CONTROLLER_RELEASE" controller
+  fi
   validate_artifacts "$EXPECTED_RUNTIME_RELEASE" runtime
   for file in ops/bootstrap-production-automation.sh ops/runtime-cutover.sh ops/install-automated-deploy.sh; do
-    [[ $(stat -c '%U' -- "$CONTROLLER_RELEASE/$file") == ubuntu ]] || die "Bootstrap source is not ubuntu-owned: $file"
+    source_owner=$(stat -c '%U:%G' -- "$CONTROLLER_RELEASE/$file")
+    if (( RUNNER_MODE )); then [[ $source_owner == root:root ]] || die "Trusted bootstrap source is not root-owned: $file"; else [[ $source_owner == ubuntu:ubuntu ]] || die "Bootstrap source is not ubuntu-owned: $file"; fi
     mode=$(stat -c '%a' -- "$CONTROLLER_RELEASE/$file")
     [[ $mode =~ ^[0-7]{3,4}$ ]] && (( (8#$mode & 0022) == 0 )) || die "Bootstrap source is group/world writable: $file"
   done
@@ -130,6 +182,24 @@ bootstrap_preflight() {
     "$PRE_CUTOVER_SUDO_POLICY_3"|"$PRE_CUTOVER_SUDO_POLICY_4"|"$CUTOVER_SUDO_POLICY") ;;
     *) die 'Existing Shawhposh sudoers file does not match a reviewed pre-cutover baseline.' ;;
   esac
+  if (( RUNNER_MODE )); then
+    [[ -f $BOOTSTRAP_RUNNER_SUDOERS && ! -L $BOOTSTRAP_RUNNER_SUDOERS \
+      && $(stat -c '%U:%G:%a' -- "$BOOTSTRAP_RUNNER_SUDOERS") == root:root:440 \
+      && $(<"$BOOTSTRAP_RUNNER_SUDOERS") == "$BOOTSTRAP_RUNNER_SUDO_POLICY" ]] \
+      || die 'The exact temporary bootstrap sudo rule is missing or unsafe.'
+    [[ -f $BOOTSTRAP_RUNNER_PATH && ! -L $BOOTSTRAP_RUNNER_PATH \
+      && $(stat -c '%U:%G:%a' -- "$BOOTSTRAP_RUNNER_PATH") == root:root:755 ]] \
+      || die 'The installed temporary bootstrap runner is missing or unsafe.'
+    /usr/sbin/visudo -cf "$BOOTSTRAP_RUNNER_SUDOERS" >/dev/null || die 'Temporary bootstrap sudoers file is invalid.'
+    if systemctl is-active --quiet "$API_UNIT"; then
+      RESUME_RUNTIME=1
+      case "$(<"$SUDOERS_TARGET")" in
+        "$CUTOVER_SUDO_POLICY") RESUME_FINAL_INSTALL=0 ;;
+        "$FINAL_SUDO_POLICY") RESUME_FINAL_INSTALL=1 ;;
+        *) die 'An active systemd runtime has an unrecognized deployment sudo policy.' ;;
+      esac
+    fi
+  fi
   /usr/sbin/visudo -cf "$SUDOERS_TARGET" >/dev/null || die 'Existing Shawhposh sudoers file is invalid.'
   [[ -x /usr/sbin/visudo && -x /usr/bin/sudo && -x /usr/bin/systemctl && -x /usr/bin/curl ]] || die 'Required system utilities are missing.'
   /usr/sbin/visudo -cf /etc/sudoers >/dev/null || die 'Current sudoers configuration is invalid.'
@@ -150,7 +220,7 @@ create_private_trusted_snapshot_directories() {
 }
 
 capture_bootstrap_snapshot() {
-  local stamp path unit source destination digest
+  local stamp path unit source destination digest source_owner
   stamp=$(/usr/bin/date -u +%Y%m%dT%H%M%SZ)
   BOOTSTRAP_SNAPSHOT=/root/shawhposh-production-automation-$stamp
   [[ ! -e $BOOTSTRAP_SNAPSHOT && ! -L $BOOTSTRAP_SNAPSHOT ]] || die 'Root rollback metadata path already exists.'
@@ -196,7 +266,8 @@ capture_bootstrap_snapshot() {
     ops/promote_frontend.py ops/promote_release.py ops/shawhposh-deploy ops/sudoers.d/ubuntu-shawhposh; do
     destination=$BOOTSTRAP_SNAPSHOT/trusted/$source
     [[ -f $CONTROLLER_RELEASE/$source && ! -L $CONTROLLER_RELEASE/$source ]] || die "Trusted controller source changed type: $source"
-    [[ $(stat -c '%U' -- "$CONTROLLER_RELEASE/$source") == ubuntu ]] || die "Trusted controller source is not ubuntu-owned: $source"
+    source_owner=$(stat -c '%U:%G' -- "$CONTROLLER_RELEASE/$source")
+    if (( RUNNER_MODE )); then [[ $source_owner == root:root ]] || die "Trusted controller source is not root-owned: $source"; else [[ $source_owner == ubuntu:ubuntu ]] || die "Trusted controller source is not ubuntu-owned: $source"; fi
     mode=$(stat -c '%a' -- "$CONTROLLER_RELEASE/$source")
     [[ $mode =~ ^[0-7]{3,4}$ ]] && (( (8#$mode & 0022) == 0 )) || die "Trusted controller source is group/world writable: $source"
     digest=$(sha256sum -- "$CONTROLLER_RELEASE/$source")
@@ -284,6 +355,13 @@ perform_automated_deploy_install() {
 pm2_other_snapshot() {
   runuser -u ubuntu -- env HOME=/home/ubuntu PM2_HOME=/home/ubuntu/.pm2 /usr/bin/pm2 jlist \
     | /usr/bin/python3 -c 'import json,sys; a=json.load(sys.stdin); r=sorted((p.get("name",""),int(p.get("pid",0)),p.get("pm2_env",{}).get("status","unknown")) for p in a if p.get("name")!="shawhposh-api"); print(json.dumps(r,separators=(",",":")))'
+}
+
+prepare_resume_runtime_snapshot() {
+  CUTOVER_SNAPSHOT_DIR=$BOOTSTRAP_SNAPSHOT/resume-runtime
+  install -d -o root -g root -m 0700 -- "$CUTOVER_SNAPSHOT_DIR"
+  pm2_other_snapshot > "$CUTOVER_SNAPSHOT_DIR/pm2-unrelated-before.json"
+  chmod 0600 "$CUTOVER_SNAPSHOT_DIR/pm2-unrelated-before.json"
 }
 
 verify_database() {
@@ -384,9 +462,10 @@ verify_final_sudo_policy() {
   /usr/bin/sudo -n -l -U ubuntu > "$listing" 2>&1 || { die 'Cannot inspect effective ubuntu sudo rights non-interactively.'; return 1; }
   /usr/bin/sudo -n -ll -U ubuntu > "$verbose" 2>&1 || { die 'Cannot inspect verbose effective ubuntu sudo rights.'; return 1; }
   chmod 0600 "$listing" "$verbose" || return 1
-  if ! /usr/bin/python3 - "$verbose" <<'PY'
+  if ! /usr/bin/python3 - "$verbose" "$RUNNER_MODE" <<'PY'
 import sys
-expected="/usr/local/sbin/shawhposh-deploy ^[0-9a-f]{40}$"
+expected={"/usr/local/sbin/shawhposh-deploy ^[0-9a-f]{40}$"}
+if sys.argv[2] == "1": expected.add("/usr/local/sbin/shawhposh-bootstrap ^[0-9a-f]{40}$")
 blocks=[]; current=None; in_commands=False
 def finish():
     if current is not None and current["nopasswd"]: blocks.append((current["runas"],set(current["commands"])))
@@ -400,8 +479,10 @@ for line in open(sys.argv[1],encoding="utf-8"):
     elif text=="Commands:": in_commands=True
     elif in_commands and line[:1].isspace() and text: current["commands"].append(text)
 finish()
-if blocks != [("root",{expected})]:
-    print("Effective passwordless sudo exceeds the exact deploy rule.",file=sys.stderr); sys.exit(1)
+flattened=[(runas,command) for runas,commands in blocks for command in commands]
+if len(flattened) != len(expected) or {command for runas,command in flattened if runas=="root"} != expected \
+    or any(runas!="root" for runas,_ in flattened):
+    print("Effective passwordless sudo exceeds the exact reviewed rule set.",file=sys.stderr); sys.exit(1)
 PY
   then
     die 'Effective NOPASSWD policy differs from the exact deploy helper rule.'
@@ -412,6 +493,11 @@ PY
   expect_denied "$DEPLOY_COMMAND" "$EXPECTED_RUNTIME_SHA" extra || return 1
   expect_denied "$DEPLOY_COMMAND" ../../etc/passwd || return 1
   expect_denied "$DEPLOY_COMMAND" C45E3C67FE986A362C4CB46E2A9859568F8B0A8F || return 1
+  if (( RUNNER_MODE )); then
+    expect_denied "$BOOTSTRAP_RUNNER_PATH" invalid || return 1
+    expect_denied "$BOOTSTRAP_RUNNER_PATH" AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA || return 1
+    expect_denied "$BOOTSTRAP_RUNNER_PATH" "$EXPECTED_RUNTIME_SHA" extra || return 1
+  fi
   expect_denied /usr/bin/systemctl status nginx || return 1
   expect_denied /bin/bash -c 'exit 0' || return 1
   expect_denied /bin/sh -c 'exit 0' || return 1
@@ -458,6 +544,41 @@ verify_legacy_pm2_rollback() {
 
 run_bootstrap_phases() {
   CUTOVER_ACCEPTED=0
+  if (( RESUME_RUNTIME )); then
+    CUTOVER_ACCEPTED=1
+    log 'RUNTIME CUTOVER' 'A prior attempt already passed runtime acceptance; verifying it before resuming deploy installation.'
+    prepare_resume_runtime_snapshot || { log 'AUTOMATED DEPLOY INSTALL: FAILED' 'Could not prepare a private retry snapshot; healthy runtime was preserved.'; return 1; }
+    if ! verify_runtime; then
+      log 'RUNTIME CUTOVER: FAILED' 'Existing systemd runtime did not pass its acceptance gate; no retry mutation was attempted.'
+      return 1
+    fi
+    if (( RESUME_FINAL_INSTALL )); then
+      if ! verify_final_install; then
+        log 'AUTOMATED DEPLOY INSTALL: FAILED' 'Existing deploy installation failed verification; temporary access remains available.'
+        return 1
+      fi
+      log 'RUNTIME CUTOVER: SUCCESS' 'Healthy protected runtime was verified.'
+      log 'AUTOMATED DEPLOY INSTALL: SUCCESS' 'Existing permanent deploy capability was verified; temporary access can now be removed.'
+      return 0
+    fi
+    log 'RUNTIME CUTOVER: SUCCESS' 'Healthy protected runtime was verified; resuming only automated deploy installation.'
+    if ! snapshot_preinstall_sudo_policy; then
+      log 'AUTOMATED DEPLOY INSTALL: FAILED' 'Intermediate sudo policy could not be snapshotted; healthy runtime was preserved.'
+      return 1
+    fi
+    if ! perform_automated_deploy_install; then
+      restore_preinstall_sudo_policy || log 'CRITICAL' 'Could not restore intermediate sudo policy; keep the authenticated maintenance session open.'
+      log 'AUTOMATED DEPLOY INSTALL: FAILED' 'Healthy runtime preserved; temporary bootstrap access remains available.'
+      return 1
+    fi
+    if ! verify_final_install; then
+      restore_preinstall_sudo_policy || log 'CRITICAL' 'Could not restore intermediate sudo policy; keep the authenticated maintenance session open.'
+      log 'AUTOMATED DEPLOY INSTALL: FAILED' 'Healthy runtime preserved; temporary bootstrap access remains available.'
+      return 1
+    fi
+    log 'AUTOMATED DEPLOY INSTALL: SUCCESS' 'Resumed installation passed verification.'
+    return 0
+  fi
   log 'RUNTIME CUTOVER' 'Starting fixed c45 runtime cutover.'
   if ! run_cutover_preflight; then
     log 'PRECHECK: FAILED' 'Cutover dry run failed; no production mutation was attempted.'
@@ -512,8 +633,15 @@ main() {
   bootstrap_preflight "$@"
   print_plan
   local confirmation
-  printf '[CONFIRM] Type exactly AUTOMATE SHAWHPosh to continue: ' >&2
-  IFS= read -r confirmation || die 'No owner confirmation was received.'
+  if (( RUNNER_MODE )); then
+    confirmation=${SHAWHPOSH_BOOTSTRAP_RUNNER_CONFIRMATION:-}
+    unset SHAWHPOSH_BOOTSTRAP_RUNNER_CONFIRMATION
+    [[ $confirmation == "$BOOTSTRAP_RUNNER_CONFIRMATION" ]] || die 'Trusted runner confirmation was not provided after preflight.'
+    log 'CONFIRM' 'The root-owned runner supplied the reviewed confirmation after all preflight checks passed.'
+  else
+    printf '[CONFIRM] Type exactly AUTOMATE SHAWHPosh to continue: ' >&2
+    IFS= read -r confirmation || die 'No owner confirmation was received.'
+  fi
   [[ $confirmation == 'AUTOMATE SHAWHPosh' ]] || die 'Confirmation did not match; no production changes were made.'
   capture_bootstrap_snapshot
   if run_bootstrap_phases; then
