@@ -273,17 +273,29 @@ def _copy_trusted_artifacts(
     for relative in TRUSTED_ARTIFACTS:
         destination = trusted_root / relative
         parent = destination.parent
-        missing: list[Path] = []
-        cursor = parent
-        while cursor != trusted_root and not cursor.exists():
-            missing.append(cursor)
-            cursor = cursor.parent
-        if cursor != trusted_root:
+        try:
+            parent_relative = parent.relative_to(trusted_root)
+        except ValueError:
             raise RunnerError("Trusted artifact parent escapes its private root.")
-        for directory in reversed(missing):
-            directory.mkdir(mode=0o700)
-            os.chmod(directory, 0o700)
-            os.chown(directory, owner_uid, owner_gid)
+        if any(part in {"", ".", ".."} for part in parent_relative.parts):
+            raise RunnerError("Trusted artifact parent escapes its private root.")
+        cursor = trusted_root
+        for component in parent_relative.parts:
+            cursor = cursor / component
+            if cursor.exists() or cursor.is_symlink():
+                info = cursor.lstat()
+                if (
+                    not stat.S_ISDIR(info.st_mode)
+                    or stat.S_ISLNK(info.st_mode)
+                    or info.st_uid != owner_uid
+                    or info.st_gid != owner_gid
+                    or stat.S_IMODE(info.st_mode) != 0o700
+                ):
+                    raise RunnerError("Trusted artifact parent is not a private owned directory.")
+            else:
+                cursor.mkdir(mode=0o700)
+                os.chmod(cursor, 0o700)
+                os.chown(cursor, owner_uid, owner_gid)
         destination_fd = os.open(destination, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0), 0o600)
         with os.fdopen(destination_fd, "wb") as output, source[relative].open("rb") as input_file:
             shutil.copyfileobj(input_file, output)
