@@ -278,12 +278,15 @@ PY
 }
 
 verify_database() {
-  local file=$1
-  python3 - "$file" <<'PY'
+  local file=$1 database_kind=${2:-live}
+  [[ $database_kind == live || $database_kind == backup ]] || die 'Database verification kind is invalid.'
+  python3 - "$file" "$database_kind" <<'PY'
 import json,sqlite3,sys
 from pathlib import Path
 path=Path(sys.argv[1]).resolve(strict=True)
 uri=path.as_uri()+'?mode=ro'
+if sys.argv[2]=='backup':
+    uri+='&immutable=1'
 db=sqlite3.connect(uri,uri=True)
 try:
     db.execute('BEGIN')
@@ -315,7 +318,10 @@ verify_backup_pair() {
     [[ $(dirname -- "$file") == "$BACKUP_ROOT" && -f $file && ! -L $file && -s $file && $(stat -c '%h' -- "$file") == 1 ]] || die "Unsafe or empty backup artifact: $file"
     [[ $(stat -c '%a' -- "$file") == 600 ]] || die "Backup artifact permissions are not 0600: $file"
   done
-  verify_database "$db_file"
+  for suffix in -wal -shm -journal; do
+    [[ ! -e "$db_file$suffix" && ! -L "$db_file$suffix" ]] || die "Unexpected SQLite backup sidecar: $db_file$suffix"
+  done
+  verify_database "$db_file" backup
   tar -tzf "$archive_file" >/dev/null || die 'Receipt archive integrity check failed.'
   sha256sum -- "$db_file" "$archive_file"
 }
@@ -621,7 +627,7 @@ validate_preflight() {
   verify_exact_tree_contents "$STATE_ROOT" state
   verify_exact_tree_contents "$UPLOAD_ROOT" upload
   verify_exact_tree_contents "$BACKUP_ROOT" backup
-  verify_database "$DATABASE_FILE"
+  verify_database "$DATABASE_FILE" live
   [[ ! -e /etc/shawhposh/offsite.env && ! -L /etc/shawhposh/offsite.env \
     && ! -e /etc/shawhposh/rclone.conf && ! -L /etc/shawhposh/rclone.conf ]] \
     || die 'Off-host config already exists; refusing to install a backup OnSuccess hook.'
@@ -1109,7 +1115,7 @@ main() {
   log 'BACKUP SERVICE' 'Dedicated backup service created and verified a new database/receipt pair.'
 
   log 'VERIFY' 'Checking database counts, permissions, live routes, and disabled commerce methods.'
-  verify_database "$DATABASE_FILE"
+  verify_database "$DATABASE_FILE" live
   verify_active_runtime_release "$CANDIDATE_SHA"
   [[ $(stat -c '%U:%G:%a' -- "$STATE_ROOT") == 'shawhposh:shawhposh:700' ]] || die 'State-directory ownership/mode is incorrect.'
   [[ $(stat -c '%U:%G:%a' -- "$UPLOAD_ROOT") == 'shawhposh:shawhposh:700' ]] || die 'Upload-directory ownership/mode is incorrect.'

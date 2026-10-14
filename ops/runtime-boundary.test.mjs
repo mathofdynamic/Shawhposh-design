@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
-import { existsSync, readFileSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdtempSync, readFileSync, rmSync, unlinkSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
+import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 import test from 'node:test';
@@ -109,6 +110,109 @@ test('runtime preflight validates the exact automated sudo policy under strict u
   });
   assert.equal(invalid.status, 17, `${invalid.stdout}\n${invalid.stderr}`);
   assert.match(invalid.stderr, /prepared automated-deploy sudo policy differs/);
+});
+
+test('backup snapshot verification is immutable and does not create SQLite sidecars', { skip: process.platform === 'win32' || !bashAvailable }, () => {
+  const script = read('runtime-cutover.sh');
+  const verifier = script.match(/^verify_database\(\) \{[\s\S]*?^\}/m)?.[0];
+  assert.ok(verifier, 'runtime cutover defines the database verifier');
+  assert.match(verifier, /uri\+='&immutable=1'/);
+  assert.match(script, /verify_database "\$db_file" backup/);
+  assert.match(script, /Unexpected SQLite backup sidecar/);
+
+  const temporaryRoot = mkdtempSync(join(tmpdir(), 'shawhposh-backup-snapshot-'));
+  const source = join(temporaryRoot, 'wal-source.sqlite');
+  const legacyCopy = join(temporaryRoot, 'legacy-readonly.sqlite');
+  const backupCopy = join(temporaryRoot, 'snapshot.sqlite');
+  const python = process.platform === 'win32' ? 'python' : 'python3';
+  const fixture = [
+    'import sqlite3,sys',
+    'db=sqlite3.connect(sys.argv[1])',
+    'db.execute("PRAGMA journal_mode=WAL")',
+    'tables={"products":6,"product_variants":67,"inventory":67,"orders":0,"payment_attempts":0,"manual_payment_receipts":0,"shipping_methods":0}',
+    'for name,count in tables.items():',
+    ' db.execute("CREATE TABLE "+name+" (id INTEGER PRIMARY KEY)")',
+    ' db.executemany("INSERT INTO "+name+" DEFAULT VALUES", [()] * count)',
+    'db.execute("PRAGMA wal_checkpoint(TRUNCATE)")',
+    'db.close()',
+  ].join('\n');
+  const created = spawnSync(python, ['-c', fixture, source], { cwd: dirname(directory), encoding: 'utf8' });
+  assert.equal(created.status, 0, `${created.stdout}\n${created.stderr}`);
+  copyFileSync(source, legacyCopy);
+  copyFileSync(source, backupCopy);
+
+  try {
+    const legacyRead = spawnSync(python, ['-c', [
+      'import sqlite3,sys',
+      'db=sqlite3.connect("file:"+sys.argv[1]+"?mode=ro",uri=True)',
+      'db.execute("PRAGMA integrity_check").fetchone()',
+      'db.close()',
+    ].join('\n'), legacyCopy], { cwd: dirname(directory), encoding: 'utf8' });
+    assert.equal(legacyRead.status, 0, `${legacyRead.stdout}\n${legacyRead.stderr}`);
+    assert.ok(existsSync(`${legacyCopy}-wal`), 'ordinary read-only verification reproduces a WAL sidecar on a WAL-mode database');
+    assert.ok(existsSync(`${legacyCopy}-shm`), 'ordinary read-only verification reproduces a SHM sidecar on a WAL-mode database');
+
+    unlinkSync(`${legacyCopy}-wal`);
+    unlinkSync(`${legacyCopy}-shm`);
+    const harness = [
+      'set -Eeuo pipefail',
+      'die() { printf "%s\\n" "$*" >&2; exit 17; }',
+      verifier,
+      'verify_database "$1" backup',
+    ].join('\n');
+    const result = spawnSync(bash, ['-c', harness, 'backup-verification-test', backupCopy], {
+      cwd: dirname(directory), encoding: 'utf8',
+    });
+    assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
+    assert.match(result.stdout, /"integrity":"ok","foreignKeyErrors":0/);
+    assert.equal(existsSync(`${backupCopy}-wal`), false);
+    assert.equal(existsSync(`${backupCopy}-shm`), false);
+  } finally {
+    rmSync(temporaryRoot, { recursive: true, force: true });
+  }
+});
+
+test('backup directory accepts complete pairs and rejects transient sidecars without weakening filename checks', { skip: process.platform === 'win32' || !bashAvailable }, () => {
+  const script = read('runtime-cutover.sh');
+  const pairSelector = script.match(/^backup_pair\(\) \{[\s\S]*?^\}/m)?.[0];
+  const directoryValidator = script.match(/^verify_exact_tree_contents\(\) \{[\s\S]*?^\}/m)?.[0];
+  assert.ok(pairSelector, 'runtime cutover defines a complete-pair selector');
+  assert.ok(directoryValidator, 'runtime cutover defines a strict backup-directory validator');
+
+  const temporaryRoot = mkdtempSync(join(tmpdir(), 'shawhposh-backup-pair-'));
+  const stamp = '2026-10-11T20-36-14.019Z';
+  const db = join(temporaryRoot, `shawhposh-${stamp}.sqlite`);
+  const archive = join(temporaryRoot, `payment-receipts-${stamp}.tar.gz`);
+  writeFileSync(db, 'db');
+  writeFileSync(archive, 'archive');
+
+  const harness = [
+    'set -Eeuo pipefail',
+    'BACKUP_ROOT=$1',
+    'die() { printf "%s\\n" "$*" >&2; exit 17; }',
+    'stat() { if [[ ${1-} == -c && ${2-} == "%U:%G:%a" ]]; then printf "ubuntu:ubuntu:600\\n"; else command stat "$@"; fi; }',
+    pairSelector,
+    directoryValidator,
+    'pair=$(backup_pair)',
+    'printf "PAIR=%s\\n" "$pair"',
+    'verify_exact_tree_contents "$BACKUP_ROOT" backup',
+  ].join('\n');
+  try {
+    const valid = spawnSync(bash, ['-c', harness, 'backup-pair-test', temporaryRoot], {
+      cwd: dirname(directory), encoding: 'utf8',
+    });
+    assert.equal(valid.status, 0, `${valid.stdout}\n${valid.stderr}`);
+    assert.ok(valid.stdout.includes(`PAIR=${db}\t${archive}`));
+
+    writeFileSync(`${db}-wal`, '');
+    const invalid = spawnSync(bash, ['-c', harness, 'backup-pair-test', temporaryRoot], {
+      cwd: dirname(directory), encoding: 'utf8',
+    });
+    assert.equal(invalid.status, 17, `${invalid.stdout}\n${invalid.stderr}`);
+    assert.match(invalid.stderr, /Unexpected backup filename: .*\.sqlite-wal/);
+  } finally {
+    rmSync(temporaryRoot, { recursive: true, force: true });
+  }
 });
 
 test('automatic deployment helper uses trusted main source and a fixed API service only', () => {
