@@ -19,6 +19,10 @@ SPEC.loader.exec_module(runner)
 
 
 class BootstrapRunnerTests(unittest.TestCase):
+    def test_deploy_entrypoint_is_validated_as_python(self) -> None:
+        self.assertIn("ops/shawhposh-deploy", runner.PYTHON_ARTIFACTS)
+        self.assertNotIn("ops/shawhposh-deploy", runner.SHELL_ARTIFACTS)
+
     def test_accepts_only_one_lowercase_40_character_sha(self) -> None:
         sha = "a" * 40
         self.assertEqual(runner.parse_sha([sha]), sha)

@@ -58,12 +58,12 @@ SHELL_ARTIFACTS = (
     "ops/bootstrap-production-automation.sh",
     "ops/runtime-cutover.sh",
     "ops/install-automated-deploy.sh",
-    "ops/shawhposh-deploy",
 )
 PYTHON_ARTIFACTS = (
     "ops/automated_deploy.py",
     "ops/promote_frontend.py",
     "ops/promote_release.py",
+    "ops/shawhposh-deploy",
 )
 NODE_ARTIFACTS = ("ops/replicate-backups.mjs",)
 SAFE_PATH = "/usr/sbin:/usr/bin:/sbin:/bin"
