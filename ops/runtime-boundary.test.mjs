@@ -133,6 +133,7 @@ test('backup snapshot verification is immutable and does not create SQLite sidec
     'for name,count in tables.items():',
     ' db.execute("CREATE TABLE "+name+" (id INTEGER PRIMARY KEY)")',
     ' db.executemany("INSERT INTO "+name+" DEFAULT VALUES", [()] * count)',
+    'db.commit()',
     'db.execute("PRAGMA wal_checkpoint(TRUNCATE)")',
     'db.close()',
   ].join('\n');
