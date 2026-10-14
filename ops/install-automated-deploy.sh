@@ -25,6 +25,7 @@ readonly SUDOERS_TEMP=/etc/sudoers.d/.ubuntu-shawhposh.automated-deploy
 readonly HELPER_TEMP=/usr/local/sbin/.shawhposh-deploy.automated-install
 readonly SHA_SUDO_ARGUMENT='^[0-9a-f]{40}$'
 readonly LEGACY_SHA_SUDO_ARGUMENT=$(python3 -c 'print("[0-9a-f]" * 40)')
+readonly BOOTSTRAP_CONTEXT_VALUE='AUTOMATE_SHAWHPosh-v1'
 readonly NEW_SUDO_POLICY="Defaults:ubuntu timestamp_timeout=0
 ubuntu ALL=(root) NOPASSWD: $DEPLOY_COMMAND $SHA_SUDO_ARGUMENT"
 readonly OLD_SUDO_POLICY_OWNER_AUTH="Defaults:ubuntu timestamp_timeout=0
@@ -81,8 +82,13 @@ require_source_file() {
   [[ -f $path && ! -L $path ]] || die "Required reviewed install artifact is missing or unsafe: $path"
 }
 
+require_interactive_installer_terminal() {
+  [[ ${SHAWHPOSH_BOOTSTRAP_CONTEXT:-} == "$BOOTSTRAP_CONTEXT_VALUE" ]] && return 0
+  [[ -t 0 ]] || die 'Owner installation requires a terminal.'
+}
+
 (( EUID == 0 )) || die 'Run once with owner-authenticated sudo: sudo bash ops/install-automated-deploy.sh'
-[[ -t 0 ]] || die 'Owner installation requires a terminal.'
+require_interactive_installer_terminal
 
 script_path=$(realpath -e -- "${BASH_SOURCE[0]}")
 git_as_ubuntu_from() {
@@ -91,7 +97,7 @@ git_as_ubuntu_from() {
   runuser -u ubuntu -- env -i HOME=/home/ubuntu PATH=/usr/bin:/bin GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_GLOBAL=/dev/null \
     /usr/bin/git -c core.fsmonitor=false -c core.hooksPath=/dev/null -C "$path" "$@"
 }
-if [[ ${SHAWHPOSH_BOOTSTRAP_CONTEXT:-} == 'AUTOMATE_SHAWHPosh-v1' ]]; then
+if [[ ${SHAWHPOSH_BOOTSTRAP_CONTEXT:-} == "$BOOTSTRAP_CONTEXT_VALUE" ]]; then
   bootstrap_source_root=${SHAWHPOSH_BOOTSTRAP_SOURCE_ROOT:-}
   [[ ${EUID:-$(id -u)} -eq 0 ]] || die 'Bootstrap install source is root-only.'
   [[ $bootstrap_source_root =~ ^/root/shawhposh-production-automation-[0-9]{8}T[0-9]{6}Z/trusted$ ]] \
@@ -124,7 +130,7 @@ for source in \
   "$repo_root/ops/shawhposh-deploy" \
   "$repo_root/ops/sudoers.d/ubuntu-shawhposh"; do
   require_source_file "$source"
-  if [[ ${SHAWHPOSH_BOOTSTRAP_CONTEXT:-} == 'AUTOMATE_SHAWHPosh-v1' ]]; then
+  if [[ ${SHAWHPOSH_BOOTSTRAP_CONTEXT:-} == "$BOOTSTRAP_CONTEXT_VALUE" ]]; then
     [[ $(stat -c '%U:%G:%a' -- "$source") == root:root:600 ]] || die "Bootstrap artifact is not a private root-owned file: $source"
   fi
 done

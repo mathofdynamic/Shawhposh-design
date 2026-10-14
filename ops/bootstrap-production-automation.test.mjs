@@ -242,6 +242,34 @@ test('bootstrap snapshots hash-verified scripts as root-owned inputs before exec
   }
 });
 
+test('automated deploy installer skips only the terminal requirement inside trusted bootstrap context', { skip: !bashAvailable }, () => {
+  const match = installer.match(/require_interactive_installer_terminal\(\) \{[\s\S]*?\n\}/);
+  assert.ok(match, 'installer must centralize its interactive-terminal gate');
+  const rootCheck = installer.indexOf('(( EUID == 0 ))');
+  const terminalCall = installer.indexOf('\nrequire_interactive_installer_terminal\n');
+  const trustedSourceBranch = installer.indexOf('if [[ ${SHAWHPOSH_BOOTSTRAP_CONTEXT:-} == "$BOOTSTRAP_CONTEXT_VALUE" ]]; then');
+  assert.ok(rootCheck >= 0 && terminalCall > rootCheck && trustedSourceBranch > terminalCall);
+
+  const source = [
+    'die() { printf "[INSTALL] ERROR: %s\\n" "$*" >&2; return 1; }',
+    "BOOTSTRAP_CONTEXT_VALUE='AUTOMATE_SHAWHPosh-v1'",
+    match[0],
+    'require_interactive_installer_terminal',
+  ].join('\n');
+  const invoke = context => spawnSync(bash, ['-c', source], {
+    cwd: root,
+    encoding: 'utf8',
+    env: { ...process.env, SHAWHPOSH_BOOTSTRAP_CONTEXT: context },
+  });
+
+  const trusted = invoke('AUTOMATE_SHAWHPosh-v1');
+  assert.equal(trusted.status, 0, trusted.stderr);
+
+  const manual = invoke('');
+  assert.equal(manual.status, 1);
+  assert.match(manual.stderr, /Owner installation requires a terminal\./);
+});
+
 test('trusted snapshot creation makes every nested directory private', { skip: process.platform === 'win32' || !bashAvailable }, () => {
   const temporaryRoot = mkdtempSync(join(tmpdir(), 'shawhposh-bootstrap-snapshot-'));
   const source = [
