@@ -12,7 +12,22 @@ The API, reservation expiry job, backup job, and optional replication job run as
 
 ## Runtime releases
 
-Stage and validate Linux-compatible releases under `/home/ubuntu/shawhposh/releases/<SHA>`. Staging is untrusted and must never be a systemd working directory or executable path. The root-owned `/usr/local/sbin/shawhposh-promote-release` accepts only a 40-character lowercase hexadecimal release ID, copies an allowlisted runtime artifact set into `/opt/shawhposh/releases/<SHA>`, validates the protected tree, atomically updates `/opt/shawhposh/current`, restarts only `shawhposh-api.service`, and restores the prior protected release if health verification fails.
+Stage and validate Linux-compatible releases under `/home/ubuntu/shawhposh/releases/<SHA>`. Staging is untrusted and must never be a systemd working directory or executable path. The production ubuntu login shell uses umask `0002`; `git clone` inherits it and can create group-writable release trees. Set `umask 077` in the same remote shell before cloning or copying a release. This creates a private, ubuntu-owned staging tree without changing tracked executable bits.
+
+For an existing staged tree, first confirm it is the expected ubuntu-owned release. Remove only group/world write bits from directories and regular files; this preserves ownership and executable bits:
+
+```sh
+find "$staging_release" -xdev -type d -perm /022 -exec chmod go-w -- {} +
+find "$staging_release" -xdev -type f -perm /022 -exec chmod go-w -- {} +
+```
+
+Verify no group/world-writable directories or files remain:
+
+```sh
+find "$staging_release" -xdev \( -type d -o -type f \) -perm /022 -print
+```
+
+The check must return no paths. The bootstrap installer independently rejects a group/world-writable release root and group/world-writable `install-bootstrap-runner.sh` or `bootstrap_runner.py` inputs. The root-owned `/usr/local/sbin/shawhposh-promote-release` accepts only a 40-character lowercase hexadecimal release ID, copies an allowlisted runtime artifact set into `/opt/shawhposh/releases/<SHA>`, validates the protected tree, atomically updates `/opt/shawhposh/current`, restarts only `shawhposh-api.service`, and restores the prior protected release if health verification fails.
 
 Promotion requires owner-authenticated `sudo`; `timestamp_timeout=0` prevents reusing a cached sudo authorization. Passwordless sudo is limited to Nginx config validation and reload. Before promotion, the owner must review and approve the staged release. The SHA constrains the release directory name; it is not a cryptographic artifact signature. Keep frontend releases on the existing static deployment path. After the initial cutover, application rollback must promote a previously validated release from `/opt/shawhposh/releases`, never point production back into the ubuntu staging tree.
 

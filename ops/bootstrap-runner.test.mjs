@@ -10,6 +10,7 @@ const read = name => readFileSync(join(directory, name), 'utf8');
 const runner = read('bootstrap_runner.py');
 const installer = read('install-bootstrap-runner.sh');
 const bootstrap = read('bootstrap-production-automation.sh');
+const operations = read('../docs/OPERATIONS.md');
 const packageJson = JSON.parse(readFileSync(join(directory, '..', 'package.json'), 'utf8'));
 
 test('temporary sudo interface is a root-owned fixed helper with one SHA argument', () => {
@@ -40,6 +41,16 @@ test('bootstrap installer validates Ubuntu production executable paths', () => {
     assert.ok(installer.includes(`-x $${name}`), `${name} must be checked before installation`);
   }
   assert.equal(installer.includes('/usr/bin/' + 'runuser'), false);
+});
+
+test('staging guidance uses a restrictive umask and installer rejects writable release inputs', () => {
+  assert.match(operations, /Set `umask 077` in the same remote shell before cloning or copying a release/);
+  assert.ok(operations.includes('find "$staging_release" -xdev -type d -perm /022 -exec chmod go-w -- {} +'));
+  assert.ok(operations.includes('find "$staging_release" -xdev -type f -perm /022 -exec chmod go-w -- {} +'));
+  assert.match(installer, /root_mode=\$\(stat -c '%a' -- "\$source_root"\)/);
+  assert.match(installer, /\(\( \(8#\$root_mode & 0022\) == 0 \)\)/);
+  assert.match(installer, /for source in "\$script_path" "\$source_root\/ops\/bootstrap_runner\.py"; do/);
+  assert.match(installer, /\(\( \(8#\$mode & 0022\) == 0 \)\)/);
 });
 
 test('runner prepares root-owned allowlisted artifacts and invokes only its trusted controller', () => {
