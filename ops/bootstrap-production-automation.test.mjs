@@ -318,11 +318,26 @@ test('interrupted-preparation recovery is gated before dry-run by legacy runtime
   assert.ok(bootstrap.includes('$(stat -c \'%U:%G:%a\' -- "$ENV_FILE") == ubuntu:ubuntu:600'));
   assert.ok(bootstrap.includes('cmp -s -- "$path" "$CONTROLLER_RELEASE/ops/$unit"'));
   assert.ok(bootstrap.includes('ops/legacy-systemd/shawhposh-backup.service'));
-  assert.ok(bootstrap.includes('cmp -s -- "$path" "$CONTROLLER_RELEASE/ops/legacy-systemd/$unit"'));
+  assert.ok(bootstrap.includes('cmp -s -- "$path" "$BOOTSTRAP_SNAPSHOT/trusted/ops/legacy-systemd/$unit"'));
   assert.ok(bootstrap.includes('systemctl is-enabled --quiet "${timer_units[0]}"'));
   assert.ok(bootstrap.includes('restore_recovery_timer_units || log'));
   assert.ok(bootstrap.includes('mv -fT -- "$recovery_stage/$unit" "$destination"'));
+  assert.ok(bootstrap.includes('show "$OLD_PRODUCTION_SHA:$git_relative" > "$destination"'));
+  assert.ok(bootstrap.includes('merge-base --is-ancestor "$OLD_PRODUCTION_SHA" "$requested_sha"'));
+  assert.ok(bootstrap.includes('restore_recovery_timer_units'));
   assert.ok(!bootstrap.includes('rm -rf'));
+});
+
+test('installed runner compatibility reconstructs rollback units from the fixed trusted Git commit', () => {
+  const start = bootstrap.indexOf('if (( RUNNER_MODE )); then\n    for file');
+  const end = bootstrap.indexOf('\n  else\n    validate_artifacts "$CONTROLLER_RELEASE" controller', start);
+  assert.ok(start >= 0 && end > start);
+  assert.doesNotMatch(bootstrap.slice(start, end), /ops\/legacy-systemd\//);
+  assert.ok(bootstrap.includes('merge-base --is-ancestor "$OLD_PRODUCTION_SHA" "$requested_sha"'));
+  assert.ok(bootstrap.includes('ls-tree "$OLD_PRODUCTION_SHA" -- "$git_relative"'));
+  assert.ok(bootstrap.includes('show "$OLD_PRODUCTION_SHA:$git_relative" > "$destination"'));
+  assert.ok(bootstrap.includes('capture_legacy_timer_templates'));
+  assert.ok(bootstrap.includes('object_mode == 100644 && $object_type == blob'));
 });
 
 test('legacy recovery units exactly match the reviewed PM2-era production commit', () => {

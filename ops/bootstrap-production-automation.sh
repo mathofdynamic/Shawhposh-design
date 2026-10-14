@@ -50,6 +50,7 @@ ubuntu ALL=(root) PASSWD: /usr/local/sbin/shawhposh-promote-release $LEGACY_SHA_
 
 SCRIPT_REALPATH=
 CONTROLLER_RELEASE=
+TRUSTED_GIT_ROOT=
 CUTOVER_SCRIPT=
 INSTALLER_SCRIPT=
 BOOTSTRAP_SNAPSHOT=
@@ -121,6 +122,7 @@ bootstrap_preflight() {
     [[ $# -eq 1 && $1 == --trusted-runner ]] || die 'Trusted runner mode accepts only its fixed internal argument.'
     trusted_root=${SHAWHPOSH_BOOTSTRAP_TRUSTED_ROOT:-}
     git_root=${SHAWHPOSH_BOOTSTRAP_GIT_ROOT:-}
+    TRUSTED_GIT_ROOT=$git_root
     requested_sha=${SHAWHPOSH_BOOTSTRAP_REQUESTED_SHA:-}
     workspace=${SHAWHPOSH_BOOTSTRAP_WORKSPACE:-}
     [[ $requested_sha =~ ^[0-9a-f]{40}$ ]] || die 'Trusted runner did not provide a valid requested SHA.'
@@ -142,6 +144,8 @@ bootstrap_preflight() {
       || die 'Trusted Git checkout identity or requested SHA is invalid.'
     /usr/bin/git -c core.hooksPath=/dev/null -c core.fsmonitor=false -C "$git_root" merge-base --is-ancestor "$requested_sha" origin/main \
       || die 'Requested bootstrap commit is not reachable from fixed origin/main.'
+    /usr/bin/git -c core.hooksPath=/dev/null -c core.fsmonitor=false -C "$git_root" merge-base --is-ancestor "$OLD_PRODUCTION_SHA" "$requested_sha" \
+      || die 'The fixed legacy timer source commit is not an ancestor of the trusted bootstrap commit.'
     CONTROLLER_RELEASE=$trusted_root
     controller_sha=$requested_sha
     branch=detached
@@ -170,9 +174,7 @@ bootstrap_preflight() {
       ops/automated_deploy.py ops/promote_frontend.py ops/promote_release.py ops/replicate-backups.mjs \
       ops/shawhposh-deploy ops/sudoers.d/ubuntu-shawhposh ops/shawhposh-api.service \
       ops/shawhposh-backup.service ops/shawhposh-backup.timer ops/shawhposh-reservations.service \
-      ops/shawhposh-reservations.timer ops/shawhposh-replicate.service \
-      ops/legacy-systemd/shawhposh-backup.service ops/legacy-systemd/shawhposh-backup.timer \
-      ops/legacy-systemd/shawhposh-reservations.service ops/legacy-systemd/shawhposh-reservations.timer; do
+      ops/shawhposh-reservations.timer ops/shawhposh-replicate.service; do
       require_file "$CONTROLLER_RELEASE/$file"
       [[ $(stat -c '%U:%G:%a' -- "$CONTROLLER_RELEASE/$file") == root:root:600 ]] \
         || die "Trusted controller artifact has unsafe ownership or mode: $file"
@@ -219,12 +221,21 @@ bootstrap_preflight() {
   [[ -x /usr/sbin/visudo && -x /usr/bin/sudo && -x /usr/bin/systemctl && -x /usr/bin/curl ]] || die 'Required system utilities are missing.'
   /usr/sbin/visudo -cf /etc/sudoers >/dev/null || die 'Current sudoers configuration is invalid.'
   for file in ops/runtime-cutover.sh ops/install-automated-deploy.sh ops/automated_deploy.py ops/promote_frontend.py \
-    ops/promote_release.py ops/shawhposh-deploy ops/sudoers.d/ubuntu-shawhposh \
-    ops/legacy-systemd/shawhposh-backup.service ops/legacy-systemd/shawhposh-backup.timer \
-    ops/legacy-systemd/shawhposh-reservations.service ops/legacy-systemd/shawhposh-reservations.timer; do
+    ops/promote_release.py ops/shawhposh-deploy ops/sudoers.d/ubuntu-shawhposh; do
     CONTROLLER_HASHES[$file]=$(sha256sum -- "$CONTROLLER_RELEASE/$file")
     CONTROLLER_HASHES[$file]=${CONTROLLER_HASHES[$file]%% *}
   done
+  if (( ! RUNNER_MODE )); then
+    for file in ops/legacy-systemd/shawhposh-backup.service ops/legacy-systemd/shawhposh-backup.timer \
+      ops/legacy-systemd/shawhposh-reservations.service ops/legacy-systemd/shawhposh-reservations.timer; do
+      source_owner=$(stat -c '%U:%G' -- "$CONTROLLER_RELEASE/$file")
+      [[ $source_owner == ubuntu:ubuntu ]] || die "Legacy timer template is not ubuntu-owned: $file"
+      mode=$(stat -c '%a' -- "$CONTROLLER_RELEASE/$file")
+      [[ $mode =~ ^[0-7]{3,4}$ ]] && (( (8#$mode & 0022) == 0 )) || die "Legacy timer template is group/world writable: $file"
+      CONTROLLER_HASHES[$file]=$(sha256sum -- "$CONTROLLER_RELEASE/$file")
+      CONTROLLER_HASHES[$file]=${CONTROLLER_HASHES[$file]%% *}
+    done
+  fi
   log 'PRECHECK' 'Static release, host prerequisites, and fixed production paths are ready for owner review.'
 }
 
@@ -233,6 +244,42 @@ create_private_trusted_snapshot_directories() {
   for path in "$trusted_root" "$trusted_root/ops" "$trusted_root/ops/sudoers.d" "$trusted_root/ops/legacy-systemd"; do
     install -d -o root -g root -m 0700 -- "$path"
     chmod 0700 -- "$path"
+  done
+}
+
+capture_legacy_timer_templates() {
+  local unit relative git_relative source destination digest expected_hash entry object_mode object_type object_id object_path
+  local -a legacy_units=(shawhposh-backup.service shawhposh-backup.timer \
+    shawhposh-reservations.service shawhposh-reservations.timer)
+  for unit in "${legacy_units[@]}"; do
+    relative=ops/legacy-systemd/$unit
+    destination=$BOOTSTRAP_SNAPSHOT/trusted/$relative
+    [[ ! -e $destination && ! -L $destination ]] || die "Legacy template snapshot path already exists: $unit"
+    if (( RUNNER_MODE )); then
+      git_relative=ops/$unit
+      entry=$(/usr/bin/git -c core.hooksPath=/dev/null -c core.fsmonitor=false -C "$TRUSTED_GIT_ROOT" \
+        ls-tree "$OLD_PRODUCTION_SHA" -- "$git_relative") || die "Could not inspect fixed legacy unit source: $unit"
+      IFS=$' \t' read -r object_mode object_type object_id object_path <<< "$entry"
+      [[ $object_mode == 100644 && $object_type == blob && $object_id =~ ^[0-9a-f]{40}$ && $object_path == "$git_relative" ]] \
+        || die "Fixed legacy unit is not a regular committed file: $unit"
+      /usr/bin/git -c core.hooksPath=/dev/null -c core.fsmonitor=false -C "$TRUSTED_GIT_ROOT" \
+        show "$OLD_PRODUCTION_SHA:$git_relative" > "$destination" || die "Could not snapshot fixed legacy unit: $unit"
+      chown root:root -- "$destination"
+      chmod 0600 -- "$destination"
+    else
+      source=$CONTROLLER_RELEASE/$relative
+      [[ -f $source && ! -L $source && $(stat -c '%U:%G' -- "$source") == ubuntu:ubuntu ]] \
+        || die "Legacy timer template is missing or unsafe: $unit"
+      digest=$(sha256sum -- "$source")
+      expected_hash=${CONTROLLER_HASHES[$relative]:-}
+      [[ -n $expected_hash && ${digest%% *} == "$expected_hash" ]] || die "Legacy timer template changed after preflight: $unit"
+      install -o root -g root -m 0600 -- "$source" "$destination"
+    fi
+    [[ -f $destination && ! -L $destination && -s $destination \
+      && $(stat -c '%U:%G:%a' -- "$destination") == root:root:600 ]] \
+      || die "Legacy timer template snapshot is unsafe: $unit"
+    digest=$(sha256sum -- "$destination")
+    CONTROLLER_HASHES[$relative]=${digest%% *}
   done
 }
 
@@ -281,9 +328,7 @@ capture_bootstrap_snapshot() {
     [[ $(stat -c '%U:%G:%a' -- "$path") == root:root:700 ]] || die "Trusted snapshot directory is not private: $path"
   done
   for source in ops/runtime-cutover.sh ops/install-automated-deploy.sh ops/automated_deploy.py \
-    ops/promote_frontend.py ops/promote_release.py ops/shawhposh-deploy ops/sudoers.d/ubuntu-shawhposh \
-    ops/legacy-systemd/shawhposh-backup.service ops/legacy-systemd/shawhposh-backup.timer \
-    ops/legacy-systemd/shawhposh-reservations.service ops/legacy-systemd/shawhposh-reservations.timer; do
+    ops/promote_frontend.py ops/promote_release.py ops/shawhposh-deploy ops/sudoers.d/ubuntu-shawhposh; do
     destination=$BOOTSTRAP_SNAPSHOT/trusted/$source
     [[ -f $CONTROLLER_RELEASE/$source && ! -L $CONTROLLER_RELEASE/$source ]] || die "Trusted controller source changed type: $source"
     source_owner=$(stat -c '%U:%G' -- "$CONTROLLER_RELEASE/$source")
@@ -296,6 +341,7 @@ capture_bootstrap_snapshot() {
     digest=$(sha256sum -- "$destination")
     [[ ${digest%% *} == "${CONTROLLER_HASHES[$source]}" ]] || die "Root-owned controller snapshot failed hash verification: $source"
   done
+  capture_legacy_timer_templates
   CUTOVER_SCRIPT=$BOOTSTRAP_SNAPSHOT/trusted/ops/runtime-cutover.sh
   INSTALLER_SCRIPT=$BOOTSTRAP_SNAPSHOT/trusted/ops/install-automated-deploy.sh
   log 'SNAPSHOT' "Root-only bootstrap metadata: $BOOTSTRAP_SNAPSHOT"
@@ -391,7 +437,7 @@ recover_interrupted_legacy_timers() {
         all_legacy=0
         break
       fi
-      if ! cmp -s -- "$path" "$CONTROLLER_RELEASE/ops/legacy-systemd/$unit"; then
+      if ! cmp -s -- "$path" "$BOOTSTRAP_SNAPSHOT/trusted/ops/legacy-systemd/$unit"; then
         all_legacy=0
         break
       fi
@@ -441,7 +487,7 @@ recover_interrupted_legacy_timers() {
     if [[ $unit == "$API_UNIT" || $unit == "$REPLICATION_UNIT" ]]; then
       cmp -s -- "$path" "$CONTROLLER_RELEASE/ops/$unit" || return 0
     elif ! cmp -s -- "$path" "$CONTROLLER_RELEASE/ops/$unit" \
-      && ! cmp -s -- "$path" "$CONTROLLER_RELEASE/ops/legacy-systemd/$unit"; then
+      && ! cmp -s -- "$path" "$BOOTSTRAP_SNAPSHOT/trusted/ops/legacy-systemd/$unit"; then
       return 0
     fi
   done
