@@ -575,6 +575,22 @@ on_error() {
 }
 trap 'on_error "$LINENO" "$?"' ERR
 
+protected_directory_mode_is_acceptable() {
+  local owner_group_mode=$1 contents=$2
+  [[ $owner_group_mode == root:root:755 ]] || [[ $owner_group_mode == root:root:700 && $contents == empty ]]
+}
+
+protected_directory_is_preflight_safe() {
+  local path=$1 owner_group_mode contents=not-required listing
+  owner_group_mode=$(stat -c '%U:%G:%a' -- "$path") || return 1
+  if [[ $owner_group_mode == root:root:700 ]]; then
+    listing=$(find "$path" -mindepth 1 -maxdepth 1 -print -quit) || return 1
+    contents=nonempty
+    [[ -z $listing ]] && contents=empty
+  fi
+  protected_directory_mode_is_acceptable "$owner_group_mode" "$contents"
+}
+
 validate_preflight() {
   log 'PRECHECK' 'Checking identity, fixed paths, release artifacts, health, timers, and configuration.'
   for command_name in awk chown chmod cmp cp curl date df dirname find getent install id ln mv node passwd pm2 ps python3 realpath readlink runuser sha256sum sleep stat sudo systemctl systemd-analyze tar unlink useradd visudo xargs; do
@@ -591,10 +607,14 @@ validate_preflight() {
   [[ $(stat -c '%U:%G:%a' /opt) == 'root:root:755' ]] || die '/opt ownership or mode is unexpected.'
   if [[ -e $RUNTIME_ROOT || -L $RUNTIME_ROOT ]]; then
     assert_real_directory "$RUNTIME_ROOT"
-    [[ $(stat -c '%U:%G:%a' "$RUNTIME_ROOT") == 'root:root:755' ]] || die 'Protected runtime root ownership or mode is unexpected.'
+    protected_directory_is_preflight_safe "$RUNTIME_ROOT" || die 'Protected runtime root ownership or mode is unexpected.'
+    [[ $(stat -c '%U:%G:%a' "$RUNTIME_ROOT") != 'root:root:700' ]] \
+      || log 'PRECHECK' 'An empty root-owned mode-0700 runtime root from the prior interrupted attempt will be normalized to 0755 during promotion.'
     if [[ -e $RUNTIME_RELEASES || -L $RUNTIME_RELEASES ]]; then
       assert_real_directory "$RUNTIME_RELEASES"
-      [[ $(stat -c '%U:%G:%a' "$RUNTIME_RELEASES") == 'root:root:755' ]] || die 'Protected runtime releases ownership or mode is unexpected.'
+      protected_directory_is_preflight_safe "$RUNTIME_RELEASES" || die 'Protected runtime releases ownership or mode is unexpected.'
+      [[ $(stat -c '%U:%G:%a' "$RUNTIME_RELEASES") != 'root:root:700' ]] \
+        || log 'PRECHECK' 'An empty root-owned mode-0700 releases directory from the prior interrupted attempt will be normalized to 0755 during promotion.'
     elif [[ -e $RUNTIME_CURRENT || -L $RUNTIME_CURRENT ]]; then
       die 'Runtime current exists without its protected releases directory.'
     fi

@@ -248,6 +248,22 @@ test('runtime sudo validation recognizes sudo list success for a denied target u
   assert.equal(unexpected.status, 0, `${unexpected.stdout}\n${unexpected.stderr}`);
 });
 
+test('preflight accepts only a root-owned empty 0700 protected root left by restrictive umask', { skip: !bashAvailable }, () => {
+  const script = read('runtime-cutover.sh');
+  const helper = script.match(/^protected_directory_mode_is_acceptable\(\) \{[\s\S]*?^\}/m)?.[0];
+  assert.ok(helper, 'preflight has a focused check for recoverable empty protected directories');
+  assert.match(script, /protected_directory_is_preflight_safe "\$RUNTIME_ROOT"/);
+  assert.match(script, /protected_directory_is_preflight_safe "\$RUNTIME_RELEASES"/);
+  assert.match(script, /find "\$path" -mindepth 1 -maxdepth 1 -print -quit/);
+
+  const run = command => spawnSync(bash, ['-c', ['set -Eeuo pipefail', helper, command].join('\n')], { encoding: 'utf8' });
+  assert.equal(run("protected_directory_mode_is_acceptable root:root:755 not-required").status, 0);
+  assert.equal(run("protected_directory_mode_is_acceptable root:root:700 empty").status, 0);
+  assert.notEqual(run("protected_directory_mode_is_acceptable root:root:700 nonempty").status, 0);
+  assert.notEqual(run("protected_directory_mode_is_acceptable ubuntu:ubuntu:700 empty").status, 0);
+  assert.notEqual(run("protected_directory_mode_is_acceptable root:root:777 empty").status, 0);
+});
+
 test('backup snapshot verification is immutable and does not create SQLite sidecars', { skip: process.platform === 'win32' || !bashAvailable }, () => {
   const script = read('runtime-cutover.sh');
   const verifier = script.match(/^verify_database\(\) \{[\s\S]*?^\}/m)?.[0];
