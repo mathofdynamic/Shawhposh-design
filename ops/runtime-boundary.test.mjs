@@ -112,6 +112,56 @@ test('runtime preflight validates the exact automated sudo policy under strict u
   assert.match(invalid.stderr, /prepared automated-deploy sudo policy differs/);
 });
 
+test('bootstrap cutover accepts only its own temporary SHA-scoped sudo rule in addition to the reviewed baseline', { skip: !bashAvailable }, () => {
+  const script = read('runtime-cutover.sh');
+  const declaration = script.match(/^readonly BOOTSTRAP_RUNNER_SUDO_POLICY='[^']*'$/m)?.[0];
+  const validator = script.match(/^verify_passwordless_sudo_allowlist\(\) \{[\s\S]*?^\}/m)?.[0];
+  const bootstrapPolicy = 'ubuntu ALL=(root) NOPASSWD: /usr/local/sbin/shawhposh-bootstrap ^[0-9a-f]{40}$';
+  assert.equal(declaration, `readonly BOOTSTRAP_RUNNER_SUDO_POLICY='${bootstrapPolicy}'`);
+  assert.ok(validator, 'runtime cutover validates the effective passwordless policy');
+  const policyDeclaration = declaration;
+
+  const policies = [
+    'ubuntu ALL=(root) NOPASSWD: /usr/sbin/nginx -t, /usr/bin/systemctl reload nginx, /usr/bin/systemctl start shawhposh-backup.service',
+    'ubuntu ALL=(root) NOPASSWD: /usr/sbin/nginx -t, /usr/bin/systemctl reload nginx, /usr/bin/systemctl start shawhposh-backup.service, /usr/bin/systemctl restart shawhposh-api.service',
+    'ubuntu ALL=(root) NOPASSWD: /usr/sbin/nginx -t, /usr/bin/systemctl reload nginx',
+  ];
+  const bootstrapRule = '(root) NOPASSWD: /usr/local/sbin/shawhposh-bootstrap ^[0-9a-f]{40}$';
+
+  const runValidator = ({ bootstrapExecution, actualRules }) => {
+    const harness = [
+      'set -Eeuo pipefail',
+      `BOOTSTRAP_EXECUTION=${bootstrapExecution ? 1 : 0}`,
+      policyDeclaration,
+      ...(process.platform === 'win32' ? ['python3() { py -3 "$@"; }'] : []),
+      `sudo() { printf '%b\\n' ${JSON.stringify(['User ubuntu may run the following commands:', ...actualRules].join('\n'))}; }`,
+      validator,
+      `verify_passwordless_sudo_allowlist ${policies.map(value => JSON.stringify(value)).join(' ')}`,
+    ].join('\n');
+    return spawnSync(bash, ['-c', harness], { encoding: 'utf8' });
+  };
+
+  const baseline = '(root) NOPASSWD: /usr/sbin/nginx -t, /usr/bin/systemctl reload nginx, /usr/bin/systemctl start shawhposh-backup.service';
+  const acceptedBootstrap = runValidator({ bootstrapExecution: true, actualRules: [baseline, bootstrapRule] });
+  assert.equal(acceptedBootstrap.status, 0, `${acceptedBootstrap.stdout}\n${acceptedBootstrap.stderr}`);
+
+  const unexpectedExtra = runValidator({
+    bootstrapExecution: true,
+    actualRules: [baseline, bootstrapRule, '(root) NOPASSWD: /usr/bin/systemctl restart nginx'],
+  });
+  assert.notEqual(unexpectedExtra.status, 0, 'bootstrap mode must reject unrelated passwordless commands');
+  assert.match(unexpectedExtra.stderr, /Unexpected passwordless sudo allowlist/);
+
+  const missingBootstrapRule = runValidator({ bootstrapExecution: true, actualRules: [baseline] });
+  assert.notEqual(missingBootstrapRule.status, 0, 'bootstrap mode requires its exact temporary runner rule');
+
+  const runnerOutsideBootstrap = runValidator({ bootstrapExecution: false, actualRules: [baseline, bootstrapRule] });
+  assert.notEqual(runnerOutsideBootstrap.status, 0, 'normal cutover must reject the temporary runner rule');
+
+  const normalCutover = runValidator({ bootstrapExecution: false, actualRules: [baseline] });
+  assert.equal(normalCutover.status, 0, `${normalCutover.stdout}\n${normalCutover.stderr}`);
+});
+
 test('backup snapshot verification is immutable and does not create SQLite sidecars', { skip: process.platform === 'win32' || !bashAvailable }, () => {
   const script = read('runtime-cutover.sh');
   const verifier = script.match(/^verify_database\(\) \{[\s\S]*?^\}/m)?.[0];

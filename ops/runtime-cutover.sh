@@ -35,6 +35,7 @@ readonly SHA_SUDO_ARGUMENT=$(python3 -c 'print("[0-9a-f]" * 40)')
 readonly OLD_SUDO_POLICY_3='ubuntu ALL=(root) NOPASSWD: /usr/sbin/nginx -t, /usr/bin/systemctl reload nginx, /usr/bin/systemctl start shawhposh-backup.service'
 readonly OLD_SUDO_POLICY_4='ubuntu ALL=(root) NOPASSWD: /usr/sbin/nginx -t, /usr/bin/systemctl reload nginx, /usr/bin/systemctl start shawhposh-backup.service, /usr/bin/systemctl restart shawhposh-api.service'
 readonly NEW_PASSWORDLESS_POLICY='ubuntu ALL=(root) NOPASSWD: /usr/sbin/nginx -t, /usr/bin/systemctl reload nginx'
+readonly BOOTSTRAP_RUNNER_SUDO_POLICY='ubuntu ALL=(root) NOPASSWD: /usr/local/sbin/shawhposh-bootstrap ^[0-9a-f]{40}$'
 readonly AUTOMATED_SUDO_POLICY='Defaults:ubuntu timestamp_timeout=0
 ubuntu ALL=(root) NOPASSWD: /usr/local/sbin/shawhposh-deploy ^[0-9a-f]{40}$'
 readonly NEW_SUDO_POLICY="Defaults:ubuntu timestamp_timeout=0
@@ -88,21 +89,31 @@ PROMOTION_HELPER_INSTALLED=0
 
 verify_passwordless_sudo_allowlist() {
   local listing
+  local bootstrap_policy=
   listing=$(sudo -n -l -U ubuntu 2>/dev/null) || { log 'SUDO' 'Could not inspect ubuntu sudo permissions without prompting.' >&2; return 1; }
+  if (( BOOTSTRAP_EXECUTION )); then bootstrap_policy=$BOOTSTRAP_RUNNER_SUDO_POLICY; fi
   printf '%s\n' "$listing" | python3 -c '
 import re,sys
 allowed=set()
-for value in sys.argv[1:]:
+bootstrap_policy=sys.argv[1]
+for value in sys.argv[2:]:
  if value:
   prefix="ubuntu ALL=(root) NOPASSWD: "
   if not value.startswith(prefix):
    print("Invalid expected sudo policy format.",file=sys.stderr); sys.exit(2)
   allowed.add("(root) NOPASSWD: "+value[len(prefix):])
+bootstrap_line=set()
+if bootstrap_policy:
+ prefix="ubuntu ALL=(root) NOPASSWD: "
+ if not bootstrap_policy.startswith(prefix):
+  print("Invalid temporary bootstrap sudo policy format.",file=sys.stderr); sys.exit(2)
+ bootstrap_line={"(root) NOPASSWD: "+bootstrap_policy[len(prefix):]}
 actual={re.sub(r"\s+", " ", line.strip()) for line in sys.stdin if "NOPASSWD:" in line}
-if len(actual)!=1 or next(iter(actual)) not in allowed:
+base_actual=actual-bootstrap_line
+if actual-(allowed|bootstrap_line) or (bootstrap_policy and not bootstrap_line<=actual) or len(base_actual)!=1 or not base_actual<=allowed:
  print("Unexpected passwordless sudo allowlist; refusing the cutover.",file=sys.stderr)
  sys.exit(1)
-' "$@"
+' "$bootstrap_policy" "$@"
 }
 
 verify_password_required_promotion_rule() {
