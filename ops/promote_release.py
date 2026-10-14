@@ -52,7 +52,14 @@ def runtime_release_path(sha: str, runtime_releases: Path = RUNTIME_RELEASES) ->
     return runtime_releases / validate_sha(sha)
 
 
-def _metadata_ok(info: os.stat_result, *, uid: int, gid: int | None = None, directory: bool = False) -> bool:
+def _metadata_ok(
+    info: os.stat_result,
+    *,
+    uid: int,
+    gid: int | None = None,
+    directory: bool = False,
+    allow_hardlinks: bool = False,
+) -> bool:
     if directory:
         is_expected_type = stat.S_ISDIR(info.st_mode)
     else:
@@ -62,7 +69,7 @@ def _metadata_ok(info: os.stat_result, *, uid: int, gid: int | None = None, dire
         and info.st_uid == uid
         and (gid is None or info.st_gid == gid)
         and (info.st_mode & 0o022) == 0
-        and (directory or info.st_nlink == 1)
+        and (directory or allow_hardlinks or info.st_nlink == 1)
     )
 
 
@@ -188,12 +195,19 @@ def _source_directory(parent_fd: int, name: str, *, expected_uid: int, display: 
     return descriptor
 
 
-def _source_file(parent_fd: int, name: str, *, expected_uid: int, display: str) -> tuple[int, os.stat_result]:
+def _source_file(
+    parent_fd: int,
+    name: str,
+    *,
+    expected_uid: int,
+    display: str,
+    allow_hardlinks: bool = False,
+) -> tuple[int, os.stat_result]:
     try:
         before = os.stat(name, dir_fd=parent_fd, follow_symlinks=False)
     except OSError as exc:
         raise PromotionError(f"Required staging artifact is missing: {display}") from exc
-    if not _metadata_ok(before, uid=expected_uid, directory=False):
+    if not _metadata_ok(before, uid=expected_uid, directory=False, allow_hardlinks=allow_hardlinks):
         raise PromotionError(f"Unsafe staging file: {display}")
     try:
         descriptor = os.open(name, os.O_RDONLY | NOFOLLOW | CLOEXEC, dir_fd=parent_fd)
@@ -201,7 +215,7 @@ def _source_file(parent_fd: int, name: str, *, expected_uid: int, display: str) 
         raise PromotionError(f"Could not safely open staging file: {display}") from exc
     opened = os.fstat(descriptor)
     if (before.st_dev, before.st_ino) != (opened.st_dev, opened.st_ino) or not _metadata_ok(
-        opened, uid=expected_uid, directory=False
+        opened, uid=expected_uid, directory=False, allow_hardlinks=allow_hardlinks
     ):
         os.close(descriptor)
         raise PromotionError(f"Staging file changed while opening: {display}")
@@ -217,8 +231,15 @@ def _copy_file(
     display: str,
     destination_uid: int | None = None,
     destination_gid: int | None = None,
+    allow_hardlinks: bool = False,
 ) -> None:
-    source_fd, initial = _source_file(source_parent_fd, name, expected_uid=expected_uid, display=display)
+    source_fd, initial = _source_file(
+        source_parent_fd,
+        name,
+        expected_uid=expected_uid,
+        display=display,
+        allow_hardlinks=allow_hardlinks,
+    )
     destination_fd = -1
     copied = 0
     try:
@@ -268,6 +289,7 @@ def _copy_directory(
     display: str,
     destination_uid: int | None = None,
     destination_gid: int | None = None,
+    allow_hardlinks: bool = False,
 ) -> None:
     owner_uid = os.geteuid() if destination_uid is None else destination_uid
     owner_gid = os.getegid() if destination_gid is None else destination_gid
@@ -297,6 +319,7 @@ def _copy_directory(
                     display=child_display,
                     destination_uid=owner_uid,
                     destination_gid=owner_gid,
+                    allow_hardlinks=allow_hardlinks,
                 )
                 os.fchown(child_destination_fd, owner_uid, owner_gid)
                 os.fchmod(child_destination_fd, 0o755)
@@ -313,6 +336,7 @@ def _copy_directory(
                 display=child_display,
                 destination_uid=owner_uid,
                 destination_gid=owner_gid,
+                allow_hardlinks=allow_hardlinks,
             )
         else:
             raise PromotionError(f"Symlink or special file refused in staging release: {child_display}")
@@ -648,6 +672,7 @@ def _copy_staged_release_from_fds(
                         display=artifact,
                         destination_uid=expected_runtime_uid,
                         destination_gid=expected_runtime_gid,
+                        allow_hardlinks=artifact == "node_modules",
                     )
                     os.fchown(child_destination_fd, expected_runtime_uid, expected_runtime_gid)
                     os.fchmod(child_destination_fd, 0o755)

@@ -294,6 +294,38 @@ class PromoteReleaseTests(unittest.TestCase):
                 os.close(source_fd)
                 os.close(destination_fd)
 
+    @unittest.skipUnless(os.name == "posix", "hardlink materialization requires POSIX")
+    def test_node_modules_hardlinks_are_copied_as_independent_protected_files(self) -> None:
+        uid, gid = os.getuid(), os.getgid()
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            source = root / "node_modules"
+            destination = root / "protected-node_modules"
+            source.mkdir()
+            destination.mkdir()
+            write_file(source / "native.node", b"native module\n")
+            os.link(source / "native.node", source / "duplicate.native.node")
+            source_fd = os.open(source, os.O_RDONLY | getattr(os, "O_DIRECTORY", 0))
+            destination_fd = os.open(destination, os.O_RDONLY | getattr(os, "O_DIRECTORY", 0))
+            try:
+                _copy_directory(
+                    source_fd,
+                    destination_fd,
+                    expected_uid=uid,
+                    display="node_modules",
+                    allow_hardlinks=True,
+                )
+            finally:
+                os.close(source_fd)
+                os.close(destination_fd)
+            original = destination / "native.node"
+            duplicate = destination / "duplicate.native.node"
+            self.assertEqual(original.read_bytes(), b"native module\n")
+            self.assertEqual(duplicate.read_bytes(), b"native module\n")
+            self.assertNotEqual(original.stat().st_ino, duplicate.stat().st_ino)
+            self.assertEqual(original.stat().st_nlink, 1)
+            self.assertEqual(duplicate.stat().st_nlink, 1)
+
     @unittest.skipUnless(os.name == "posix", "protected promotion requires POSIX dirfd operations")
     def test_realistic_staged_release_preserves_nested_artifact_and_passes_full_validator(self) -> None:
         uid, gid = os.getuid(), os.getgid()
@@ -303,6 +335,9 @@ class PromoteReleaseTests(unittest.TestCase):
             staging_root = root / "staging"
             staging_root.mkdir()
             staged = make_staging_release(staging_root, sha, uid, gid)
+            native_module = staged / "node_modules/example/index.js"
+            hardlinked_native_module = staged / "node_modules/example/linked.js"
+            os.link(native_module, hardlinked_native_module)
             runtime_root = root / "runtime"
             releases = runtime_root / "releases"
             releases.mkdir(parents=True)
@@ -325,9 +360,15 @@ class PromoteReleaseTests(unittest.TestCase):
             self.assertTrue((protected / "package.json").is_file())
             self.assertTrue((protected / "server-dist/index.js").is_file())
             self.assertTrue((protected / "node_modules").is_dir())
+            self.assertTrue((protected / "node_modules/example/linked.js").is_file())
             self.assertTrue((protected / "ops/replicate-backups.mjs").is_file())
             self.assertFalse((protected / "replicate-backups.mjs").exists())
             validate_protected_release(protected, sha, expected_uid=uid, expected_gid=gid)
+            promoted_native_module = protected / "node_modules/example/index.js"
+            promoted_hardlinked_native_module = protected / "node_modules/example/linked.js"
+            self.assertNotEqual(promoted_native_module.stat().st_ino, promoted_hardlinked_native_module.stat().st_ino)
+            self.assertEqual(promoted_native_module.stat().st_nlink, 1)
+            self.assertEqual(promoted_hardlinked_native_module.stat().st_nlink, 1)
             self.assertEqual((protected / "ops").stat().st_mode & 0o777, 0o755)
             self.assertEqual((protected / "ops/replicate-backups.mjs").stat().st_mode & 0o777, 0o644)
             self.assertEqual((protected / "ops").stat().st_uid, uid)
