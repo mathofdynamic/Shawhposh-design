@@ -817,19 +817,39 @@ capture_unit_snapshot() {
   log 'PRECHECK' "Rollback configuration snapshot: $SNAPSHOT_DIR"
 }
 
+system_uid_range_contains() {
+  local service_uid=$1 system_uid_min=$2 system_uid_max=$3 regular_uid_min=$4
+  local service_uid_value system_uid_min_value system_uid_max_value regular_uid_min_value
+  [[ $service_uid =~ ^[0-9]+$ && $regular_uid_min =~ ^[0-9]+$ ]] || return 1
+  [[ -z $system_uid_min || $system_uid_min =~ ^[0-9]+$ ]] || return 1
+  [[ -z $system_uid_max || $system_uid_max =~ ^[0-9]+$ ]] || return 1
+
+  service_uid_value=$((10#$service_uid))
+  regular_uid_min_value=$((10#$regular_uid_min))
+  system_uid_min_value=1
+  system_uid_max_value=$((regular_uid_min_value - 1))
+  [[ -z $system_uid_min ]] || system_uid_min_value=$((10#$system_uid_min))
+  [[ -z $system_uid_max ]] || system_uid_max_value=$((10#$system_uid_max))
+
+  (( service_uid_value > 0 && regular_uid_min_value > 1 )) || return 1
+  (( system_uid_max_value >= system_uid_min_value && service_uid_value >= system_uid_min_value && service_uid_value <= system_uid_max_value ))
+}
+
 create_or_verify_runtime_user() {
   log 'USER' 'Creating or validating the locked, non-login Shawhposh service identity.'
   if ! getent passwd shawhposh >/dev/null; then
     useradd --system --user-group --home-dir /nonexistent --no-create-home --shell /usr/sbin/nologin shawhposh
     passwd --lock shawhposh >/dev/null
   fi
-  local passwd_entry shell home groups password_state service_uid system_uid_max
+  local passwd_entry shell home groups password_state service_uid system_uid_min system_uid_max regular_uid_min
   passwd_entry=$(getent passwd shawhposh) || die 'Could not inspect the Shawhposh service identity.'
   IFS=: read -r _ _ _ _ _ home shell <<< "$passwd_entry"
   [[ $home == /nonexistent && $shell == /usr/sbin/nologin ]] || die 'Existing shawhposh account has an unexpected home or shell.'
   service_uid=$(id -u shawhposh)
+  system_uid_min=$(awk '$1 == "SYS_UID_MIN" { print $2; exit }' /etc/login.defs)
   system_uid_max=$(awk '$1 == "SYS_UID_MAX" { print $2; exit }' /etc/login.defs)
-  [[ $service_uid =~ ^[0-9]+$ && $system_uid_max =~ ^[0-9]+$ ]] && (( service_uid <= system_uid_max )) \
+  regular_uid_min=$(awk '$1 == "UID_MIN" { print $2; exit }' /etc/login.defs)
+  system_uid_range_contains "$service_uid" "$system_uid_min" "$system_uid_max" "$regular_uid_min" \
     || die 'The Shawhposh account is not within the configured system-user UID range.'
   groups=$(id -nG shawhposh)
   [[ $groups == shawhposh ]] || die 'Existing shawhposh account has unexpected supplementary groups.'

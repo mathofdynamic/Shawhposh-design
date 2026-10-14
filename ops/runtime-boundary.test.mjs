@@ -199,6 +199,36 @@ test('only authenticated bootstrap mode bypasses the interactive cutover prompt'
   assert.match(directCutover.stderr, /cutover requires an owner at an interactive terminal/);
 });
 
+test('runtime account UID validation falls back to UID_MIN when SYS_UID_MAX is absent', { skip: !bashAvailable }, () => {
+  const script = read('runtime-cutover.sh');
+  const helper = script.match(/^system_uid_range_contains\(\) \{[\s\S]*?^\}/m)?.[0];
+  assert.ok(helper, 'runtime cutover has a focused system-account UID range validator');
+  const accountValidation = script.match(/^create_or_verify_runtime_user\(\) \{[\s\S]*?^\}/m)?.[0];
+  assert.match(accountValidation ?? '', /SYS_UID_MIN/);
+  assert.match(accountValidation ?? '', /SYS_UID_MAX/);
+  assert.match(accountValidation ?? '', /UID_MIN/);
+  assert.match(accountValidation ?? '', /system_uid_range_contains "\$service_uid" "\$system_uid_min" "\$system_uid_max" "\$regular_uid_min"/);
+
+  const run = command => spawnSync(bash, ['-c', ['set -Eeuo pipefail', helper, command].join('\n')], { encoding: 'utf8' });
+  const productionDefaults = run('system_uid_range_contains 997 "" "" 1000');
+  assert.equal(productionDefaults.status, 0, `${productionDefaults.stdout}\n${productionDefaults.stderr}`);
+
+  const explicitSystemMinimum = run('system_uid_range_contains 997 100 "" 1000');
+  assert.equal(explicitSystemMinimum.status, 0, `${explicitSystemMinimum.stdout}\n${explicitSystemMinimum.stderr}`);
+
+  const belowExplicitSystemMinimum = run('if system_uid_range_contains 99 100 "" 1000; then exit 19; fi');
+  assert.equal(belowExplicitSystemMinimum.status, 0, `${belowExplicitSystemMinimum.stdout}\n${belowExplicitSystemMinimum.stderr}`);
+
+  const regularUserUid = run('if system_uid_range_contains 1000 "" "" 1000; then exit 19; fi');
+  assert.equal(regularUserUid.status, 0, `${regularUserUid.stdout}\n${regularUserUid.stderr}`);
+
+  const configuredRange = run('system_uid_range_contains 150 100 200 1000');
+  assert.equal(configuredRange.status, 0, `${configuredRange.stdout}\n${configuredRange.stderr}`);
+
+  const outsideConfiguredRange = run('if system_uid_range_contains 997 100 500 1000; then exit 19; fi');
+  assert.equal(outsideConfiguredRange.status, 0, `${outsideConfiguredRange.stdout}\n${outsideConfiguredRange.stderr}`);
+});
+
 test('backup snapshot verification is immutable and does not create SQLite sidecars', { skip: process.platform === 'win32' || !bashAvailable }, () => {
   const script = read('runtime-cutover.sh');
   const verifier = script.match(/^verify_database\(\) \{[\s\S]*?^\}/m)?.[0];
