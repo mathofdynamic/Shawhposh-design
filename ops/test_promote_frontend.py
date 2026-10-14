@@ -174,6 +174,8 @@ class PromoteFrontendTests(unittest.TestCase):
             releases_fd = -1
             releases = root / "web/releases"
             releases.mkdir(parents=True)
+            (root / "web").chmod(0o755)
+            releases.chmod(0o755)
             uid, gid = os.getuid(), os.getgid()
             for index in range(1, 6):
                 sha = f"{index:040x}"
@@ -198,6 +200,13 @@ class PromoteFrontendTests(unittest.TestCase):
             root_fd = os.open(root / "web", os.O_RDONLY | getattr(os, "O_DIRECTORY", 0))
             releases_fd = os.open(releases, os.O_RDONLY | getattr(os, "O_DIRECTORY", 0))
             try:
+                _atomic_switch(
+                    root_fd,
+                    f"{5:040x}",
+                    releases_root=releases,
+                    expected_uid=uid,
+                    expected_gid=gid,
+                )
                 removed = _retain_frontend_releases(
                     root_fd,
                     releases_fd,
