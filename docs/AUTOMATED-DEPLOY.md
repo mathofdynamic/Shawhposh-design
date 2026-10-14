@@ -48,7 +48,7 @@ No owner password is needed for routine deployment. The sudo rule grants only th
 ## Operational limits
 
 - The deploy source is fetched from the fixed repository, never from `ubuntu`-writable staging.
-- Build jobs run in transient systemd units with resource limits and no production secrets; private/link-local network ranges are denied during dependency installation and build/test steps run with private networking.
+- Build jobs run in transient systemd units capped at 768 MiB memory plus 512 MiB swap, with Node's heap capped at 640 MiB and no production secrets. Private/link-local network ranges are denied during dependency installation, and build/test steps run with private networking.
 - The backend service runs as `shawhposh`; backend and frontend releases are root-owned and read-only to both `ubuntu` and the runtime account.
 - Payment/shipping configuration snapshots must remain unchanged across deployment. Owner-configured methods are preserved exactly.
 - Off-host backup replication remains inactive until an owner supplies and configures a real destination.
