@@ -55,6 +55,14 @@ done
 log() { printf '[%s] %s\n' "$1" "$2"; }
 die() { log 'ABORT' "$*" >&2; on_error "${BASH_LINENO[0]:-unknown}" 1; }
 need_command() { command -v "$1" >/dev/null 2>&1 || die "Required command is missing: $1"; }
+replication_unit_has_no_autostart() {
+  local state
+  state=$(systemctl is-enabled "$REPLICATION_UNIT" 2>/dev/null || true)
+  case "$state" in
+    static|disabled|masked|masked-runtime) return 0 ;;
+    *) return 1 ;;
+  esac
+}
 
 if [[ ${EUID:-$(id -u)} -ne 0 ]]; then
   printf '[ABORT] Run this script with sudo from the staged Shawhposh release.\n' >&2
@@ -746,8 +754,8 @@ validate_preflight() {
   if systemctl is-active --quiet "$API_UNIT" || systemctl is-enabled --quiet "$API_UNIT"; then
     die 'A systemd API service is already active or enabled; refusing a dual-runtime cutover.'
   fi
-  if systemctl is-active --quiet "$REPLICATION_UNIT" || systemctl is-enabled --quiet "$REPLICATION_UNIT"; then
-    die 'Off-host replication service is active or enabled; refusing to alter its state.'
+  if systemctl is-active --quiet "$REPLICATION_UNIT" || ! replication_unit_has_no_autostart; then
+    die 'Off-host replication service is active or configured for automatic start; refusing to alter its state.'
   fi
   pm2_api_owner_check
   log 'PRECHECK' 'Existing PM2 API:'
@@ -1239,8 +1247,8 @@ main() {
   runuser -u ubuntu -- test ! -w "$BACKUP_ROOT" || die 'ubuntu can write/delete backup storage.'
   [[ ! -e /etc/shawhposh/offsite.env && ! -L /etc/shawhposh/offsite.env \
     && ! -e /etc/shawhposh/rclone.conf && ! -L /etc/shawhposh/rclone.conf ]] || die 'Off-host replication config appeared during cutover; refusing activation.'
-  if systemctl is-active --quiet "$REPLICATION_UNIT" || systemctl is-enabled --quiet "$REPLICATION_UNIT"; then
-    die 'Off-host replication became active or enabled during cutover.'
+  if systemctl is-active --quiet "$REPLICATION_UNIT" || ! replication_unit_has_no_autostart; then
+    die 'Off-host replication became active or configured for automatic start during cutover.'
   fi
 
   install_sudo_policy

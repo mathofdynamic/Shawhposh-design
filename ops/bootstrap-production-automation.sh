@@ -63,6 +63,14 @@ declare -A CONTROLLER_HASHES=()
 
 log() { printf '[%s] %s\n' "$1" "$2"; }
 die() { log 'ABORT' "$*" >&2; return 1; }
+replication_unit_has_no_autostart() {
+  local state
+  state=$(systemctl is-enabled "$REPLICATION_UNIT" 2>/dev/null || true)
+  case "$state" in
+    static|disabled|masked|masked-runtime) return 0 ;;
+    *) return 1 ;;
+  esac
+}
 
 git_as_ubuntu_from() {
   local path=$1
@@ -642,8 +650,8 @@ verify_runtime() {
   systemctl is-active --quiet auditd || { die 'auditd is inactive.'; return 1; }
   systemctl is-active --quiet "$BACKUP_TIMER" || { die 'Backup timer is inactive.'; return 1; }
   systemctl is-active --quiet "$RESERVATION_TIMER" || { die 'Reservation timer is inactive.'; return 1; }
-  if systemctl is-active --quiet "$REPLICATION_UNIT" || systemctl is-enabled --quiet "$REPLICATION_UNIT"; then
-    die 'Off-host replication became active.'; return 1
+  if systemctl is-active --quiet "$REPLICATION_UNIT" || ! replication_unit_has_no_autostart; then
+    die 'Off-host replication became active or configured for automatic start.'; return 1
   fi
   runuser -u ubuntu -- env HOME=/home/ubuntu PM2_HOME=/home/ubuntu/.pm2 /usr/bin/pm2 jlist \
     | /usr/bin/python3 -c 'import json,sys; a=json.load(sys.stdin); sys.exit(1 if any(p.get("name")=="shawhposh-api" for p in a) else 0)' \

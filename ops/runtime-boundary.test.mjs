@@ -85,6 +85,33 @@ test('sudo policy permits only the SHA-scoped automatic deployment helper', () =
   assert.equal((policy.match(/NOPASSWD:/g) ?? []).length, 1);
 });
 
+test('off-host replication treats a static inactive service as unconfigured, not enabled', { skip: !bashAvailable }, () => {
+  const cutover = read('runtime-cutover.sh');
+  const bootstrap = read('bootstrap-production-automation.sh');
+  const helper = cutover.match(/^replication_unit_has_no_autostart\(\) \{[\s\S]*?^\}/m)?.[0];
+  const bootstrapHelper = bootstrap.match(/^replication_unit_has_no_autostart\(\) \{[\s\S]*?^\}/m)?.[0];
+  assert.ok(helper, 'runtime cutover checks systemd autostart state');
+  assert.equal(bootstrapHelper, helper, 'bootstrap and runtime cutover use identical replication checks');
+
+  const run = state => spawnSync(bash, ['-c', [
+    'set -Eeuo pipefail',
+    'REPLICATION_UNIT=shawhposh-replicate.service',
+    'systemctl() { printf "%s\\n" "$SYSTEMD_STATE"; }',
+    helper,
+    'replication_unit_has_no_autostart',
+  ].join('\n')], {
+    encoding: 'utf8',
+    env: { ...process.env, SYSTEMD_STATE: state },
+  });
+
+  for (const safe of ['static', 'disabled', 'masked', 'masked-runtime']) {
+    assert.equal(run(safe).status, 0, `${safe} should be safe when the service is inactive`);
+  }
+  for (const enabled of ['enabled', 'enabled-runtime', 'linked', 'linked-runtime', 'alias', 'indirect', 'generated', 'transient', '']) {
+    assert.notEqual(run(enabled).status, 0, `${enabled || 'unknown'} must fail closed`);
+  }
+});
+
 test('runtime preflight validates the exact automated sudo policy under strict unset-variable handling', { skip: !bashAvailable }, () => {
   const script = read('runtime-cutover.sh');
   const declarationMatch = script.match(/^readonly AUTOMATED_SUDO_POLICY='([^\r\n]*)\r?\n([^\r\n]*)'$/m);
