@@ -137,6 +137,14 @@ bootstrap_preflight() {
   log 'PRECHECK' 'Static release, host prerequisites, and fixed production paths are ready for owner review.'
 }
 
+create_private_trusted_snapshot_directories() {
+  local trusted_root=$1 path
+  for path in "$trusted_root" "$trusted_root/ops" "$trusted_root/ops/sudoers.d"; do
+    install -d -o root -g root -m 0700 -- "$path"
+    chmod 0700 -- "$path"
+  done
+}
+
 capture_bootstrap_snapshot() {
   local stamp path unit source destination digest
   stamp=$(/usr/bin/date -u +%Y%m%dT%H%M%SZ)
@@ -176,7 +184,7 @@ capture_bootstrap_snapshot() {
     | /usr/bin/python3 -c 'import json,sys; apps=json.load(sys.stdin); rows=[{"name":p.get("name"),"pid":int(p.get("pid",0)),"status":p.get("pm2_env",{}).get("status"),"cwd":p.get("pm2_env",{}).get("pm_cwd")} for p in apps if p.get("name")=="shawhposh-api"]; print(json.dumps(rows,separators=(",",":")))' \
     > "$BOOTSTRAP_SNAPSHOT/pm2-api-before.json"
   chmod 0600 "$BOOTSTRAP_SNAPSHOT/pm2-api-before.json"
-  install -d -o root -g root -m 0700 -- "$BOOTSTRAP_SNAPSHOT/trusted/ops/sudoers.d"
+  create_private_trusted_snapshot_directories "$BOOTSTRAP_SNAPSHOT/trusted"
   for path in "$BOOTSTRAP_SNAPSHOT/trusted" "$BOOTSTRAP_SNAPSHOT/trusted/ops" "$BOOTSTRAP_SNAPSHOT/trusted/ops/sudoers.d"; do
     [[ $(stat -c '%U:%G:%a' -- "$path") == root:root:700 ]] || die "Trusted snapshot directory is not private: $path"
   done

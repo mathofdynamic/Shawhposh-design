@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { dirname, join } from 'node:path';
+import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 import test from 'node:test';
@@ -168,6 +169,63 @@ test('bootstrap snapshots hash-verified scripts as root-owned inputs before exec
   assert.ok(installer.includes('root-owned, hash-verified bootstrap artifacts'));
   for (const command of ['/bin/sh -c', '/usr/bin/node -e', '/usr/bin/git --version', '/bin/rm --version', '/usr/bin/find --version']) {
     assert.ok(bootstrap.includes(`expect_denied ${command}`));
+  }
+});
+
+test('trusted snapshot creation makes every nested directory private', { skip: process.platform === 'win32' || !bashAvailable }, () => {
+  const temporaryRoot = mkdtempSync(join(tmpdir(), 'shawhposh-bootstrap-snapshot-'));
+  const source = [
+    'source "$1"',
+    'install_log="$2/install-paths"',
+    'chmod_log="$2/chmod-paths"',
+    'install() {',
+    '  local owner= group= mode= path',
+    '  [[ $1 == -d ]] || return 90',
+    '  shift',
+    '  while (($#)); do',
+    '    case "$1" in',
+    '      -o) owner=$2; shift 2 ;;',
+    '      -g) group=$2; shift 2 ;;',
+    '      -m) mode=$2; shift 2 ;;',
+    '      --) shift; break ;;',
+    '      *) return 91 ;;',
+    '    esac',
+    '  done',
+    '  [[ $owner == root && $group == root && $mode == 0700 && $# == 1 ]] || return 92',
+    '  path=$1',
+    '  printf "%s\\n" "$path" >> "$install_log"',
+    '  command install -d -m 0700 -- "$path"',
+    '}',
+    'chmod() {',
+    '  [[ $1 == 0700 && $2 == -- && $# == 3 ]] || return 93',
+    '  printf "%s\\n" "$3" >> "$chmod_log"',
+    '  command chmod 0700 -- "$3"',
+    '}',
+    'created="$2/created/trusted"',
+    'create_private_trusted_snapshot_directories "$created"',
+    'existing="$2/existing/trusted"',
+    'mkdir -p "$existing/ops/sudoers.d"',
+    'command chmod 0755 "$existing" "$existing/ops" "$existing/ops/sudoers.d"',
+    'create_private_trusted_snapshot_directories "$existing"',
+    'for root in "$created" "$existing"; do',
+    '  for path in "$root" "$root/ops" "$root/ops/sudoers.d"; do',
+    '    [[ $(stat -c "%a" -- "$path") == 700 ]] || exit 1',
+    '    [[ $(grep -Fxc -- "$path" "$install_log") == 1 ]] || exit 1',
+    '    [[ $(grep -Fxc -- "$path" "$chmod_log") == 1 ]] || exit 1',
+    '  done',
+    'done',
+    'printf "ALL_TRUSTED_DIRECTORIES_MODE_0700\\n"',
+  ].join('\n');
+
+  try {
+    const result = spawnSync(bash, [
+      '-c', source, 'trusted-snapshot-permissions-test',
+      join(directory, 'bootstrap-production-automation.sh'), temporaryRoot,
+    ], { cwd: root, encoding: 'utf8' });
+    assert.equal(result.status, 0, result.stderr || result.stdout);
+    assert.match(result.stdout, /ALL_TRUSTED_DIRECTORIES_MODE_0700/);
+  } finally {
+    rmSync(temporaryRoot, { recursive: true, force: true });
   }
 });
 
