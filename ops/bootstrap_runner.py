@@ -53,6 +53,10 @@ TRUSTED_ARTIFACTS = (
     "ops/shawhposh-reservations.service",
     "ops/shawhposh-reservations.timer",
     "ops/shawhposh-replicate.service",
+    "ops/legacy-systemd/shawhposh-backup.service",
+    "ops/legacy-systemd/shawhposh-backup.timer",
+    "ops/legacy-systemd/shawhposh-reservations.service",
+    "ops/legacy-systemd/shawhposh-reservations.timer",
 )
 SHELL_ARTIFACTS = (
     "ops/bootstrap-production-automation.sh",

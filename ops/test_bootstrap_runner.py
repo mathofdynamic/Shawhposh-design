@@ -110,6 +110,7 @@ class BootstrapRunnerTests(unittest.TestCase):
             root = Path(temporary)
             source_root = root / "source"
             (source_root / "ops" / "sudoers.d").mkdir(parents=True)
+            (source_root / "ops" / "legacy-systemd").mkdir()
             uid, gid = os.getuid(), os.getgid()
             os.chmod(source_root, 0o700)
             os.chmod(source_root / "ops", 0o700)
@@ -134,6 +135,8 @@ class BootstrapRunnerTests(unittest.TestCase):
                 self.assertEqual(info.st_gid, gid, relative)
                 self.assertEqual(stat.S_IMODE(info.st_mode), 0o600, relative)
             self.assertTrue((trusted_root / "ops" / "sudoers.d" / "ubuntu-shawhposh").is_file())
+            self.assertTrue((trusted_root / "ops" / "legacy-systemd" / "shawhposh-backup.service").is_file())
+            self.assertTrue((trusted_root / "ops" / "legacy-systemd" / "shawhposh-reservations.timer").is_file())
 
             with self.assertRaisesRegex(runner.RunnerError, "Unsafe allowlisted artifact path"):
                 runner._require_safe_components(trusted_root, "ops/../bootstrap-production-automation.sh", uid, gid)

@@ -9,17 +9,24 @@ readonly REPOSITORY_URL='https://github.com/mathofdynamic/Shawhposh-design'
 readonly EXPECTED_RUNTIME_SHA=c45e3c67fe986a362c4cb46e2a9859568f8b0a8f
 readonly EXPECTED_RUNTIME_RELEASE=/home/ubuntu/shawhposh/releases/c45e3c67fe986a362c4cb46e2a9859568f8b0a8f
 readonly API_RELEASES=/home/ubuntu/shawhposh/releases
+readonly API_CURRENT=/home/ubuntu/shawhposh/current
+readonly OLD_PRODUCTION_SHA=2ede63d7d207735dce0958464f4e6462f80494e1
 readonly DOMAIN=shawhposh.ir
 readonly DATABASE_FILE=/var/lib/shawhposh/shawhposh.sqlite
 readonly ENV_FILE=/var/lib/shawhposh/.env
 readonly RECEIPT_ROOT=/var/lib/shawhposh/uploads/payment-receipts
 readonly BACKUP_ROOT=/var/backups/shawhposh
 readonly RUNTIME_CURRENT=/opt/shawhposh/current
+readonly RUNTIME_ROOT=/opt/shawhposh
+readonly RUNTIME_RELEASES=/opt/shawhposh/releases
+readonly PROMOTION_HELPER=/usr/local/sbin/shawhposh-promote-release
 readonly WEB_ROOT=/var/www/shawhposh
 readonly WEB_RELEASES=/var/www/shawhposh/releases
 readonly WEB_CURRENT=/var/www/shawhposh/current
 readonly API_UNIT=shawhposh-api.service
+readonly BACKUP_UNIT=shawhposh-backup.service
 readonly BACKUP_TIMER=shawhposh-backup.timer
+readonly RESERVATION_UNIT=shawhposh-reservations.service
 readonly RESERVATION_TIMER=shawhposh-reservations.timer
 readonly REPLICATION_UNIT=shawhposh-replicate.service
 readonly DEPLOY_COMMAND=/usr/local/sbin/shawhposh-deploy
@@ -92,7 +99,13 @@ validate_artifacts() {
     ops/shawhposh-reservations.timer ops/shawhposh-replicate.service; do
     require_file "$root/$file"
   done
-  if [[ $role == controller ]]; then require_file "$root/ops/promote_frontend.py"; fi
+  if [[ $role == controller ]]; then
+    require_file "$root/ops/promote_frontend.py"
+    for file in ops/legacy-systemd/shawhposh-backup.service ops/legacy-systemd/shawhposh-backup.timer \
+      ops/legacy-systemd/shawhposh-reservations.service ops/legacy-systemd/shawhposh-reservations.timer; do
+      require_file "$root/$file"
+    done
+  fi
   require_dir "$root/node_modules"
   require_dir "$root/server-dist"
   [[ $(stat -c '%U' -- "$root/node_modules") == ubuntu ]] || die "node_modules is not ubuntu-owned: $root"
@@ -157,7 +170,9 @@ bootstrap_preflight() {
       ops/automated_deploy.py ops/promote_frontend.py ops/promote_release.py ops/replicate-backups.mjs \
       ops/shawhposh-deploy ops/sudoers.d/ubuntu-shawhposh ops/shawhposh-api.service \
       ops/shawhposh-backup.service ops/shawhposh-backup.timer ops/shawhposh-reservations.service \
-      ops/shawhposh-reservations.timer ops/shawhposh-replicate.service; do
+      ops/shawhposh-reservations.timer ops/shawhposh-replicate.service \
+      ops/legacy-systemd/shawhposh-backup.service ops/legacy-systemd/shawhposh-backup.timer \
+      ops/legacy-systemd/shawhposh-reservations.service ops/legacy-systemd/shawhposh-reservations.timer; do
       require_file "$CONTROLLER_RELEASE/$file"
       [[ $(stat -c '%U:%G:%a' -- "$CONTROLLER_RELEASE/$file") == root:root:600 ]] \
         || die "Trusted controller artifact has unsafe ownership or mode: $file"
@@ -204,7 +219,9 @@ bootstrap_preflight() {
   [[ -x /usr/sbin/visudo && -x /usr/bin/sudo && -x /usr/bin/systemctl && -x /usr/bin/curl ]] || die 'Required system utilities are missing.'
   /usr/sbin/visudo -cf /etc/sudoers >/dev/null || die 'Current sudoers configuration is invalid.'
   for file in ops/runtime-cutover.sh ops/install-automated-deploy.sh ops/automated_deploy.py ops/promote_frontend.py \
-    ops/promote_release.py ops/shawhposh-deploy ops/sudoers.d/ubuntu-shawhposh; do
+    ops/promote_release.py ops/shawhposh-deploy ops/sudoers.d/ubuntu-shawhposh \
+    ops/legacy-systemd/shawhposh-backup.service ops/legacy-systemd/shawhposh-backup.timer \
+    ops/legacy-systemd/shawhposh-reservations.service ops/legacy-systemd/shawhposh-reservations.timer; do
     CONTROLLER_HASHES[$file]=$(sha256sum -- "$CONTROLLER_RELEASE/$file")
     CONTROLLER_HASHES[$file]=${CONTROLLER_HASHES[$file]%% *}
   done
@@ -213,7 +230,7 @@ bootstrap_preflight() {
 
 create_private_trusted_snapshot_directories() {
   local trusted_root=$1 path
-  for path in "$trusted_root" "$trusted_root/ops" "$trusted_root/ops/sudoers.d"; do
+  for path in "$trusted_root" "$trusted_root/ops" "$trusted_root/ops/sudoers.d" "$trusted_root/ops/legacy-systemd"; do
     install -d -o root -g root -m 0700 -- "$path"
     chmod 0700 -- "$path"
   done
@@ -259,11 +276,14 @@ capture_bootstrap_snapshot() {
     > "$BOOTSTRAP_SNAPSHOT/pm2-api-before.json"
   chmod 0600 "$BOOTSTRAP_SNAPSHOT/pm2-api-before.json"
   create_private_trusted_snapshot_directories "$BOOTSTRAP_SNAPSHOT/trusted"
-  for path in "$BOOTSTRAP_SNAPSHOT/trusted" "$BOOTSTRAP_SNAPSHOT/trusted/ops" "$BOOTSTRAP_SNAPSHOT/trusted/ops/sudoers.d"; do
+  for path in "$BOOTSTRAP_SNAPSHOT/trusted" "$BOOTSTRAP_SNAPSHOT/trusted/ops" \
+    "$BOOTSTRAP_SNAPSHOT/trusted/ops/sudoers.d" "$BOOTSTRAP_SNAPSHOT/trusted/ops/legacy-systemd"; do
     [[ $(stat -c '%U:%G:%a' -- "$path") == root:root:700 ]] || die "Trusted snapshot directory is not private: $path"
   done
   for source in ops/runtime-cutover.sh ops/install-automated-deploy.sh ops/automated_deploy.py \
-    ops/promote_frontend.py ops/promote_release.py ops/shawhposh-deploy ops/sudoers.d/ubuntu-shawhposh; do
+    ops/promote_frontend.py ops/promote_release.py ops/shawhposh-deploy ops/sudoers.d/ubuntu-shawhposh \
+    ops/legacy-systemd/shawhposh-backup.service ops/legacy-systemd/shawhposh-backup.timer \
+    ops/legacy-systemd/shawhposh-reservations.service ops/legacy-systemd/shawhposh-reservations.timer; do
     destination=$BOOTSTRAP_SNAPSHOT/trusted/$source
     [[ -f $CONTROLLER_RELEASE/$source && ! -L $CONTROLLER_RELEASE/$source ]] || die "Trusted controller source changed type: $source"
     source_owner=$(stat -c '%U:%G' -- "$CONTROLLER_RELEASE/$source")
@@ -355,6 +375,139 @@ perform_automated_deploy_install() {
 pm2_other_snapshot() {
   runuser -u ubuntu -- env HOME=/home/ubuntu PM2_HOME=/home/ubuntu/.pm2 /usr/bin/pm2 jlist \
     | /usr/bin/python3 -c 'import json,sys; a=json.load(sys.stdin); r=sorted((p.get("name",""),int(p.get("pid",0)),p.get("pm2_env",{}).get("status","unknown")) for p in a if p.get("name")!="shawhposh-api"); print(json.dumps(r,separators=(",",":")))'
+}
+
+recover_interrupted_legacy_timers() {
+  local unit path pid owner health release_names release source destination relative expected_hash recovery_stage
+  local -a timer_units=("$BACKUP_TIMER" "$RESERVATION_TIMER")
+  local -a legacy_units=(shawhposh-backup.service shawhposh-backup.timer \
+    shawhposh-reservations.service shawhposh-reservations.timer)
+  if systemctl is-active --quiet "${timer_units[0]}" && systemctl is-active --quiet "${timer_units[1]}" \
+    && systemctl is-enabled --quiet "${timer_units[0]}" && systemctl is-enabled --quiet "${timer_units[1]}"; then
+    local all_legacy=1
+    for unit in "${legacy_units[@]}"; do
+      path=/etc/systemd/system/$unit
+      if [[ ! -f $path || -L $path || $(stat -c '%U:%G:%a' -- "$path") != root:root:644 ]]; then
+        all_legacy=0
+        break
+      fi
+      if ! cmp -s -- "$path" "$CONTROLLER_RELEASE/ops/legacy-systemd/$unit"; then
+        all_legacy=0
+        break
+      fi
+    done
+    (( all_legacy )) && return 0
+  fi
+
+  # Only recover the exact interrupted-preparation state: protected copies exist,
+  # no protected current pointer was installed, and the known PM2 runtime/data
+  # still match the pre-cutover state. Other inactive-timer states remain a hard
+  # preflight failure and are never repaired speculatively.
+  (( RUNNER_MODE == 1 && RESUME_RUNTIME == 0 )) || return 0
+  systemctl is-enabled --quiet "${timer_units[0]}" && systemctl is-enabled --quiet "${timer_units[1]}" || return 0
+  [[ ! -e $RUNTIME_CURRENT && ! -L $RUNTIME_CURRENT ]] || return 0
+  if systemctl is-active --quiet "$API_UNIT" || systemctl is-enabled --quiet "$API_UNIT"; then return 0; fi
+  if systemctl is-active --quiet "$BACKUP_UNIT" || systemctl is-active --quiet "$RESERVATION_UNIT"; then return 0; fi
+  [[ -d $RUNTIME_ROOT && ! -L $RUNTIME_ROOT && $(stat -c '%U:%G:%a' -- "$RUNTIME_ROOT") == root:root:755 \
+    && -d $RUNTIME_RELEASES && ! -L $RUNTIME_RELEASES && $(stat -c '%U:%G:%a' -- "$RUNTIME_RELEASES") == root:root:755 \
+    && -f $PROMOTION_HELPER && ! -L $PROMOTION_HELPER \
+    && $(stat -c '%U:%G:%a' -- "$PROMOTION_HELPER") == root:root:755 ]] || return 0
+  release_names=$(find -P "$RUNTIME_RELEASES" -mindepth 1 -maxdepth 1 -printf '%f\n' | sort) || return 0
+  [[ $release_names == "$(printf '%s\n%s' "$OLD_PRODUCTION_SHA" "$EXPECTED_RUNTIME_SHA")" ]] || return 0
+  for release in "$RUNTIME_RELEASES/$OLD_PRODUCTION_SHA" "$RUNTIME_RELEASES/$EXPECTED_RUNTIME_SHA"; do
+    [[ -d $release && ! -L $release && $(stat -c '%U:%G:%a' -- "$release") == root:root:755 ]] || return 0
+  done
+  [[ $(readlink -e -- "$API_CURRENT") == "$API_RELEASES/$OLD_PRODUCTION_SHA" \
+    && $(stat -c '%U:%G:%a' -- /var/lib/shawhposh) == ubuntu:ubuntu:700 \
+    && $(stat -c '%U:%G:%a' -- "$DATABASE_FILE") == ubuntu:ubuntu:600 \
+    && $(stat -c '%U:%G:%a' -- "$ENV_FILE") == ubuntu:ubuntu:600 \
+    && $(stat -c '%U:%G:%a' -- /var/lib/shawhposh/uploads) == ubuntu:ubuntu:700 \
+    && $(stat -c '%U:%G:%a' -- "$RECEIPT_ROOT") == ubuntu:ubuntu:700 \
+    && $(stat -c '%U:%G:%a' -- "$BACKUP_ROOT") == ubuntu:ubuntu:700 ]] || return 0
+
+  pid=$(runuser -u ubuntu -- env HOME=/home/ubuntu PM2_HOME=/home/ubuntu/.pm2 /usr/bin/pm2 jlist \
+    | /usr/bin/python3 -c 'import json,sys; apps=[p for p in json.load(sys.stdin) if p.get("name")=="shawhposh-api"]; ok=len(apps)==1 and apps[0].get("pm2_env",{}).get("status")=="online" and int(apps[0].get("pid",0))>0; print(apps[0].get("pid",0) if len(apps)==1 else 0); sys.exit(0 if ok else 1)') || return 0
+  [[ $pid =~ ^[1-9][0-9]*$ ]] || return 0
+  owner=$(ps -o user= -p "$pid" | awk '{$1=$1; print}') || return 0
+  [[ $owner == ubuntu ]] || return 0
+  health=$(/usr/bin/curl --fail --silent --show-error --max-time 8 --resolve "$DOMAIN:443:127.0.0.1" "https://$DOMAIN/api/health") || return 0
+  printf '%s\n' "$health" | /usr/bin/python3 -c 'import json,sys; d=json.load(sys.stdin); sys.exit(0 if d.get("status")=="ok" and d.get("database")=="connected" and d.get("version")==sys.argv[1] else 1)' "$OLD_PRODUCTION_SHA" || return 0
+  verify_database || return 0
+
+  for unit in "$API_UNIT" "$BACKUP_UNIT" "$BACKUP_TIMER" "$RESERVATION_UNIT" "$RESERVATION_TIMER" "$REPLICATION_UNIT"; do
+    path=/etc/systemd/system/$unit
+    [[ -f $path && ! -L $path && $(stat -c '%U:%G:%a' -- "$path") == root:root:644 \
+      && -f $CONTROLLER_RELEASE/ops/$unit && ! -L $CONTROLLER_RELEASE/ops/$unit ]] || return 0
+    if [[ $unit == "$API_UNIT" || $unit == "$REPLICATION_UNIT" ]]; then
+      cmp -s -- "$path" "$CONTROLLER_RELEASE/ops/$unit" || return 0
+    elif ! cmp -s -- "$path" "$CONTROLLER_RELEASE/ops/$unit" \
+      && ! cmp -s -- "$path" "$CONTROLLER_RELEASE/ops/legacy-systemd/$unit"; then
+      return 0
+    fi
+  done
+
+  for unit in "${legacy_units[@]}"; do
+    relative=ops/legacy-systemd/$unit
+    source=$BOOTSTRAP_SNAPSHOT/trusted/$relative
+    expected_hash=${CONTROLLER_HASHES[$relative]:-}
+    [[ -n $expected_hash && -f $source && ! -L $source \
+      && $(stat -c '%U:%G:%a' -- "$source") == root:root:600 ]] || return 0
+    [[ $(sha256sum -- "$source") == "$expected_hash  $source" ]] || return 0
+  done
+  /usr/bin/systemd-analyze verify \
+    "$BOOTSTRAP_SNAPSHOT/trusted/ops/legacy-systemd/shawhposh-backup.service" \
+    "$BOOTSTRAP_SNAPSHOT/trusted/ops/legacy-systemd/shawhposh-backup.timer" \
+    "$BOOTSTRAP_SNAPSHOT/trusted/ops/legacy-systemd/shawhposh-reservations.service" \
+    "$BOOTSTRAP_SNAPSHOT/trusted/ops/legacy-systemd/shawhposh-reservations.timer" || return 0
+
+  recovery_stage=$BOOTSTRAP_SNAPSHOT/legacy-systemd-restore
+  install -d -o root -g root -m 0700 -- "$recovery_stage" || return 1
+  for unit in "${legacy_units[@]}"; do
+    source=$BOOTSTRAP_SNAPSHOT/trusted/ops/legacy-systemd/$unit
+    install -o root -g root -m 0644 -- "$source" "$recovery_stage/$unit" || return 1
+    [[ $(stat -c '%U:%G:%a' -- "$recovery_stage/$unit") == root:root:644 ]] || return 1
+  done
+
+  log 'RECOVERY' 'Restoring the reviewed ubuntu-owned timer units left inactive by the interrupted protected-release preparation.'
+  systemctl stop "${timer_units[@]}" || return 1
+  for unit in "${legacy_units[@]}"; do
+    destination=/etc/systemd/system/$unit
+    if ! mv -fT -- "$recovery_stage/$unit" "$destination"; then
+      systemctl stop "${timer_units[@]}" "$BACKUP_UNIT" "$RESERVATION_UNIT" >/dev/null 2>&1 || true
+      restore_recovery_timer_units || log 'CRITICAL' 'Failed to restore the pre-recovery timer-unit snapshot.'
+      return 1
+    fi
+  done
+  if ! systemctl daemon-reload || ! systemctl start "${timer_units[@]}"; then
+    systemctl stop "${timer_units[@]}" "$BACKUP_UNIT" "$RESERVATION_UNIT" >/dev/null 2>&1 || true
+    restore_recovery_timer_units || log 'CRITICAL' 'Failed to restore the pre-recovery timer-unit snapshot.'
+    return 1
+  fi
+  for unit in "${timer_units[@]}"; do
+    if ! systemctl is-enabled --quiet "$unit" || ! systemctl is-active --quiet "$unit"; then
+      systemctl stop "${timer_units[@]}" "$BACKUP_UNIT" "$RESERVATION_UNIT" >/dev/null 2>&1 || true
+      restore_recovery_timer_units || log 'CRITICAL' 'Failed to restore the pre-recovery timer-unit snapshot.'
+      return 1
+    fi
+  done
+  log 'RECOVERY' 'Legacy backup and reservation timers are active again; production API and data remain on the verified PM2 release.'
+}
+
+restore_recovery_timer_units() {
+  local unit source destination rollback_stage=$BOOTSTRAP_SNAPSHOT/recovery-rollback
+  local -a legacy_units=(shawhposh-backup.service shawhposh-backup.timer \
+    shawhposh-reservations.service shawhposh-reservations.timer)
+  install -d -o root -g root -m 0700 -- "$rollback_stage" || return 1
+  for unit in "${legacy_units[@]}"; do
+    source=$BOOTSTRAP_SNAPSHOT/$unit
+    [[ -f $source && ! -L $source && $(stat -c '%U:%G:%a' -- "$source") == root:root:600 ]] || return 1
+    install -o root -g root -m 0644 -- "$source" "$rollback_stage/$unit" || return 1
+  done
+  for unit in "${legacy_units[@]}"; do
+    destination=/etc/systemd/system/$unit
+    mv -fT -- "$rollback_stage/$unit" "$destination" || return 1
+  done
+  systemctl daemon-reload
 }
 
 prepare_resume_runtime_snapshot() {
@@ -580,6 +733,10 @@ run_bootstrap_phases() {
     return 0
   fi
   log 'RUNTIME CUTOVER' 'Starting fixed c45 runtime cutover.'
+  if ! recover_interrupted_legacy_timers; then
+    log 'RECOVERY: FAILED' 'Could not safely restore the interrupted legacy timer state; cutover and deploy installation were skipped.'
+    return 1
+  fi
   if ! run_cutover_preflight; then
     log 'PRECHECK: FAILED' 'Cutover dry run failed; no production mutation was attempted.'
     return 1

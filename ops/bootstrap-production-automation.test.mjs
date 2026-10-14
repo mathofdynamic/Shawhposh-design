@@ -22,6 +22,7 @@ function runPhaseHarness(cutoverStatus, installerStatus, verifyStatus) {
     'source "$1"',
     'events=""',
     'record() { events="$events $1"; }',
+    'recover_interrupted_legacy_timers() { record recovery; return "${MOCK_RECOVERY:-0}"; }',
     'run_cutover_preflight() { record preflight; return "${MOCK_PREFLIGHT:-0}"; }',
     'perform_runtime_cutover() { record cutover; return "$MOCK_CUTOVER"; }',
     'verify_legacy_pm2_rollback() { record rollback; return 0; }',
@@ -101,7 +102,7 @@ test('preflight and one confirmation precede snapshots and all production mutati
 test('bootstrap stage ordering and cutover failure never starts the installer', { skip: !bashAvailable }, () => {
   const result = runPhaseHarness(17, 0, 0);
   assert.equal(result.status, 0, result.stderr);
-  assert.match(result.stdout, /RESULT=1 ACCEPTED=0 EVENTS= preflight cutover rollback/);
+  assert.match(result.stdout, /RESULT=1 ACCEPTED=0 EVENTS= recovery preflight cutover rollback/);
   assert.doesNotMatch(result.stdout, /EVENTS=.*(?:install|snapshot)/);
 });
 
@@ -110,6 +111,7 @@ test('cutover dry-run failure prevents backup/cutover and automated installation
     'source "$1"',
     'events=""',
     'record() { events="$events $1"; }',
+    'recover_interrupted_legacy_timers() { record recovery; return 0; }',
     'run_cutover_preflight() { record preflight; return 23; }',
     'perform_runtime_cutover() { record cutover; return 0; }',
     'if run_bootstrap_phases; then result=0; else result=$?; fi',
@@ -120,14 +122,34 @@ test('cutover dry-run failure prevents backup/cutover and automated installation
     encoding: 'utf8',
   });
   assert.equal(result.status, 0, result.stderr);
-  assert.match(result.stdout, /RESULT=1 ACCEPTED=0 EVENTS= preflight/);
-  assert.doesNotMatch(result.stdout, /EVENTS= preflight (?:cutover|install)/);
+  assert.match(result.stdout, /RESULT=1 ACCEPTED=0 EVENTS= recovery preflight/);
+  assert.doesNotMatch(result.stdout, /EVENTS= recovery preflight (?:cutover|install)/);
+});
+
+test('failed interrupted-state recovery prevents cutover preflight and deployment installation', { skip: !bashAvailable }, () => {
+  const source = [
+    'source "$1"',
+    'events=""',
+    'record() { events="$events $1"; }',
+    'recover_interrupted_legacy_timers() { record recovery; return 19; }',
+    'run_cutover_preflight() { record preflight; return 0; }',
+    'perform_runtime_cutover() { record cutover; return 0; }',
+    'if run_bootstrap_phases; then result=0; else result=$?; fi',
+    'printf "RESULT=%s EVENTS=%s\\n" "$result" "$events"',
+  ].join('\n');
+  const result = spawnSync(bash, ['-c', source, 'bootstrap-recovery-failure-test', join(directory, 'bootstrap-production-automation.sh')], {
+    cwd: root,
+    encoding: 'utf8',
+  });
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /RESULT=1 EVENTS= recovery/);
+  assert.doesNotMatch(result.stdout.match(/RESULT=.*$/m)?.[0] ?? '', /\b(preflight|cutover|install)\b/);
 });
 
 test('installer failure preserves an accepted runtime and restores only the prior sudo policy', { skip: !bashAvailable }, () => {
   const result = runPhaseHarness(0, 17, 0);
   assert.equal(result.status, 0, result.stderr);
-  assert.match(result.stdout, /RESULT=1 ACCEPTED=1 EVENTS= preflight cutover snapshot install restore/);
+  assert.match(result.stdout, /RESULT=1 ACCEPTED=1 EVENTS= recovery preflight cutover snapshot install restore/);
   assert.match(result.stdout, /RUNTIME CUTOVER: SUCCESS/);
   assert.match(result.stdout, /AUTOMATED DEPLOY INSTALL: FAILED/);
   assert.doesNotMatch(result.stdout, /runtime rollback/i);
@@ -139,7 +161,7 @@ test('pre-install policy snapshot failure preserves runtime and skips deploy ins
   try {
     const result = runPhaseHarness(0, 0, 0);
     assert.equal(result.status, 0, result.stderr);
-    assert.match(result.stdout, /RESULT=1 ACCEPTED=1 EVENTS= preflight cutover snapshot restore-original/);
+    assert.match(result.stdout, /RESULT=1 ACCEPTED=1 EVENTS= recovery preflight cutover snapshot restore-original/);
     assert.match(result.stdout, /RUNTIME CUTOVER: SUCCESS/);
     assert.match(result.stdout, /AUTOMATED DEPLOY INSTALL: FAILED/);
     assert.doesNotMatch(result.stdout, /EVENTS=.*install/);
@@ -152,7 +174,7 @@ test('pre-install policy snapshot failure preserves runtime and skips deploy ins
 test('post-install verification failure restores scoped sudo while preserving runtime', { skip: !bashAvailable }, () => {
   const result = runPhaseHarness(0, 0, 17);
   assert.equal(result.status, 0, result.stderr);
-  assert.match(result.stdout, /RESULT=1 ACCEPTED=1 EVENTS= preflight cutover snapshot install verify restore/);
+  assert.match(result.stdout, /RESULT=1 ACCEPTED=1 EVENTS= recovery preflight cutover snapshot install verify restore/);
   assert.match(result.stdout, /RUNTIME CUTOVER: SUCCESS/);
   assert.match(result.stdout, /AUTOMATED DEPLOY INSTALL: FAILED/);
 });
@@ -160,7 +182,7 @@ test('post-install verification failure restores scoped sudo while preserving ru
 test('successful bootstrap completes cutover before installing and verifying deploy access', { skip: !bashAvailable }, () => {
   const result = runPhaseHarness(0, 0, 0);
   assert.equal(result.status, 0, result.stderr);
-  assert.match(result.stdout, /RESULT=0 ACCEPTED=1 EVENTS= preflight cutover snapshot install verify/);
+  assert.match(result.stdout, /RESULT=0 ACCEPTED=1 EVENTS= recovery preflight cutover snapshot install verify/);
   assert.match(result.stdout, /AUTOMATED DEPLOY INSTALL: SUCCESS/);
 });
 
@@ -196,6 +218,9 @@ test('runtime cutover internal mode is root-only, fixed-SHA, single-confirmation
   assert.ok(cutover.includes("stat -c '%U:%G:%a' -- \"$WEB_ROOT\") == 'root:root:755'"));
   assert.ok(cutover.includes('runuser -u ubuntu -- test ! -w "$WEB_CURRENT/index.html"'));
   assert.ok(cutover.includes('Restored the pre-cutover ubuntu ownership of the static release tree.'));
+  assert.ok(cutover.includes("trap 'on_signal HUP 129' HUP"));
+  assert.ok(cutover.includes("trap 'on_signal INT 130' INT"));
+  assert.ok(cutover.includes("trap 'on_signal TERM 143' TERM"));
 });
 
 test('bootstrap snapshots hash-verified scripts as root-owned inputs before executing either mutation script', () => {
@@ -253,7 +278,7 @@ test('trusted snapshot creation makes every nested directory private', { skip: p
     'command chmod 0755 "$existing" "$existing/ops" "$existing/ops/sudoers.d"',
     'create_private_trusted_snapshot_directories "$existing"',
     'for root in "$created" "$existing"; do',
-    '  for path in "$root" "$root/ops" "$root/ops/sudoers.d"; do',
+    '  for path in "$root" "$root/ops" "$root/ops/sudoers.d" "$root/ops/legacy-systemd"; do',
     '    [[ $(stat -c "%a" -- "$path") == 700 ]] || exit 1',
     '    [[ $(grep -Fxc -- "$path" "$install_log") == 1 ]] || exit 1',
     '    [[ $(grep -Fxc -- "$path" "$chmod_log") == 1 ]] || exit 1',
@@ -281,4 +306,35 @@ test('installer accepts only clean main or detached origin/main and retains exac
   assert.ok(installer.includes('blocks != [("root", expected)]'));
   assert.ok(installer.includes("readonly SHA_SUDO_ARGUMENT='^[0-9a-f]{40}$'"));
   assert.ok(!installer.includes('NOPASSWD: ALL'));
+});
+
+test('interrupted-preparation recovery is gated before dry-run by legacy runtime invariants', () => {
+  const recovery = bootstrap.indexOf('recover_interrupted_legacy_timers() {');
+  const invocation = bootstrap.indexOf('if ! recover_interrupted_legacy_timers; then');
+  const dryRun = bootstrap.indexOf('if ! run_cutover_preflight; then');
+  assert.ok(recovery >= 0 && invocation > recovery && dryRun > invocation);
+  assert.ok(bootstrap.includes('[[ ! -e $RUNTIME_CURRENT && ! -L $RUNTIME_CURRENT ]]'));
+  assert.ok(bootstrap.includes('$(stat -c \'%U:%G:%a\' -- "$DATABASE_FILE") == ubuntu:ubuntu:600'));
+  assert.ok(bootstrap.includes('$(stat -c \'%U:%G:%a\' -- "$ENV_FILE") == ubuntu:ubuntu:600'));
+  assert.ok(bootstrap.includes('cmp -s -- "$path" "$CONTROLLER_RELEASE/ops/$unit"'));
+  assert.ok(bootstrap.includes('ops/legacy-systemd/shawhposh-backup.service'));
+  assert.ok(bootstrap.includes('cmp -s -- "$path" "$CONTROLLER_RELEASE/ops/legacy-systemd/$unit"'));
+  assert.ok(bootstrap.includes('systemctl is-enabled --quiet "${timer_units[0]}"'));
+  assert.ok(bootstrap.includes('restore_recovery_timer_units || log'));
+  assert.ok(bootstrap.includes('mv -fT -- "$recovery_stage/$unit" "$destination"'));
+  assert.ok(!bootstrap.includes('rm -rf'));
+});
+
+test('legacy recovery units exactly match the reviewed PM2-era production commit', () => {
+  const sha = '2ede63d7d207735dce0958464f4e6462f80494e1';
+  for (const unit of [
+    'shawhposh-backup.service',
+    'shawhposh-backup.timer',
+    'shawhposh-reservations.service',
+    'shawhposh-reservations.timer',
+  ]) {
+    const expected = spawnSync('git', ['show', `${sha}:ops/${unit}`], { cwd: root, encoding: 'utf8' });
+    assert.equal(expected.status, 0, expected.stderr);
+    assert.equal(read(`legacy-systemd/${unit}`).replace(/\r\n/g, '\n'), expected.stdout.replace(/\r\n/g, '\n'));
+  }
 });

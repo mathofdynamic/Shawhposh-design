@@ -573,7 +573,21 @@ on_error() {
   log 'FAIL' "Stopped at line $line with exit status $status. Review logs before retrying."
   exit "$status"
 }
+on_signal() {
+  local signal=$1 status=$2
+  trap - HUP INT TERM
+  if (( CUTOVER_ACTIVE && !CUTOVER_ACCEPTED )); then
+    rollback_incomplete_cutover || true
+  elif (( CUTOVER_ACTIVE )); then
+    log 'FAIL' 'The runtime acceptance gate already passed; preserving the healthy systemd runtime.'
+  fi
+  log 'FAIL' "Received $signal; stopped with exit status $status."
+  exit "$status"
+}
 trap 'on_error "$LINENO" "$?"' ERR
+trap 'on_signal HUP 129' HUP
+trap 'on_signal INT 130' INT
+trap 'on_signal TERM 143' TERM
 
 protected_directory_mode_is_acceptable() {
   local owner_group_mode=$1 contents=$2
