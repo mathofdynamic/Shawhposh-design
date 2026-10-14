@@ -835,13 +835,18 @@ system_uid_range_contains() {
   (( system_uid_max_value >= system_uid_min_value && service_uid_value >= system_uid_min_value && service_uid_value <= system_uid_max_value ))
 }
 
+runtime_user_sudo_policy_denies_access() {
+  local policy_output=$1
+  [[ $policy_output == 'User shawhposh is not allowed to run sudo on '* ]]
+}
+
 create_or_verify_runtime_user() {
   log 'USER' 'Creating or validating the locked, non-login Shawhposh service identity.'
   if ! getent passwd shawhposh >/dev/null; then
     useradd --system --user-group --home-dir /nonexistent --no-create-home --shell /usr/sbin/nologin shawhposh
     passwd --lock shawhposh >/dev/null
   fi
-  local passwd_entry shell home groups password_state service_uid system_uid_min system_uid_max regular_uid_min
+  local passwd_entry shell home groups password_state service_uid system_uid_min system_uid_max regular_uid_min target_sudo_policy
   passwd_entry=$(getent passwd shawhposh) || die 'Could not inspect the Shawhposh service identity.'
   IFS=: read -r _ _ _ _ _ home shell <<< "$passwd_entry"
   [[ $home == /nonexistent && $shell == /usr/sbin/nologin ]] || die 'Existing shawhposh account has an unexpected home or shell.'
@@ -856,7 +861,8 @@ create_or_verify_runtime_user() {
   password_state=$(passwd -S shawhposh | awk '{print $2}')
   [[ $password_state == L || $password_state == LK || $password_state == NP ]] || die 'The Shawhposh service account password is not locked.'
   [[ ! -e /nonexistent/.ssh && ! -L /nonexistent/.ssh ]] || die 'Unexpected SSH key directory exists for the service account.'
-  if sudo -l -U shawhposh >/dev/null 2>&1; then die 'The Shawhposh runtime account has sudo permissions.'; fi
+  target_sudo_policy=$(LC_ALL=C sudo -l -U shawhposh 2>&1) || die 'Could not inspect the Shawhposh runtime sudo policy.'
+  runtime_user_sudo_policy_denies_access "$target_sudo_policy" || die 'The Shawhposh runtime account has sudo permissions.'
   log 'USER' "uid=$(id -u shawhposh) groups=$groups shell=$shell password=$password_state"
 }
 

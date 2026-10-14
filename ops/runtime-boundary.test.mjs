@@ -229,6 +229,25 @@ test('runtime account UID validation falls back to UID_MIN when SYS_UID_MAX is a
   assert.equal(outsideConfiguredRange.status, 0, `${outsideConfiguredRange.stdout}\n${outsideConfiguredRange.stderr}`);
 });
 
+test('runtime sudo validation recognizes sudo list success for a denied target user', { skip: !bashAvailable }, () => {
+  const script = read('runtime-cutover.sh');
+  const helper = script.match(/^runtime_user_sudo_policy_denies_access\(\) \{[\s\S]*?^\}/m)?.[0];
+  assert.ok(helper, 'runtime cutover has a focused target-user sudo policy validator');
+  const accountValidation = script.match(/^create_or_verify_runtime_user\(\) \{[\s\S]*?^\}/m)?.[0] ?? '';
+  assert.match(accountValidation, /LC_ALL=C sudo -l -U shawhposh/);
+  assert.match(accountValidation, /runtime_user_sudo_policy_denies_access/);
+
+  const run = command => spawnSync(bash, ['-c', ['set -Eeuo pipefail', helper, command].join('\n')], { encoding: 'utf8' });
+  const denied = run("runtime_user_sudo_policy_denies_access 'User shawhposh is not allowed to run sudo on host.'");
+  assert.equal(denied.status, 0, `${denied.stdout}\n${denied.stderr}`);
+
+  const allowed = run("if runtime_user_sudo_policy_denies_access 'User shawhposh may run the following commands on host:'; then exit 19; fi");
+  assert.equal(allowed.status, 0, `${allowed.stdout}\n${allowed.stderr}`);
+
+  const unexpected = run("if runtime_user_sudo_policy_denies_access 'sudo policy query failed'; then exit 19; fi");
+  assert.equal(unexpected.status, 0, `${unexpected.stdout}\n${unexpected.stderr}`);
+});
+
 test('backup snapshot verification is immutable and does not create SQLite sidecars', { skip: process.platform === 'win32' || !bashAvailable }, () => {
   const script = read('runtime-cutover.sh');
   const verifier = script.match(/^verify_database\(\) \{[\s\S]*?^\}/m)?.[0];
