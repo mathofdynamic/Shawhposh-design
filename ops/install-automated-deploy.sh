@@ -82,6 +82,12 @@ require_source_file() {
   [[ -f $path && ! -L $path ]] || die "Required reviewed install artifact is missing or unsafe: $path"
 }
 
+validate_runtime_release_metadata() {
+  local metadata_path=$1 release_sha=$2
+  [[ $release_sha =~ ^[0-9a-f]{40}$ && -f $metadata_path && ! -L $metadata_path ]] || return 1
+  printf 'APP_VERSION=%s\n' "$release_sha" | /usr/bin/cmp -s - "$metadata_path"
+}
+
 require_interactive_installer_terminal() {
   [[ ${SHAWHPOSH_BOOTSTRAP_CONTEXT:-} == "$BOOTSTRAP_CONTEXT_VALUE" ]] && return 0
   [[ -t 0 ]] || die 'Owner installation requires a terminal.'
@@ -149,8 +155,8 @@ runtime_target=$(readlink -e -- "$RUNTIME_CURRENT")
 active_sha=$(basename -- "$runtime_target")
 [[ $active_sha =~ ^[0-9a-f]{40}$ && $(stat -c '%U:%G:%a' -- "$runtime_target") == root:root:755 ]] \
   || die 'The active runtime release is not a protected root-owned SHA directory.'
-[[ -f $runtime_target/release.env && ! -L $runtime_target/release.env ]] || die 'The active runtime release metadata is missing.'
-[[ $(<"$runtime_target/release.env") == "APP_VERSION=$active_sha"$'\n' ]] || die 'Active runtime release version metadata does not match its path.'
+validate_runtime_release_metadata "$runtime_target/release.env" "$active_sha" \
+  || die 'Active runtime release version metadata does not match its path.'
 
 api_unit=/etc/systemd/system/shawhposh-api.service
 [[ -f $api_unit && ! -L $api_unit ]] || die 'The dedicated API systemd unit is missing.'

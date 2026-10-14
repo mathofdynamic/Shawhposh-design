@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
@@ -268,6 +268,34 @@ test('automated deploy installer skips only the terminal requirement inside trus
   const manual = invoke('');
   assert.equal(manual.status, 1);
   assert.match(manual.stderr, /Owner installation requires a terminal\./);
+});
+
+test('automated deploy installer validates release.env bytes including its trailing newline', { skip: !bashAvailable }, () => {
+  const match = installer.match(/validate_runtime_release_metadata\(\) \{[\s\S]*?\n\}/);
+  assert.ok(match, 'installer must expose the release metadata byte check as a testable function');
+
+  const temporaryRoot = mkdtempSync(join(tmpdir(), 'shawhposh-release-metadata-'));
+  try {
+    const metadataPath = join(temporaryRoot, 'release.env');
+    const sha = 'c45e3c67fe986a362c4cb46e2a9859568f8b0a8f';
+    const source = `${match[0]}\nvalidate_runtime_release_metadata "$1" "$2"`;
+    const validate = () => spawnSync(bash, ['-c', source, 'metadata-test', metadataPath, sha], {
+      cwd: root,
+      encoding: 'utf8',
+    });
+
+    writeFileSync(metadataPath, `APP_VERSION=${sha}\n`);
+    const valid = validate();
+    assert.equal(valid.status, 0, valid.stderr);
+
+    writeFileSync(metadataPath, `APP_VERSION=${sha}`);
+    assert.equal(validate().status, 1, 'metadata without its terminating newline must be rejected');
+
+    writeFileSync(metadataPath, `APP_VERSION=${sha}\nextra\n`);
+    assert.equal(validate().status, 1, 'metadata with unexpected trailing content must be rejected');
+  } finally {
+    rmSync(temporaryRoot, { recursive: true, force: true });
+  }
 });
 
 test('trusted snapshot creation makes every nested directory private', { skip: process.platform === 'win32' || !bashAvailable }, () => {
