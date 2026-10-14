@@ -7,6 +7,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from promote_release import (
+    LEGACY_SHA_WITHOUT_REPLICATOR,
     PromotionError,
     _atomic_switch,
     _copy_directory,
@@ -248,6 +249,104 @@ class PromoteReleaseTests(unittest.TestCase):
             self.assertEqual((protected / "ops").stat().st_gid, gid)
             self.assertEqual((protected / "ops/replicate-backups.mjs").stat().st_uid, uid)
             self.assertEqual((protected / "ops/replicate-backups.mjs").stat().st_gid, gid)
+
+    @unittest.skipUnless(os.name == "posix", "protected promotion requires POSIX dirfd operations")
+    def test_known_legacy_release_without_replicator_remains_a_valid_rollback_release(self) -> None:
+        uid, gid = os.getuid(), os.getgid()
+        sha = LEGACY_SHA_WITHOUT_REPLICATOR
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            staging_root = root / "staging"
+            staging_root.mkdir()
+            staged = make_staging_release(staging_root, sha, uid, gid, omit="ops/replicate-backups.mjs")
+            runtime_root = root / "runtime"
+            releases = runtime_root / "releases"
+            releases.mkdir(parents=True)
+            source_fd = os.open(staged, os.O_RDONLY | getattr(os, "O_DIRECTORY", 0))
+            releases_fd = os.open(releases, os.O_RDONLY | getattr(os, "O_DIRECTORY", 0))
+            try:
+                protected = _copy_staged_release_from_fds(
+                    sha,
+                    source_fd,
+                    releases_fd,
+                    runtime_releases=releases,
+                    expected_source_uid=uid,
+                    expected_runtime_uid=uid,
+                    expected_runtime_gid=gid,
+                )
+            finally:
+                os.close(source_fd)
+                os.close(releases_fd)
+
+            self.assertFalse((protected / "ops").exists())
+            validate_protected_release(protected, sha, expected_uid=uid, expected_gid=gid)
+
+    @unittest.skipUnless(os.name == "posix", "protected promotion requires POSIX dirfd operations")
+    def test_missing_replicator_is_rejected_for_other_releases_and_for_legacy_symlinks(self) -> None:
+        uid, gid = os.getuid(), os.getgid()
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            staging_root = root / "staging"
+            staging_root.mkdir()
+            sha = "d" * 40
+            staged = make_staging_release(staging_root, sha, uid, gid, omit="ops/replicate-backups.mjs")
+            runtime_root = root / "runtime"
+            releases = runtime_root / "releases"
+            releases.mkdir(parents=True)
+            source_fd = os.open(staged, os.O_RDONLY | getattr(os, "O_DIRECTORY", 0))
+            releases_fd = os.open(releases, os.O_RDONLY | getattr(os, "O_DIRECTORY", 0))
+            try:
+                with self.assertRaisesRegex(PromotionError, "Required staging artifact is missing"):
+                    _copy_staged_release_from_fds(
+                        sha,
+                        source_fd,
+                        releases_fd,
+                        runtime_releases=releases,
+                        expected_source_uid=uid,
+                        expected_runtime_uid=uid,
+                        expected_runtime_gid=gid,
+                    )
+                self.assertFalse((releases / sha).exists())
+                self.assertEqual(list(releases.iterdir()), [])
+            finally:
+                os.close(source_fd)
+                os.close(releases_fd)
+
+            legacy_staging = staging_root / LEGACY_SHA_WITHOUT_REPLICATOR
+            legacy_staging.mkdir()
+            for relative in ("server-dist/db", "server-dist/modules/orders", "node_modules/example", "ops"):
+                (legacy_staging / relative).mkdir(parents=True, exist_ok=True)
+            write_file(legacy_staging / "package.json", b'{"type":"module"}\n')
+            write_file(legacy_staging / "server-dist/index.js")
+            write_file(legacy_staging / "server-dist/db/backup.js")
+            write_file(legacy_staging / "server-dist/modules/orders/expire-reservations.js")
+            write_file(legacy_staging / "node_modules/example/index.js")
+            target = legacy_staging / "ops/other.mjs"
+            write_file(target)
+            (legacy_staging / "ops/replicate-backups.mjs").symlink_to(target)
+            for current, directories, files in os.walk(legacy_staging):
+                Path(current).chmod(0o755)
+                os.chown(current, uid, gid)
+                for name in files:
+                    entry = Path(current) / name
+                    if not entry.is_symlink():
+                        os.chown(entry, uid, gid)
+            source_fd = os.open(legacy_staging, os.O_RDONLY | getattr(os, "O_DIRECTORY", 0))
+            try:
+                with self.assertRaisesRegex(PromotionError, "Unsafe staging file"):
+                    _copy_staged_release_from_fds(
+                        LEGACY_SHA_WITHOUT_REPLICATOR,
+                        source_fd,
+                        releases_fd,
+                        runtime_releases=releases,
+                        expected_source_uid=uid,
+                        expected_runtime_uid=uid,
+                        expected_runtime_gid=gid,
+                    )
+                self.assertFalse((releases / LEGACY_SHA_WITHOUT_REPLICATOR).exists())
+                self.assertEqual(list(releases.iterdir()), [])
+            finally:
+                os.close(source_fd)
 
     @unittest.skipUnless(os.name == "posix", "failure cleanup requires POSIX dirfd operations")
     def test_failed_staging_copy_leaves_no_new_release_or_temp_and_preserves_current(self) -> None:

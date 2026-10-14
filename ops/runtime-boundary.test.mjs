@@ -56,6 +56,24 @@ test('every repository-controlled systemd executable is included in the promoted
   assert.ok(artifacts.has('ops/replicate-backups.mjs'));
 });
 
+test('only the fixed legacy rollback release may omit the later-added replication helper', () => {
+  const helper = read('promote_release.py');
+  const cutover = read('runtime-cutover.sh');
+  const legacySha = '2ede63d7d207735dce0958464f4e6462f80494e1';
+  assert.ok(helper.includes(`LEGACY_SHA_WITHOUT_REPLICATOR = "${legacySha}"`));
+  assert.ok(cutover.includes(`readonly OLD_PRODUCTION_SHA=${legacySha}`));
+  assert.match(helper, /sha != LEGACY_SHA_WITHOUT_REPLICATOR or replicator\.exists\(\) or replicator\.is_symlink\(\)/);
+  assert.match(helper, /artifact == REPLICATOR_ARTIFACT and _legacy_replicator_is_absent/);
+
+  const candidateGuard = cutover.match(/\[\[ -f \$CANDIDATE_RELEASE\/package\.json[\s\S]*?The staged release is missing required runtime artifacts\./)?.[0];
+  const rollbackGuard = cutover.match(/assert_real_directory "\$API_RELEASES\/\$OLD_PRODUCTION_SHA\/ops"[\s\S]*?The known-good production API rollback release is missing required runtime artifacts\./)?.[0];
+  assert.ok(candidateGuard);
+  assert.match(candidateGuard, /ops\/replicate-backups\.mjs/);
+  assert.ok(rollbackGuard);
+  assert.doesNotMatch(rollbackGuard, /ops\/replicate-backups\.mjs/);
+  assert.doesNotMatch(cutover, /runtime_old_kib=.*ops\/replicate-backups\.mjs/);
+});
+
 test('sudo policy permits only the SHA-scoped automatic deployment helper', () => {
   const policy = read('sudoers.d/ubuntu-shawhposh');
   assert.equal(policy, 'Defaults:ubuntu timestamp_timeout=0\nubuntu ALL=(root) NOPASSWD: /usr/local/sbin/shawhposh-deploy ^[0-9a-f]{40}$\n');
@@ -364,6 +382,13 @@ test('cutover installs protected release code and verifies both users cannot wri
   const script = read('runtime-cutover.sh');
   assert.ok(script.includes('/opt/shawhposh'));
   assert.ok(script.includes('/usr/local/sbin/shawhposh-promote-release'));
+  assert.match(script, /readonly PROMOTION_SOURCE=\$SCRIPT_DIR\/promote_release\.py/);
+  assert.match(script, /PROMOTION_SOURCE=\$CANDIDATE_RELEASE\/ops\/promote_release\.py/);
+  assert.match(script, /validate_promotion_source\n/);
+  const promotionSourceValidator = script.match(/validate_promotion_source\(\) \{[\s\S]*?^\}/m)?.[0];
+  assert.ok(promotionSourceValidator);
+  assert.match(promotionSourceValidator, /root:root:600/);
+  assert.ok(script.includes('install -o root -g root -m 0755 -- "$PROMOTION_SOURCE" "$SNAPSHOT_DIR/candidate/shawhposh-promote-release"'));
   assert.ok(script.includes('runuser -u ubuntu -- test ! -w /opt/shawhposh/current/server-dist/index.js'));
   assert.ok(script.includes('runuser -u shawhposh -- test ! -w /opt/shawhposh/current/server-dist/index.js'));
   assert.ok(script.includes('runuser -u ubuntu -- test ! -w /opt/shawhposh/current/server-dist/db/backup.js'));

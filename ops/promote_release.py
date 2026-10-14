@@ -25,6 +25,8 @@ SERVICE_NAME = "shawhposh-api.service"
 HEALTH_URL = "https://shawhposh.ir/api/health"
 HEALTH_RESOLVE = "shawhposh.ir:443:127.0.0.1"
 LOCK_PATH = Path("/run/lock/shawhposh-promote.lock")
+LEGACY_SHA_WITHOUT_REPLICATOR = "2ede63d7d207735dce0958464f4e6462f80494e1"
+REPLICATOR_ARTIFACT = "ops/replicate-backups.mjs"
 REQUIRED_ARTIFACTS = ("package.json", "server-dist", "node_modules")
 SUPPORTED_FILES = ("server-dist", "node_modules", "package.json", "ops/replicate-backups.mjs")
 SUPPORTED_NESTED_FILES = frozenset({"ops/replicate-backups.mjs"})
@@ -129,15 +131,25 @@ def validate_protected_tree(
     """Validate a protected tree before it is assigned its final SHA directory name."""
     validate_sha(sha)
     _path_without_symlink(release, uid=expected_uid, gid=expected_gid, directory=True)
-    required = (
+    required = [
         release / "package.json",
         release / "server-dist" / "index.js",
         release / "server-dist" / "db" / "backup.js",
         release / "server-dist" / "modules" / "orders" / "expire-reservations.js",
         release / "node_modules",
-        release / "ops" / "replicate-backups.mjs",
         release / RUNTIME_ENV_NAME,
-    )
+    ]
+    replicator = release / REPLICATOR_ARTIFACT
+    # The fixed rollback baseline predates this helper; later releases must include it.
+    if sha == LEGACY_SHA_WITHOUT_REPLICATOR:
+        try:
+            ops_info = (release / "ops").lstat()
+        except FileNotFoundError:
+            ops_info = None
+        if ops_info is not None and not stat.S_ISDIR(ops_info.st_mode):
+            raise PromotionError("Legacy protected ops path is not a real directory.")
+    if sha != LEGACY_SHA_WITHOUT_REPLICATOR or replicator.exists() or replicator.is_symlink():
+        required.append(replicator)
     for path in required:
         _path_without_symlink(
             path,
@@ -402,6 +414,24 @@ def _write_release_env(
         os.close(descriptor)
 
 
+def _legacy_replicator_is_absent(staged_fd: int, *, sha: str, expected_source_uid: int) -> bool:
+    if sha != LEGACY_SHA_WITHOUT_REPLICATOR:
+        return False
+    try:
+        os.stat("ops", dir_fd=staged_fd, follow_symlinks=False)
+    except FileNotFoundError:
+        return True
+    ops_fd = _source_directory(staged_fd, "ops", expected_uid=expected_source_uid, display="ops")
+    try:
+        try:
+            os.stat("replicate-backups.mjs", dir_fd=ops_fd, follow_symlinks=False)
+        except FileNotFoundError:
+            return True
+        return False
+    finally:
+        os.close(ops_fd)
+
+
 def _write_automated_metadata(
     destination_fd: int,
     content: bytes,
@@ -538,6 +568,10 @@ def _copy_staged_release_from_fds(
         os.fchown(destination_fd, expected_runtime_uid, expected_runtime_gid)
         for artifact in SUPPORTED_FILES:
             if "/" in artifact:
+                if artifact == REPLICATOR_ARTIFACT and _legacy_replicator_is_absent(
+                    staged_fd, sha=sha, expected_source_uid=expected_source_uid
+                ):
+                    continue
                 _copy_top_level_file(
                     staged_fd,
                     destination_fd,

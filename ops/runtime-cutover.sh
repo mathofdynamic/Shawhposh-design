@@ -72,6 +72,11 @@ else
   readonly CANDIDATE_RELEASE=$(dirname -- "$SCRIPT_DIR")
   readonly CANDIDATE_SHA=${CANDIDATE_RELEASE##*/}
 fi
+if (( BOOTSTRAP_EXECUTION )); then
+  readonly PROMOTION_SOURCE=$SCRIPT_DIR/promote_release.py
+else
+  readonly PROMOTION_SOURCE=$CANDIDATE_RELEASE/ops/promote_release.py
+fi
 
 SNAPSHOT_DIR=
 ORIGINAL_API_RELEASE=
@@ -233,6 +238,16 @@ assert_source_file() {
   mode=$(stat -c '%a' -- "$file")
   [[ $mode =~ ^[0-7]{3,4}$ ]] || die "Could not inspect source permissions: $file"
   (( (8#$mode & 0022) == 0 )) || die "Release source is group/world writable: $file"
+}
+
+validate_promotion_source() {
+  if (( BOOTSTRAP_EXECUTION )); then
+    [[ -f $PROMOTION_SOURCE && ! -L $PROMOTION_SOURCE \
+      && $(stat -c '%U:%G:%a' -- "$PROMOTION_SOURCE") == 'root:root:600' ]] \
+      || die 'Trusted promotion helper is not a private root-owned controller file.'
+  else
+    assert_source_file "$PROMOTION_SOURCE"
+  fi
 }
 
 validate_automated_sudo_policy() {
@@ -616,6 +631,7 @@ validate_preflight() {
   validate_automated_sudo_policy
   assert_source_file "$CANDIDATE_RELEASE/ops/runtime-cutover.sh"
   assert_source_file "$CANDIDATE_RELEASE/ops/promote_release.py"
+  validate_promotion_source
   assert_source_file "$CANDIDATE_RELEASE/ops/replicate-backups.mjs"
   visudo -cf /etc/sudoers >/dev/null || die 'The existing sudo policy does not validate.'
   local current_sudo_policy=/etc/sudoers.d/ubuntu-shawhposh
@@ -648,11 +664,11 @@ validate_preflight() {
   [[ $(basename -- "$ORIGINAL_API_RELEASE") == "$OLD_PRODUCTION_SHA" || $ORIGINAL_API_RELEASE == "$CANDIDATE_RELEASE" ]] \
     || die 'The active API release changed from the reviewed production baseline.'
   assert_real_directory "$API_RELEASES/$OLD_PRODUCTION_SHA"
+  assert_real_directory "$API_RELEASES/$OLD_PRODUCTION_SHA/ops"
   [[ -f $API_RELEASES/$OLD_PRODUCTION_SHA/package.json && -d $API_RELEASES/$OLD_PRODUCTION_SHA/node_modules \
     && -f $API_RELEASES/$OLD_PRODUCTION_SHA/server-dist/index.js \
     && -f $API_RELEASES/$OLD_PRODUCTION_SHA/server-dist/db/backup.js \
     && -f $API_RELEASES/$OLD_PRODUCTION_SHA/server-dist/modules/orders/expire-reservations.js \
-    && -f $API_RELEASES/$OLD_PRODUCTION_SHA/ops/replicate-backups.mjs \
     && -f $API_RELEASES/$OLD_PRODUCTION_SHA/ops/ecosystem.cjs && ! -L $API_RELEASES/$OLD_PRODUCTION_SHA/ops/ecosystem.cjs ]] \
     || die 'The known-good production API rollback release is missing required runtime artifacts.'
   [[ -L $WEB_CURRENT ]] || die 'The frontend current path is not the expected deployment symlink.'
@@ -720,7 +736,7 @@ validate_preflight() {
   runtime_required_kib=$(du -sk -- "$CANDIDATE_RELEASE/package.json" "$CANDIDATE_RELEASE/server-dist" "$CANDIDATE_RELEASE/node_modules" "$CANDIDATE_RELEASE/ops/replicate-backups.mjs" \
     | awk '{ total += $1 } END { print total + 0 }')
   if [[ $CANDIDATE_SHA != "$OLD_PRODUCTION_SHA" ]]; then
-    runtime_old_kib=$(du -sk -- "$API_RELEASES/$OLD_PRODUCTION_SHA/package.json" "$API_RELEASES/$OLD_PRODUCTION_SHA/server-dist" "$API_RELEASES/$OLD_PRODUCTION_SHA/node_modules" "$API_RELEASES/$OLD_PRODUCTION_SHA/ops/replicate-backups.mjs" \
+    runtime_old_kib=$(du -sk -- "$API_RELEASES/$OLD_PRODUCTION_SHA/package.json" "$API_RELEASES/$OLD_PRODUCTION_SHA/server-dist" "$API_RELEASES/$OLD_PRODUCTION_SHA/node_modules" \
       | awk '{ total += $1 } END { print total + 0 }')
     runtime_required_kib=$((runtime_required_kib + runtime_old_kib))
   fi
@@ -785,7 +801,7 @@ capture_unit_snapshot() {
   else
     printf 'absent\n' > "$SNAPSHOT_DIR/promotion-helper.state"
   fi
-  install -o root -g root -m 0755 -- "$CANDIDATE_RELEASE/ops/promote_release.py" "$SNAPSHOT_DIR/candidate/shawhposh-promote-release"
+  install -o root -g root -m 0755 -- "$PROMOTION_SOURCE" "$SNAPSHOT_DIR/candidate/shawhposh-promote-release"
   systemd-analyze verify \
     "$SNAPSHOT_DIR/candidate/$API_UNIT" \
     "$SNAPSHOT_DIR/candidate/$BACKUP_UNIT" \
