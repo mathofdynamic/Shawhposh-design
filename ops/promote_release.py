@@ -459,22 +459,72 @@ def _write_automated_metadata(
         os.close(descriptor)
 
 
-def _ensure_protected_roots(runtime_root: Path = RUNTIME_ROOT) -> tuple[int, int]:
-    opt = Path("/opt")
-    opt_info = _path_without_symlink(opt, uid=0, gid=0, directory=True)
-    if stat.S_IMODE(opt_info.st_mode) != 0o755:
-        raise PromotionError("/opt must remain root-owned mode 0755.")
-    if not runtime_root.exists() and not runtime_root.is_symlink():
-        os.mkdir(runtime_root, 0o755)
-    runtime_info = _path_without_symlink(runtime_root, uid=0, gid=0, directory=True)
-    if stat.S_IMODE(runtime_info.st_mode) != 0o755:
-        raise PromotionError("Protected runtime root must be root-owned mode 0755.")
+def _ensure_protected_directory(
+    path: Path,
+    *,
+    expected_uid: int,
+    expected_gid: int,
+    expected_mode: int = 0o755,
+    repair_private_empty: bool = True,
+    label: str,
+) -> os.stat_result:
+    try:
+        info = path.lstat()
+    except FileNotFoundError:
+        os.mkdir(path, expected_mode)
+        info = path.lstat()
+    if (
+        stat.S_ISLNK(info.st_mode)
+        or not stat.S_ISDIR(info.st_mode)
+        or info.st_uid != expected_uid
+        or info.st_gid != expected_gid
+    ):
+        raise PromotionError(f"{label} must be a root-owned real directory.")
+    try:
+        canonical = path.resolve(strict=True)
+    except OSError as exc:
+        raise PromotionError(f"Could not canonicalize {label.lower()}.") from exc
+    if canonical != path:
+        raise PromotionError(f"{label} resolves through an unexpected alias.")
+
+    mode = stat.S_IMODE(info.st_mode)
+    if mode != expected_mode:
+        if not repair_private_empty or mode != 0o700 or any(path.iterdir()):
+            raise PromotionError(f"{label} must be root-owned mode 0755.")
+        os.chmod(path, expected_mode, follow_symlinks=False)
+        info = path.lstat()
+        if stat.S_IMODE(info.st_mode) != expected_mode:
+            raise PromotionError(f"{label} must be root-owned mode 0755.")
+    return info
+
+
+def _ensure_protected_roots(
+    runtime_root: Path = RUNTIME_ROOT,
+    *,
+    opt_root: Path = Path("/opt"),
+    expected_uid: int = 0,
+    expected_gid: int = 0,
+) -> tuple[int, int]:
+    _ensure_protected_directory(
+        opt_root,
+        expected_uid=expected_uid,
+        expected_gid=expected_gid,
+        repair_private_empty=False,
+        label="/opt",
+    )
+    _ensure_protected_directory(
+        runtime_root,
+        expected_uid=expected_uid,
+        expected_gid=expected_gid,
+        label="Protected runtime root",
+    )
     releases = runtime_root / "releases"
-    if not releases.exists() and not releases.is_symlink():
-        os.mkdir(releases, 0o755)
-    releases_info = _path_without_symlink(releases, uid=0, gid=0, directory=True)
-    if stat.S_IMODE(releases_info.st_mode) != 0o755:
-        raise PromotionError("Protected release root must be root-owned mode 0755.")
+    _ensure_protected_directory(
+        releases,
+        expected_uid=expected_uid,
+        expected_gid=expected_gid,
+        label="Protected release root",
+    )
     root_fd = os.open(runtime_root, os.O_RDONLY | DIRECTORY | NOFOLLOW | CLOEXEC)
     releases_fd = os.open(releases, os.O_RDONLY | DIRECTORY | NOFOLLOW | CLOEXEC)
     return root_fd, releases_fd

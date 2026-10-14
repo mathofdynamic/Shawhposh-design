@@ -14,6 +14,7 @@ from promote_release import (
     _copy_staged_release_from_fds,
     _copy_top_level_file,
     _current_sha,
+    _ensure_protected_roots,
     _validate_lock_directory,
     main,
     runtime_release_path,
@@ -102,6 +103,68 @@ def release_snapshot(release: Path) -> tuple[tuple[object, ...], ...]:
 
 
 class PromoteReleaseTests(unittest.TestCase):
+    @unittest.skipUnless(os.name == "posix", "protected directory modes require POSIX")
+    def test_protected_roots_override_restrictive_umask_without_relaxing_nonempty_paths(self) -> None:
+        uid, gid = os.getuid(), os.getgid()
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            opt = root / "opt"
+            opt.mkdir()
+            opt.chmod(0o755)
+            os.chown(opt, uid, gid)
+
+            partial_runtime = opt / "existing-runtime"
+            partial_runtime.mkdir()
+            partial_runtime.chmod(0o700)
+            os.chown(partial_runtime, uid, gid)
+
+            previous_umask = os.umask(0o077)
+            try:
+                runtime_fd, releases_fd = _ensure_protected_roots(
+                    runtime_root=partial_runtime,
+                    opt_root=opt,
+                    expected_uid=uid,
+                    expected_gid=gid,
+                )
+                os.close(runtime_fd)
+                os.close(releases_fd)
+            finally:
+                os.umask(previous_umask)
+            self.assertEqual(partial_runtime.stat().st_mode & 0o777, 0o755)
+            self.assertEqual((partial_runtime / "releases").stat().st_mode & 0o777, 0o755)
+
+            fresh_runtime = opt / "fresh-runtime"
+            previous_umask = os.umask(0o077)
+            try:
+                runtime_fd, releases_fd = _ensure_protected_roots(
+                    runtime_root=fresh_runtime,
+                    opt_root=opt,
+                    expected_uid=uid,
+                    expected_gid=gid,
+                )
+                os.close(runtime_fd)
+                os.close(releases_fd)
+            finally:
+                os.umask(previous_umask)
+            self.assertEqual(fresh_runtime.stat().st_mode & 0o777, 0o755)
+            self.assertEqual((fresh_runtime / "releases").stat().st_mode & 0o777, 0o755)
+
+            unsafe_runtime = opt / "nonempty-runtime"
+            unsafe_runtime.mkdir()
+            unsafe_runtime.chmod(0o700)
+            os.chown(unsafe_runtime, uid, gid)
+            keep = unsafe_runtime / "keep"
+            keep.write_text("unchanged", encoding="utf-8")
+            with self.assertRaisesRegex(PromotionError, "Protected runtime root"):
+                _ensure_protected_roots(
+                    runtime_root=unsafe_runtime,
+                    opt_root=opt,
+                    expected_uid=uid,
+                    expected_gid=gid,
+                )
+            self.assertEqual(unsafe_runtime.stat().st_mode & 0o777, 0o700)
+            self.assertEqual(keep.read_text(encoding="utf-8"), "unchanged")
+
     @unittest.skipUnless(os.name == "posix", "lock directory mode semantics require POSIX")
     def test_shared_lock_accepts_only_a_root_equivalent_sticky_lock_directory(self) -> None:
         uid, gid = os.getuid(), os.getgid()
