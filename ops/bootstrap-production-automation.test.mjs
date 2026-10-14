@@ -16,6 +16,7 @@ const bash = process.platform === 'win32'
   ? ['C:/Program Files/Git/bin/bash.exe', 'C:/Program Files/Git/usr/bin/bash.exe'].find(existsSync) ?? 'bash'
   : 'bash';
 const bashAvailable = spawnSync(bash, ['-c', 'printf BASH_OK'], { encoding: 'utf8' }).stdout?.trim() === 'BASH_OK';
+const python = ['python3', 'python'].find(command => spawnSync(command, ['--version'], { encoding: 'utf8' }).status === 0);
 
 function runPhaseHarness(cutoverStatus, installerStatus, verifyStatus) {
   const source = [
@@ -298,6 +299,35 @@ test('automated deploy installer validates release.env bytes including its trail
   }
 });
 
+test('deploy installer accepts only its helper plus the exact temporary bootstrap NOPASSWD rule', { skip: !python }, () => {
+  const match = installer.match(/\/usr\/bin\/python3 -c '\n([\s\S]*?)\n' "\$SHA_SUDO_ARGUMENT"/);
+  assert.ok(match, 'installer must keep its effective sudo allowlist parser testable');
+  assert.ok(installer.includes("readonly BOOTSTRAP_RUNNER_SUDO_POLICY='ubuntu ALL=(root) NOPASSWD: /usr/local/sbin/shawhposh-bootstrap ^[0-9a-f]{40}$'"));
+  assert.ok(installer.includes('The exact temporary bootstrap sudo rule is missing or unsafe.'));
+  assert.ok(installer.includes('Effective passwordless sudo entries differ from the reviewed exact allowlist.'));
+
+  const deploy = '/usr/local/sbin/shawhposh-deploy ^[0-9a-f]{40}$';
+  const runner = '/usr/local/sbin/shawhposh-bootstrap ^[0-9a-f]{40}$';
+  const policyOutput = commands => commands.map((command, index) => [
+    `Sudoers entry: /etc/sudoers.d/test-${index}`,
+    'RunAsUsers: root',
+    'Options: !authenticate',
+    'Commands:',
+    `    ${command}`,
+    '',
+  ].join('\n')).join('\n');
+  const check = (commands, bootstrapEntry = '') => spawnSync(python, ['-c', match[1], '^[0-9a-f]{40}$', bootstrapEntry], {
+    cwd: root,
+    encoding: 'utf8',
+    input: policyOutput(commands),
+  });
+
+  assert.equal(check([deploy]).status, 0);
+  assert.equal(check([deploy, runner], runner).status, 0, 'trusted bootstrap may retain its exact temporary rule until cleanup');
+  assert.equal(check([deploy, runner]).status, 1, 'temporary capability must not be accepted outside trusted bootstrap mode');
+  assert.equal(check([deploy, runner, '/usr/bin/systemctl *'], runner).status, 1, 'arbitrary service control must remain denied');
+});
+
 test('trusted snapshot creation makes every nested directory private', { skip: process.platform === 'win32' || !bashAvailable }, () => {
   const temporaryRoot = mkdtempSync(join(tmpdir(), 'shawhposh-bootstrap-snapshot-'));
   const source = [
@@ -359,7 +389,8 @@ test('installer accepts only clean main or detached origin/main and retains exac
   assert.ok(installer.includes('source_branch=$(git_as_ubuntu branch --show-current)'));
   assert.ok(installer.includes('[[ $source_branch == main || -z $source_branch ]]'));
   assert.ok(installer.includes('rev-parse origin/main'));
-  assert.ok(installer.includes('blocks != [("root", expected)]'));
+  assert.ok(installer.includes('entries = [(runas, command) for runas, commands in blocks for command in commands]'));
+  assert.ok(installer.includes('len(entries) != len(expected)'));
   assert.ok(installer.includes("readonly SHA_SUDO_ARGUMENT='^[0-9a-f]{40}$'"));
   assert.ok(!installer.includes('NOPASSWD: ALL'));
 });

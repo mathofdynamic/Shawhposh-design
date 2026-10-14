@@ -23,9 +23,12 @@ readonly DEPLOY_COMMAND=/usr/local/sbin/shawhposh-deploy
 readonly SUDOERS_TARGET=/etc/sudoers.d/ubuntu-shawhposh
 readonly SUDOERS_TEMP=/etc/sudoers.d/.ubuntu-shawhposh.automated-deploy
 readonly HELPER_TEMP=/usr/local/sbin/.shawhposh-deploy.automated-install
+readonly BOOTSTRAP_RUNNER_PATH=/usr/local/sbin/shawhposh-bootstrap
+readonly BOOTSTRAP_RUNNER_SUDOERS=/etc/sudoers.d/ubuntu-shawhposh-bootstrap
 readonly SHA_SUDO_ARGUMENT='^[0-9a-f]{40}$'
 readonly LEGACY_SHA_SUDO_ARGUMENT=$(python3 -c 'print("[0-9a-f]" * 40)')
 readonly BOOTSTRAP_CONTEXT_VALUE='AUTOMATE_SHAWHPosh-v1'
+readonly BOOTSTRAP_RUNNER_SUDO_POLICY='ubuntu ALL=(root) NOPASSWD: /usr/local/sbin/shawhposh-bootstrap ^[0-9a-f]{40}$'
 readonly NEW_SUDO_POLICY="Defaults:ubuntu timestamp_timeout=0
 ubuntu ALL=(root) NOPASSWD: $DEPLOY_COMMAND $SHA_SUDO_ARGUMENT"
 readonly OLD_SUDO_POLICY_OWNER_AUTH="Defaults:ubuntu timestamp_timeout=0
@@ -278,11 +281,24 @@ if ! /usr/sbin/visudo -cf /etc/sudoers >/dev/null || ! /usr/sbin/visudo -cf "$SU
 fi
 
 sudo_verbose=$(/usr/bin/sudo -ll -U ubuntu 2>&1) || die 'Could not inspect verbose effective ubuntu sudo policy.'
+bootstrap_runner_entry=
+if [[ ${SHAWHPOSH_BOOTSTRAP_CONTEXT:-} == "$BOOTSTRAP_CONTEXT_VALUE" ]]; then
+  [[ -f $BOOTSTRAP_RUNNER_PATH && ! -L $BOOTSTRAP_RUNNER_PATH \
+    && $(stat -c '%U:%G:%a' -- "$BOOTSTRAP_RUNNER_PATH") == root:root:755 ]] \
+    || die 'Trusted bootstrap runner is missing or unsafe.'
+  [[ -f $BOOTSTRAP_RUNNER_SUDOERS && ! -L $BOOTSTRAP_RUNNER_SUDOERS \
+    && $(stat -c '%U:%G:%a' -- "$BOOTSTRAP_RUNNER_SUDOERS") == root:root:440 \
+    && $(<"$BOOTSTRAP_RUNNER_SUDOERS") == "$BOOTSTRAP_RUNNER_SUDO_POLICY" ]] \
+    || die 'The exact temporary bootstrap sudo rule is missing or unsafe.'
+  bootstrap_runner_entry="$BOOTSTRAP_RUNNER_PATH $SHA_SUDO_ARGUMENT"
+fi
 if ! printf '%s\n' "$sudo_verbose" | /usr/bin/python3 -c '
 import sys
 expected = {
     "/usr/local/sbin/shawhposh-deploy " + sys.argv[1],
 }
+if len(sys.argv) > 2 and sys.argv[2]:
+    expected.add(sys.argv[2])
 blocks = []
 current = None
 in_commands = False
@@ -307,10 +323,11 @@ for line in sys.stdin:
     elif in_commands and line[:1].isspace() and stripped:
         current["commands"].append(stripped)
 finish()
-if blocks != [("root", expected)]:
+entries = [(runas, command) for runas, commands in blocks for command in commands]
+if len(entries) != len(expected) or set(entries) != {("root", command) for command in expected}:
     print("Effective passwordless sudo entries differ from the reviewed exact allowlist.", file=sys.stderr)
     sys.exit(1)
-' "$SHA_SUDO_ARGUMENT"; then
+' "$SHA_SUDO_ARGUMENT" "$bootstrap_runner_entry"; then
   die 'Effective passwordless sudo differs from the exact reviewed allowlist; previous policy will be restored.'
 fi
 

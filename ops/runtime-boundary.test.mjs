@@ -440,7 +440,9 @@ test('one-time installer refuses the current PM2-era state and restores failed s
   assert.ok(installer.includes('trap restore_previous_sudo_policy EXIT'));
   assert.ok(installer.includes('policy_committed=1'));
   assert.ok(installer.includes('sudo -ll -U ubuntu'));
-  assert.ok(installer.includes('blocks != [("root", expected)]'));
+  assert.ok(installer.includes('entries = [(runas, command) for runas, commands in blocks for command in commands]'));
+  assert.ok(installer.includes('len(entries) != len(expected)'));
+  assert.ok(installer.includes('BOOTSTRAP_RUNNER_SUDO_POLICY'));
   assert.ok(installer.includes('Unexpected file in root-owned deployment library'));
   assert.ok(installer.includes('promote_frontend.py'));
   assert.ok(installer.includes('/var/www/shawhposh/releases'));
