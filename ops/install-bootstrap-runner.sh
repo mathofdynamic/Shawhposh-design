@@ -7,6 +7,11 @@ export PATH
 
 readonly REPOSITORY_URL='https://github.com/mathofdynamic/Shawhposh-design'
 readonly REPOSITORY_URL_GIT='https://github.com/mathofdynamic/Shawhposh-design.git'
+readonly GIT=/usr/bin/git
+readonly PYTHON3=/usr/bin/python3
+readonly SUDO=/usr/bin/sudo
+readonly RUNUSER=/usr/sbin/runuser
+readonly VISUDO=/usr/sbin/visudo
 readonly RUNNER_TARGET=/usr/local/sbin/shawhposh-bootstrap
 readonly RUNNER_TEMP=/usr/local/sbin/.shawhposh-bootstrap.install
 readonly SUDOERS_TARGET=/etc/sudoers.d/ubuntu-shawhposh-bootstrap
@@ -20,7 +25,7 @@ log() { printf '[BOOTSTRAP INSTALL] %s\n' "$*"; }
 (( EUID == 0 )) || die 'Run once with owner-authenticated sudo from the reviewed staged release.'
 [[ -t 0 && -t 1 ]] || die 'The one-time owner installation requires a terminal.'
 [[ $# -eq 0 ]] || die 'This installer accepts no arguments.'
-[[ -x /usr/bin/git && -x /usr/bin/runuser && -x /usr/bin/python3 && -x /usr/sbin/visudo && -x /usr/bin/sudo ]] \
+[[ -x $GIT && -x $PYTHON3 && -x $SUDO && -x $RUNUSER && -x $VISUDO ]] \
   || die 'A required Git, Python, sudo, runuser, or visudo executable is unavailable.'
 
 script_input=${BASH_SOURCE[0]}
@@ -36,8 +41,8 @@ root_mode=$(stat -c '%a' -- "$source_root")
 (( (8#$root_mode & 0022) == 0 )) || die 'Staged release is group/world writable.'
 
 git_as_ubuntu() {
-  runuser -u ubuntu -- env -i HOME=/home/ubuntu PATH=/usr/bin:/bin GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_GLOBAL=/dev/null \
-    /usr/bin/git -c core.fsmonitor=false -c core.hooksPath=/dev/null -C "$source_root" "$@"
+  "$RUNUSER" -u ubuntu -- env -i HOME=/home/ubuntu PATH=/usr/bin:/bin GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_GLOBAL=/dev/null \
+    "$GIT" -c core.fsmonitor=false -c core.hooksPath=/dev/null -C "$source_root" "$@"
 }
 
 origin=$(git_as_ubuntu config --local --get remote.origin.url) || die 'Cannot read staged Git origin.'
@@ -59,7 +64,7 @@ git_as_ubuntu show HEAD:ops/install-bootstrap-runner.sh | cmp -s - "$script_path
   || die 'Installer bytes differ from the clean main commit.'
 git_as_ubuntu show HEAD:ops/bootstrap_runner.py | cmp -s - "$source_root/ops/bootstrap_runner.py" \
   || die 'Runner bytes differ from the clean main commit.'
-/usr/bin/python3 -I - "$source_root/ops/bootstrap_runner.py" <<'PY'
+"$PYTHON3" -I - "$source_root/ops/bootstrap_runner.py" <<'PY'
 import ast, pathlib, sys
 ast.parse(pathlib.Path(sys.argv[1]).read_text(encoding="utf-8"))
 PY
@@ -68,7 +73,7 @@ PY
   || die '/usr/local/sbin is not the expected root-owned directory.'
 [[ -d /etc/sudoers.d && ! -L /etc/sudoers.d && $(stat -c '%U:%G' /etc/sudoers.d) == root:root ]] \
   || die '/etc/sudoers.d is not a real root-owned directory.'
-/usr/sbin/visudo -cf /etc/sudoers >/dev/null || die 'Existing sudoers configuration is invalid.'
+"$VISUDO" -cf /etc/sudoers >/dev/null || die 'Existing sudoers configuration is invalid.'
 
 runner_created=0
 policy_created=0
@@ -83,7 +88,7 @@ rollback_install() {
     if (( runner_created )); then unlink -- "$RUNNER_TARGET" 2>/dev/null || true; fi
     if (( policy_temp_created )); then unlink -- "$SUDOERS_TEMP" 2>/dev/null || true; fi
     if (( runner_temp_created )); then unlink -- "$RUNNER_TEMP" 2>/dev/null || true; fi
-    /usr/sbin/visudo -cf /etc/sudoers >/dev/null || log 'WARNING: sudoers needs owner review; use the existing authenticated session.'
+    "$VISUDO" -cf /etc/sudoers >/dev/null || log 'WARNING: sudoers needs owner review; use the existing authenticated session.'
   fi
   exit "$status"
 }
@@ -114,20 +119,20 @@ else
   printf '%s\n' "$SUDO_POLICY" > "$SUDOERS_TEMP"
   chown root:root -- "$SUDOERS_TEMP"
   chmod 0440 -- "$SUDOERS_TEMP"
-  /usr/sbin/visudo -cf "$SUDOERS_TEMP" >/dev/null || die 'Temporary sudoers rule failed isolated validation.'
+  "$VISUDO" -cf "$SUDOERS_TEMP" >/dev/null || die 'Temporary sudoers rule failed isolated validation.'
   /usr/bin/mv -T -- "$SUDOERS_TEMP" "$SUDOERS_TARGET"
   policy_temp_created=0
   policy_created=1
 fi
 
-/usr/sbin/visudo -cf /etc/sudoers >/dev/null || die 'Combined sudoers configuration failed validation.'
+"$VISUDO" -cf /etc/sudoers >/dev/null || die 'Combined sudoers configuration failed validation.'
 [[ $(stat -c '%U:%G:%a' -- "$RUNNER_TARGET") == root:root:755 ]] || die 'Installed runner ownership or mode is incorrect.'
-runuser -u ubuntu -- test ! -w "$RUNNER_TARGET" || die 'ubuntu can modify the root-owned bootstrap runner.'
+"$RUNUSER" -u ubuntu -- test ! -w "$RUNNER_TARGET" || die 'ubuntu can modify the root-owned bootstrap runner.'
 [[ $(<"$SUDOERS_TARGET") == "$SUDO_POLICY" ]] || die 'Installed temporary policy differs from the exact SHA-scoped rule.'
 if (( runner_temp_created )); then unlink -- "$RUNNER_TEMP"; runner_temp_created=0; fi
 
 expect_denied() {
-  if runuser -u ubuntu -- /usr/bin/sudo -n "$@" >/dev/null 2>&1; then
+  if "$RUNUSER" -u ubuntu -- "$SUDO" -n "$@" >/dev/null 2>&1; then
     die "Unexpected passwordless command was accepted: $*"
   fi
 }
@@ -138,7 +143,7 @@ expect_denied /bin/bash -c 'exit 0'
 expect_denied /bin/sh -c 'exit 0'
 expect_denied /usr/bin/systemctl status nginx
 
-listing=$(/usr/bin/sudo -n -l -U ubuntu 2>&1) || die 'Cannot inspect effective ubuntu sudo policy non-interactively.'
+listing=$("$SUDO" -n -l -U ubuntu 2>&1) || die 'Cannot inspect effective ubuntu sudo policy non-interactively.'
 [[ $listing == *"$RUNNER_TARGET ^[0-9a-f]{40}$"* ]] || die 'Effective sudo policy does not show the exact bootstrap runner rule.'
 committed=1
 trap - EXIT

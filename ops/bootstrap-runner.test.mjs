@@ -22,10 +22,24 @@ test('temporary sudo interface is a root-owned fixed helper with one SHA argumen
   assert.doesNotMatch(runner, /\/home\/ubuntu\/shawhposh\/releases/);
   assert.doesNotMatch(installer, /NOPASSWD:\s*ALL/);
   assert.match(installer, /ubuntu ALL=\(root\) NOPASSWD: \$RUNNER_TARGET \$SHA_ARGUMENT/);
-  assert.match(installer, /visudo -cf \/etc\/sudoers/);
+  assert.match(installer, /"\$VISUDO" -cf \/etc\/sudoers/);
   assert.match(installer, /test ! -w "\$RUNNER_TARGET"/);
   assert.match(installer, /expect_denied \/bin\/bash/);
   assert.match(installer, /expect_denied \/usr\/bin\/systemctl status nginx/);
+});
+
+test('bootstrap installer validates Ubuntu production executable paths', () => {
+  for (const [name, executable] of [
+    ['GIT', '/usr/bin/git'],
+    ['PYTHON3', '/usr/bin/python3'],
+    ['SUDO', '/usr/bin/sudo'],
+    ['RUNUSER', '/usr/sbin/runuser'],
+    ['VISUDO', '/usr/sbin/visudo'],
+  ]) {
+    assert.ok(installer.includes(`readonly ${name}=${executable}`), `${name} must use ${executable}`);
+    assert.ok(installer.includes(`-x $${name}`), `${name} must be checked before installation`);
+  }
+  assert.equal(installer.includes('/usr/bin/' + 'runuser'), false);
 });
 
 test('runner prepares root-owned allowlisted artifacts and invokes only its trusted controller', () => {
