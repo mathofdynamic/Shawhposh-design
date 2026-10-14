@@ -857,11 +857,36 @@ def _restart_and_verify(sha: str) -> bool:
     return restarted.returncode == 0 and _wait_for_health(sha)
 
 
+def _validate_lock_directory(
+    path: Path,
+    *,
+    expected_uid: int = 0,
+    expected_gid: int = 0,
+) -> os.stat_result:
+    try:
+        info = path.lstat()
+    except OSError as exc:
+        raise PromotionError(f"Required path is unavailable: {path}") from exc
+    if (
+        stat.S_ISLNK(info.st_mode)
+        or not stat.S_ISDIR(info.st_mode)
+        or info.st_uid != expected_uid
+        or info.st_gid != expected_gid
+        or stat.S_IMODE(info.st_mode) != 0o1777
+    ):
+        raise PromotionError(f"Unsafe owner, type, or permissions: {path}")
+    try:
+        canonical = path.resolve(strict=True)
+    except OSError as exc:
+        raise PromotionError(f"Could not canonicalize path: {path}") from exc
+    if canonical != path:
+        raise PromotionError(f"Path resolves through an unexpected alias: {path}")
+    return info
+
+
 def _acquire_lock() -> int:
     lock_directory = Path("/run/lock")
-    lock_directory_info = _path_without_symlink(lock_directory, uid=0, gid=0, directory=True)
-    if stat.S_IMODE(lock_directory_info.st_mode) & 0o022:
-        raise PromotionError("Promotion lock directory has unsafe write permissions.")
+    _validate_lock_directory(lock_directory)
     descriptor = os.open(LOCK_PATH, os.O_RDWR | os.O_CREAT | NOFOLLOW | CLOEXEC, 0o600)
     info = os.fstat(descriptor)
     if not _metadata_ok(info, uid=0, gid=0, directory=False) or (info.st_mode & 0o777) != 0o600:

@@ -14,6 +14,7 @@ from promote_release import (
     _copy_staged_release_from_fds,
     _copy_top_level_file,
     _current_sha,
+    _validate_lock_directory,
     main,
     runtime_release_path,
     validate_protected_release,
@@ -101,6 +102,27 @@ def release_snapshot(release: Path) -> tuple[tuple[object, ...], ...]:
 
 
 class PromoteReleaseTests(unittest.TestCase):
+    @unittest.skipUnless(os.name == "posix", "lock directory mode semantics require POSIX")
+    def test_shared_lock_accepts_only_a_root_equivalent_sticky_lock_directory(self) -> None:
+        uid, gid = os.getuid(), os.getgid()
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            lock_directory = root / "lock"
+            lock_directory.mkdir()
+            os.chown(lock_directory, uid, gid)
+            lock_directory.chmod(0o1777)
+            _validate_lock_directory(lock_directory, expected_uid=uid, expected_gid=gid)
+
+            lock_directory.chmod(0o0777)
+            with self.assertRaisesRegex(PromotionError, "Unsafe owner, type, or permissions"):
+                _validate_lock_directory(lock_directory, expected_uid=uid, expected_gid=gid)
+
+            lock_directory.chmod(0o1777)
+            alias = root / "lock-alias"
+            alias.symlink_to(lock_directory, target_is_directory=True)
+            with self.assertRaisesRegex(PromotionError, "Unsafe owner, type, or permissions"):
+                _validate_lock_directory(alias, expected_uid=uid, expected_gid=gid)
+
     def test_sha_is_exact_lowercase_git_id_and_path_is_derived(self) -> None:
         sha = "a" * 40
         self.assertEqual(validate_sha(sha), sha)
