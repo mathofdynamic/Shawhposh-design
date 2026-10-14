@@ -332,6 +332,7 @@ class PromoteReleaseTests(unittest.TestCase):
                     if not entry.is_symlink():
                         os.chown(entry, uid, gid)
             source_fd = os.open(legacy_staging, os.O_RDONLY | getattr(os, "O_DIRECTORY", 0))
+            releases_fd = os.open(releases, os.O_RDONLY | getattr(os, "O_DIRECTORY", 0))
             try:
                 with self.assertRaisesRegex(PromotionError, "Unsafe staging file"):
                     _copy_staged_release_from_fds(
@@ -347,6 +348,7 @@ class PromoteReleaseTests(unittest.TestCase):
                 self.assertEqual(list(releases.iterdir()), [])
             finally:
                 os.close(source_fd)
+                os.close(releases_fd)
 
     @unittest.skipUnless(os.name == "posix", "failure cleanup requires POSIX dirfd operations")
     def test_failed_staging_copy_leaves_no_new_release_or_temp_and_preserves_current(self) -> None:
