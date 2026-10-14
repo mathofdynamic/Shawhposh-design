@@ -35,6 +35,8 @@ readonly SHA_SUDO_ARGUMENT=$(python3 -c 'print("[0-9a-f]" * 40)')
 readonly OLD_SUDO_POLICY_3='ubuntu ALL=(root) NOPASSWD: /usr/sbin/nginx -t, /usr/bin/systemctl reload nginx, /usr/bin/systemctl start shawhposh-backup.service'
 readonly OLD_SUDO_POLICY_4='ubuntu ALL=(root) NOPASSWD: /usr/sbin/nginx -t, /usr/bin/systemctl reload nginx, /usr/bin/systemctl start shawhposh-backup.service, /usr/bin/systemctl restart shawhposh-api.service'
 readonly NEW_PASSWORDLESS_POLICY='ubuntu ALL=(root) NOPASSWD: /usr/sbin/nginx -t, /usr/bin/systemctl reload nginx'
+readonly AUTOMATED_SUDO_POLICY='Defaults:ubuntu timestamp_timeout=0
+ubuntu ALL=(root) NOPASSWD: /usr/local/sbin/shawhposh-deploy ^[0-9a-f]{40}$'
 readonly NEW_SUDO_POLICY="Defaults:ubuntu timestamp_timeout=0
 ubuntu ALL=(root) NOPASSWD: /usr/sbin/nginx -t, /usr/bin/systemctl reload nginx
 ubuntu ALL=(root) PASSWD: /usr/local/sbin/shawhposh-promote-release $SHA_SUDO_ARGUMENT"
@@ -220,6 +222,13 @@ assert_source_file() {
   mode=$(stat -c '%a' -- "$file")
   [[ $mode =~ ^[0-7]{3,4}$ ]] || die "Could not inspect source permissions: $file"
   (( (8#$mode & 0022) == 0 )) || die "Release source is group/world writable: $file"
+}
+
+validate_automated_sudo_policy() {
+  local policy_file=$CANDIDATE_RELEASE/ops/sudoers.d/ubuntu-shawhposh
+  assert_source_file "$policy_file"
+  printf '%s\n' "$AUTOMATED_SUDO_POLICY" | cmp -s - "$policy_file" \
+    || die 'The prepared automated-deploy sudo policy differs from the reviewed SHA-only allowlist.'
 }
 
 check_env_value_without_printing() {
@@ -587,12 +596,10 @@ validate_preflight() {
   for unit in "$API_UNIT" "$BACKUP_UNIT" "$BACKUP_TIMER" "$RESERVATION_UNIT" "$RESERVATION_TIMER" "$REPLICATION_UNIT"; do
     assert_source_file "$CANDIDATE_RELEASE/ops/$unit"
   done
-  assert_source_file "$CANDIDATE_RELEASE/ops/sudoers.d/ubuntu-shawhposh"
+  validate_automated_sudo_policy
   assert_source_file "$CANDIDATE_RELEASE/ops/runtime-cutover.sh"
   assert_source_file "$CANDIDATE_RELEASE/ops/promote_release.py"
   assert_source_file "$CANDIDATE_RELEASE/ops/replicate-backups.mjs"
-  [[ $(<"$CANDIDATE_RELEASE/ops/sudoers.d/ubuntu-shawhposh") == "$AUTOMATED_SUDO_POLICY" ]] \
-    || die 'The prepared automated-deploy sudo policy differs from the reviewed SHA-only allowlist.'
   visudo -cf /etc/sudoers >/dev/null || die 'The existing sudo policy does not validate.'
   local current_sudo_policy=/etc/sudoers.d/ubuntu-shawhposh
   if [[ -e $current_sudo_policy || -L $current_sudo_policy ]]; then

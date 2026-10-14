@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
@@ -9,6 +9,10 @@ const directory = dirname(fileURLToPath(import.meta.url));
 const read = name => readFileSync(join(directory, name), 'utf8');
 const runtimePath = '/opt/shawhposh/current';
 const stagingPath = '/home/ubuntu/shawhposh/current';
+const bash = process.platform === 'win32'
+  ? ['C:/Program Files/Git/bin/bash.exe', 'C:/Program Files/Git/usr/bin/bash.exe'].find(existsSync) ?? 'bash'
+  : 'bash';
+const bashAvailable = spawnSync(bash, ['-c', 'printf BASH_OK'], { encoding: 'utf8' }).stdout?.trim() === 'BASH_OK';
 
 test('all runtime systemd services execute root-promoted code only', () => {
   for (const name of [
@@ -53,12 +57,58 @@ test('every repository-controlled systemd executable is included in the promoted
 
 test('sudo policy permits only the SHA-scoped automatic deployment helper', () => {
   const policy = read('sudoers.d/ubuntu-shawhposh');
+  assert.equal(policy, 'Defaults:ubuntu timestamp_timeout=0\nubuntu ALL=(root) NOPASSWD: /usr/local/sbin/shawhposh-deploy ^[0-9a-f]{40}$\n');
   assert.ok(policy.includes('Defaults:ubuntu timestamp_timeout=0'));
   assert.match(policy, /^ubuntu ALL=\(root\) NOPASSWD: \/usr\/local\/sbin\/shawhposh-deploy \^\[0-9a-f\]\{40\}\$$/m);
   assert.doesNotMatch(policy, /nginx|systemctl/);
   assert.doesNotMatch(policy, /PASSWD:.*shawhposh-promote-release/);
   assert.doesNotMatch(policy, /(?:^|, )(?:\/bin\/bash|\/bin\/sh|\/usr\/bin\/(?:python|node|env|find|rm)|\/usr\/bin\/systemctl \*)/m);
   assert.equal((policy.match(/NOPASSWD:/g) ?? []).length, 1);
+});
+
+test('runtime preflight validates the exact automated sudo policy under strict unset-variable handling', { skip: !bashAvailable }, () => {
+  const script = read('runtime-cutover.sh');
+  const declarationMatch = script.match(/^readonly AUTOMATED_SUDO_POLICY='([^\r\n]*)\r?\n([^\r\n]*)'$/m);
+  const declaration = declarationMatch?.[0];
+  const validator = script.match(/^validate_automated_sudo_policy\(\) \{[\s\S]*?^\}/m)?.[0];
+  assert.ok(declaration, 'runtime cutover defines the automated policy under the expected name');
+  assert.ok(validator, 'runtime preflight uses a standalone automated policy validator');
+  assert.match(script, /^  validate_automated_sudo_policy$/m, 'preflight invokes the tested validator');
+
+  const expected = [
+    'Defaults:ubuntu timestamp_timeout=0',
+    'ubuntu ALL=(root) NOPASSWD: /usr/local/sbin/shawhposh-deploy ^[0-9a-f]{40}$',
+  ].join('\n');
+  assert.equal(`${declarationMatch[1]}\n${declarationMatch[2]}`, expected);
+
+  const harness = [
+    'set -Eeuo pipefail',
+    declaration,
+    'CANDIDATE_RELEASE=$(mktemp -d)',
+    'trap \'rm -rf -- "$CANDIDATE_RELEASE"\' EXIT',
+    'mkdir -p "$CANDIDATE_RELEASE/ops/sudoers.d"',
+    'policy_file="$CANDIDATE_RELEASE/ops/sudoers.d/ubuntu-shawhposh"',
+    'printf "%s\\n" "$AUTOMATED_SUDO_POLICY" > "$policy_file"',
+    'if [[ ${INVALID_POLICY:-0} == 1 ]]; then printf "tampered\\n" >> "$policy_file"; fi',
+    'assert_source_file() { [[ -f $1 && ! -L $1 ]]; }',
+    'die() { printf "%s\\n" "$*" >&2; exit 17; }',
+    validator,
+    'validate_automated_sudo_policy',
+  ].join('\n');
+  const valid = spawnSync(bash, ['-c', harness], {
+    cwd: dirname(directory),
+    encoding: 'utf8',
+    env: { ...process.env, INVALID_POLICY: '0' },
+  });
+  assert.equal(valid.status, 0, `${valid.stdout}\n${valid.stderr}`);
+
+  const invalid = spawnSync(bash, ['-c', harness], {
+    cwd: dirname(directory),
+    encoding: 'utf8',
+    env: { ...process.env, INVALID_POLICY: '1' },
+  });
+  assert.equal(invalid.status, 17, `${invalid.stdout}\n${invalid.stderr}`);
+  assert.match(invalid.stderr, /prepared automated-deploy sudo policy differs/);
 });
 
 test('automatic deployment helper uses trusted main source and a fixed API service only', () => {
