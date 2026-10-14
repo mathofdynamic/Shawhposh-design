@@ -44,7 +44,8 @@ test('bootstrap installer validates Ubuntu production executable paths', () => {
 });
 
 test('staging guidance uses a restrictive umask and installer rejects writable release inputs', () => {
-  assert.match(operations, /Set `umask 077` in the same remote shell before cloning or copying a release/);
+  assert.match(operations, /Set `umask 077` in the same remote shell before cloning, and keep it active through checkout, build, and Git validation/);
+  assert.match(operations, /Run the no-results check after the last Git or staging operation/);
   assert.ok(operations.includes('find "$staging_release" -xdev -type d -perm /022 -exec chmod go-w -- {} +'));
   assert.ok(operations.includes('find "$staging_release" -xdev -type f -perm /022 -exec chmod go-w -- {} +'));
   assert.match(installer, /root_mode=\$\(stat -c '%a' -- "\$source_root"\)/);
