@@ -180,6 +180,25 @@ test('bootstrap cutover accepts only its own temporary SHA-scoped sudo rule in a
   assert.equal(normalCutover.status, 0, `${normalCutover.stdout}\n${normalCutover.stderr}`);
 });
 
+test('only authenticated bootstrap mode bypasses the interactive cutover prompt', { skip: !bashAvailable }, () => {
+  const script = read('runtime-cutover.sh');
+  const guard = script.match(/if \(\( ! BOOTSTRAP_EXECUTION \)\) && \[\[ ! -t 0 \]\]; then[\s\S]*?^  fi/m)?.[0];
+  assert.ok(guard, 'noninteractive rejection is conditional on not running in trusted bootstrap mode');
+
+  const runGuard = bootstrapExecution => spawnSync(bash, ['-c', [
+    'set -Eeuo pipefail',
+    `BOOTSTRAP_EXECUTION=${bootstrapExecution ? 1 : 0}`,
+    'die() { printf "%s\\n" "$*" >&2; exit 17; }',
+    guard,
+  ].join('\n')], { encoding: 'utf8' });
+
+  const trustedBootstrap = runGuard(true);
+  assert.equal(trustedBootstrap.status, 0, `${trustedBootstrap.stdout}\n${trustedBootstrap.stderr}`);
+  const directCutover = runGuard(false);
+  assert.equal(directCutover.status, 17, `${directCutover.stdout}\n${directCutover.stderr}`);
+  assert.match(directCutover.stderr, /cutover requires an owner at an interactive terminal/);
+});
+
 test('backup snapshot verification is immutable and does not create SQLite sidecars', { skip: process.platform === 'win32' || !bashAvailable }, () => {
   const script = read('runtime-cutover.sh');
   const verifier = script.match(/^verify_database\(\) \{[\s\S]*?^\}/m)?.[0];

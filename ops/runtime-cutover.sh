@@ -1044,7 +1044,9 @@ main() {
     return 0
   fi
 
-  [[ -t 0 ]] || die 'The cutover requires an owner at an interactive terminal.'
+  if (( ! BOOTSTRAP_EXECUTION )) && [[ ! -t 0 ]]; then
+    die 'The cutover requires an owner at an interactive terminal.'
+  fi
   if (( BOOTSTRAP_EXECUTION )); then
     log 'CONFIRM' 'Bootstrap owner confirmation has already authorized this runtime cutover.'
   else
