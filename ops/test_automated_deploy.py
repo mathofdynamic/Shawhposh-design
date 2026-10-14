@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import sys
 import io
+import tempfile
 import unittest
 from contextlib import redirect_stderr
 from pathlib import Path
@@ -49,6 +50,146 @@ class AutomatedDeployPolicyTests(unittest.TestCase):
         self.assertEqual(deployment.TRUSTED_BRANCH, "refs/remotes/origin/main")
         self.assertEqual(deployment.SERVICE_NAME, "shawhposh-api.service")
         self.assertEqual(deployment.RUNTIME_ROOT, Path("/opt/shawhposh"))
+
+    def test_full_stack_targets_are_fixed_to_shawhposh_runtime_roots(self) -> None:
+        self.assertEqual(deployment.WEB_ROOT, Path("/var/www/shawhposh"))
+        self.assertEqual(deployment.WEB_RELEASES, Path("/var/www/shawhposh/releases"))
+        self.assertEqual(deployment.WEB_CURRENT, Path("/var/www/shawhposh/current"))
+        self.assertEqual(deployment.SERVICE_NAME, "shawhposh-api.service")
+        self.assertEqual(deployment.DEPLOY_LOCK_PATH, Path("/run/lock/shawhposh-promote.lock"))
+
+    def test_pair_rollback_restores_both_release_pointers_and_checks_all_health_gates(self) -> None:
+        previous_api = "b" * 40
+        previous_web = "20261001-1234abcd"
+        with (
+            patch.object(deployment.promotion, "_current_sha", side_effect=[SHA, previous_api]),
+            patch.object(deployment.frontend, "_current_sha", side_effect=[SHA, previous_web]),
+            patch.object(deployment.promotion, "_atomic_switch") as switch_api,
+            patch.object(deployment.frontend, "_atomic_switch") as switch_web,
+            patch.object(
+                deployment.promotion,
+                "_run",
+                return_value=type("Result", (), {"returncode": 0})(),
+            ) as run,
+            patch.object(deployment, "_health_ready", return_value=True),
+            patch.object(deployment, "_website_health_matches", return_value=True),
+            patch.object(deployment, "_commerce_snapshots_match", return_value=True),
+            patch.object(deployment, "_log"),
+        ):
+            self.assertTrue(
+                deployment._rollback_release_pair(
+                    11,
+                    12,
+                    requested_sha=SHA,
+                    previous_api_sha=previous_api,
+                    previous_web_release=previous_web,
+                    commerce_snapshot={"payment": "[]", "shipping": "[]"},
+                )
+            )
+        switch_api.assert_called_once_with(11, previous_api)
+        switch_web.assert_called_once_with(12, previous_web, releases_root=deployment.WEB_RELEASES)
+        run.assert_called_once_with(["/usr/bin/systemctl", "restart", deployment.SERVICE_NAME], timeout=30)
+
+    def test_pair_rollback_refuses_an_unexpected_pointer_without_mutating_either_side(self) -> None:
+        with (
+            patch.object(deployment.promotion, "_current_sha", return_value="c" * 40),
+            patch.object(deployment.frontend, "_current_sha", return_value="d" * 40),
+            patch.object(deployment.promotion, "_atomic_switch") as switch_api,
+            patch.object(deployment.frontend, "_atomic_switch") as switch_web,
+            patch.object(deployment.promotion, "_run") as run,
+            patch.object(deployment, "_log"),
+        ):
+            self.assertFalse(
+                deployment._rollback_release_pair(
+                    11,
+                    12,
+                    requested_sha=SHA,
+                    previous_api_sha="b" * 40,
+                    previous_web_release="1" * 40,
+                    commerce_snapshot={"payment": "[]", "shipping": "[]"},
+                )
+            )
+        switch_api.assert_not_called()
+        switch_web.assert_not_called()
+        run.assert_not_called()
+
+    def test_activation_switches_both_fixed_release_roots_before_restarting_only_api(self) -> None:
+        previous = "b" * 40
+        events: list[str] = []
+
+        def api_switch(*args, **kwargs):
+            events.append("backend")
+
+        def web_switch(*args, **kwargs):
+            events.append("frontend")
+
+        def run(command, **kwargs):
+            events.append("api-restart")
+            return type("Result", (), {"returncode": 0})()
+
+        with (
+            patch.object(deployment.promotion, "_current_sha", return_value=previous),
+            patch.object(deployment.frontend, "_current_sha", return_value=previous),
+            patch.object(deployment.promotion, "_atomic_switch", side_effect=api_switch) as switch_api,
+            patch.object(deployment.frontend, "_atomic_switch", side_effect=web_switch) as switch_web,
+            patch.object(deployment.promotion, "_run", side_effect=run),
+            patch.object(deployment, "_health_ready", return_value=True),
+            patch.object(deployment, "_website_health_matches", return_value=True),
+            patch.object(deployment, "_commerce_snapshots_match", return_value=True),
+            patch.object(deployment, "_log"),
+        ):
+            deployment._activate_release_pair(
+                11,
+                12,
+                requested_sha=SHA,
+                previous_api_sha=previous,
+                previous_web_release=previous,
+                commerce_snapshot={"payment": "[]", "shipping": "[]"},
+            )
+
+        self.assertEqual(events, ["backend", "frontend", "api-restart"])
+        switch_api.assert_called_once_with(11, SHA)
+        switch_web.assert_called_once_with(12, SHA, releases_root=deployment.WEB_RELEASES)
+        self.assertEqual(deployment.SERVICE_NAME, "shawhposh-api.service")
+
+    def test_frontend_health_checks_html_and_rejects_spa_fallback_for_assets(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            release = Path(temporary) / SHA
+            (release / "assets").mkdir(parents=True)
+            html = b'<script type="module" src="/assets/app.js"></script>\n'
+            (release / "index.html").write_bytes(html)
+            (release / "assets/app.js").write_bytes(b"app()")
+
+            def curl_with_type(content_type: str):
+                def curl(argv, **kwargs):
+                    if "--head" in argv:
+                        headers = (
+                            "HTTP/1.1 200 OK\r\nContent-Length: 5\r\n"
+                            f"Content-Type: {content_type}\r\n\r\n"
+                        )
+                        return type(
+                            "Result",
+                            (),
+                            {"returncode": 0, "stdout": f"{headers}\n200\n{content_type}"},
+                        )()
+                    return type("Result", (), {"returncode": 0, "stdout": html.decode() + "\n200"})()
+
+                return curl
+
+            with (
+                patch.object(deployment, "WEB_RELEASES", release.parent),
+                patch.object(deployment.frontend, "_current_sha", return_value=SHA),
+                patch.object(deployment.promotion, "_run", side_effect=curl_with_type("application/javascript")) as run,
+            ):
+                self.assertTrue(deployment._website_health_matches(SHA, 11))
+            self.assertEqual(run.call_count, 2)
+
+            with (
+                patch.object(deployment, "WEB_RELEASES", release.parent),
+                patch.object(deployment.frontend, "_current_sha", return_value=SHA),
+                patch.object(deployment.promotion, "_run", side_effect=curl_with_type("text/html")),
+            ):
+                self.assertFalse(deployment._website_health_matches(SHA, 11))
 
     def test_commit_verification_uses_only_fixed_origin_main_ancestry(self) -> None:
         successful_git = type("Result", (), {"returncode": 0})()

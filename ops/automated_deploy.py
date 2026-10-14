@@ -15,8 +15,10 @@ import tarfile
 import time
 import uuid
 from pathlib import Path
+from urllib.parse import quote, unquote, urlsplit
 
 import promote_release as promotion
+import promote_frontend as frontend
 
 try:
     import grp
@@ -38,6 +40,10 @@ BUILD_RUNS = BUILD_ROOT / "runs"
 MIRROR_ROOT = Path("/var/cache/shawhposh-deploy")
 GIT_TEMPLATE_ROOT = MIRROR_ROOT / "templates"
 LOCK_PATH = Path("/run/lock/shawhposh-promote.lock")
+DEPLOY_LOCK_PATH = LOCK_PATH
+WEB_ROOT = frontend.WEB_ROOT
+WEB_RELEASES = frontend.WEB_RELEASES
+WEB_CURRENT = frontend.WEB_CURRENT
 RUNTIME_ROOT = promotion.RUNTIME_ROOT
 RUNTIME_RELEASES = promotion.RUNTIME_RELEASES
 RUNTIME_CURRENT = promotion.RUNTIME_CURRENT
@@ -54,6 +60,11 @@ BUILD_MEMORY_HIGH = "256M"
 BUILD_MEMORY_MAX = "512M"
 BUILD_MEMORY_SWAP_MAX = "256M"
 BUILD_CPU_QUOTA = "40%"
+DOMAIN = "shawhposh.ir"
+COMMERCE_ENDPOINTS = {
+    "payment": "/api/v1/payment-methods/methods",
+    "shipping": "/api/v1/shipping/methods",
+}
 
 
 class DeployError(RuntimeError):
@@ -763,6 +774,239 @@ def _health_ready(sha: str, seconds: int = 45) -> bool:
     return False
 
 
+def _read_public_json_snapshot(endpoint: str) -> str:
+    result = promotion._run(
+        [
+            "/usr/bin/curl",
+            "--disable",
+            "--fail",
+            "--silent",
+            "--show-error",
+            "--max-time",
+            "8",
+            "--output",
+            "-",
+            "--write-out",
+            "\\n%{http_code}",
+            "--resolve",
+            promotion.HEALTH_RESOLVE,
+            f"https://{DOMAIN}{endpoint}",
+        ],
+        timeout=10,
+    )
+    if result.returncode != 0:
+        raise DeployError(f"Could not read the current public commerce settings: {endpoint}")
+    try:
+        body_text, status_text = result.stdout.rsplit("\n", 1)
+        body = json.loads(body_text)
+    except (ValueError, json.JSONDecodeError) as exc:
+        raise DeployError(f"Public commerce settings are not valid JSON: {endpoint}") from exc
+    if status_text.strip() != "200":
+        raise DeployError(f"Public commerce settings returned HTTP {status_text.strip()}: {endpoint}")
+    return json.dumps(body, sort_keys=True, separators=(",", ":"), ensure_ascii=True)
+
+
+def _read_commerce_snapshots() -> dict[str, str]:
+    return {name: _read_public_json_snapshot(path) for name, path in COMMERCE_ENDPOINTS.items()}
+
+
+def _commerce_snapshots_match(expected: dict[str, str]) -> bool:
+    try:
+        return _read_commerce_snapshots() == expected
+    except DeployError:
+        return False
+
+
+def _website_health_matches(expected_release: str, web_root_fd: int) -> bool:
+    try:
+        if frontend._current_sha(web_root_fd, releases_root=WEB_RELEASES) != expected_release:
+            return False
+        release = WEB_RELEASES / expected_release
+        expected_html = (release / "index.html").read_bytes()
+        result = promotion._run(
+            [
+                "/usr/bin/curl",
+                "--disable",
+                "--fail",
+                "--silent",
+                "--show-error",
+                "--max-time",
+                "8",
+                "--output",
+                "-",
+                "--write-out",
+                "\\n%{http_code}",
+                "--resolve",
+                f"{DOMAIN}:443:127.0.0.1",
+                f"https://{DOMAIN}/",
+            ],
+            timeout=10,
+        )
+        if result.returncode != 0:
+            return False
+        served_html, status_text = result.stdout.rsplit("\n", 1)
+        if status_text.strip() != "200" or served_html.encode("utf-8") != expected_html:
+            return False
+        html = expected_html.decode("utf-8")
+        references = re.findall(r"\b(?:src|href)\s*=\s*['\"]([^'\"]+)['\"]", html, re.IGNORECASE)
+        local_assets: set[tuple[str, Path]] = set()
+        for reference in references:
+            parsed = urlsplit(reference)
+            if parsed.scheme or parsed.netloc or not parsed.path or parsed.path == "/":
+                continue
+            relative = unquote(parsed.path.lstrip("/"))
+            parts = relative.split("/")
+            if not relative or any(part in {"", ".", ".."} for part in parts) or "\\" in relative:
+                return False
+            asset = release.joinpath(*parts)
+            try:
+                asset_info = asset.lstat()
+            except OSError:
+                return False
+            if not stat.S_ISREG(asset_info.st_mode) or stat.S_ISLNK(asset_info.st_mode):
+                return False
+            local_assets.add(("/" + quote(relative, safe="/-._~"), asset))
+        for asset_path, local_asset in local_assets:
+            asset_result = promotion._run(
+                [
+                    "/usr/bin/curl",
+                    "--disable",
+                    "--fail",
+                    "--silent",
+                    "--show-error",
+                    "--max-time",
+                    "8",
+                    "--head",
+                    "--dump-header",
+                    "-",
+                    "--output",
+                    "/dev/null",
+                    "--write-out",
+                    "\\n%{http_code}\\n%{content_type}",
+                    "--resolve",
+                    f"{DOMAIN}:443:127.0.0.1",
+                    f"https://{DOMAIN}{asset_path}",
+                ],
+                timeout=10,
+            )
+            if asset_result.returncode != 0:
+                return False
+            try:
+                headers, status_text, content_type = asset_result.stdout.rsplit("\n", 2)
+            except ValueError:
+                return False
+            if status_text.strip() != "200" or content_type.split(";", 1)[0].strip().lower() == "text/html":
+                return False
+            content_length = re.search(r"^content-length:\s*(\d+)\s*$", headers, re.IGNORECASE | re.MULTILINE)
+            if content_length is not None and int(content_length.group(1)) != asset_info.st_size:
+                return False
+        return any(urlsplit(reference).path.startswith("/assets/") for reference in references)
+    except (OSError, UnicodeError, ValueError, frontend.FrontendPromotionError):
+        return False
+
+
+def _rollback_release_pair(
+    runtime_root_fd: int,
+    web_root_fd: int,
+    *,
+    requested_sha: str,
+    previous_api_sha: str,
+    previous_web_release: str,
+    commerce_snapshot: dict[str, str],
+) -> bool:
+    try:
+        current_api = promotion._current_sha(runtime_root_fd)
+        current_web = frontend._current_sha(web_root_fd, releases_root=WEB_RELEASES)
+        if current_api not in {previous_api_sha, requested_sha}:
+            raise DeployError("API current changed unexpectedly; pair rollback refused.")
+        if current_web not in {previous_web_release, requested_sha}:
+            raise DeployError("Frontend current changed unexpectedly; pair rollback refused.")
+        changed = current_api != previous_api_sha or current_web != previous_web_release
+        if not changed:
+            _log("ROLLBACK", "both current pointers were unchanged; no rollback mutation was needed")
+            return True
+        if current_web != previous_web_release:
+            frontend._atomic_switch(web_root_fd, previous_web_release, releases_root=WEB_RELEASES)
+        if current_api != previous_api_sha:
+            promotion._atomic_switch(runtime_root_fd, previous_api_sha)
+        if (
+            promotion._current_sha(runtime_root_fd) != previous_api_sha
+            or frontend._current_sha(web_root_fd, releases_root=WEB_RELEASES) != previous_web_release
+        ):
+            raise DeployError("Restored release pointers do not match the previous pair.")
+        restarted = promotion._run(["/usr/bin/systemctl", "restart", SERVICE_NAME], timeout=30)
+        api_ok = restarted.returncode == 0 and _health_ready(previous_api_sha)
+        website_ok = _website_health_matches(previous_web_release, web_root_fd)
+        commerce_ok = _commerce_snapshots_match(commerce_snapshot)
+        rollback_ok = api_ok and website_ok and commerce_ok
+        _log(
+            "ROLLBACK",
+            f"previous_api={previous_api_sha} previous_frontend={previous_web_release} "
+            f"api={'passed' if api_ok else 'failed'} website={'passed' if website_ok else 'failed'} "
+            f"commerce_settings={'unchanged' if commerce_ok else 'changed'} result={'passed' if rollback_ok else 'failed'}",
+        )
+        return rollback_ok
+    except Exception as rollback_error:
+        _log("ROLLBACK", f"result=failed error={rollback_error}")
+        return False
+
+
+def _activate_release_pair(
+    runtime_root_fd: int,
+    web_root_fd: int,
+    *,
+    requested_sha: str,
+    previous_api_sha: str,
+    previous_web_release: str,
+    commerce_snapshot: dict[str, str],
+) -> None:
+    if promotion._current_sha(runtime_root_fd) != previous_api_sha:
+        raise DeployError("API current changed before activation; refusing a partial release.")
+    if frontend._current_sha(web_root_fd, releases_root=WEB_RELEASES) != previous_web_release:
+        raise DeployError("Frontend current changed before activation; refusing a partial release.")
+    promotion._atomic_switch(runtime_root_fd, requested_sha)
+    frontend._atomic_switch(web_root_fd, requested_sha, releases_root=WEB_RELEASES)
+    restarted = promotion._run(["/usr/bin/systemctl", "restart", SERVICE_NAME], timeout=30)
+    api_ok = restarted.returncode == 0 and _health_ready(requested_sha)
+    website_ok = _website_health_matches(requested_sha, web_root_fd)
+    commerce_ok = _commerce_snapshots_match(commerce_snapshot)
+    _log(
+        "HEALTH",
+        f"sha={requested_sha} api={'passed' if api_ok else 'failed'} "
+        f"website={'passed' if website_ok else 'failed'} "
+        f"payment_shipping={'unchanged' if commerce_ok else 'changed'}",
+    )
+    if not (api_ok and website_ok and commerce_ok):
+        raise DeployError("Full-stack release failed API, website, or commerce-configuration verification.")
+
+
+def _retain_backend_releases(releases_fd: int, *, current: str, previous: str, keep_count: int = 3) -> list[str]:
+    entries = os.listdir(releases_fd)
+    releases: list[tuple[str, int]] = []
+    for name in entries:
+        validate_sha(name)
+        info = os.stat(name, dir_fd=releases_fd, follow_symlinks=False)
+        if not promotion._metadata_ok(info, uid=0, gid=0, directory=True):
+            raise DeployError("Protected API release inventory is ambiguous; retention was skipped.")
+        promotion.resolve_protected_release(name)
+        releases.append((name, info.st_mtime_ns))
+    names = {name for name, _ in releases}
+    if current not in names or previous not in names:
+        raise DeployError("Current or previous API release is missing; retention was skipped.")
+    keep = {current, previous}
+    for name, _ in sorted(releases, key=lambda item: item[1], reverse=True):
+        if len(keep) >= max(2, keep_count):
+            break
+        keep.add(name)
+    removed: list[str] = []
+    for name, _ in releases:
+        if name in keep:
+            continue
+        promotion._remove_created_release_tree(releases_fd, name, expected_uid=0, expected_gid=0)
+        removed.append(name)
+    return removed
+
+
 def _rollback_to_protected_previous(root_fd: int, requested_sha: str, previous_sha: str) -> bool:
     try:
         if promotion._current_sha(root_fd) != requested_sha:
@@ -818,16 +1062,30 @@ def deploy(sha: str) -> None:
     lock_fd = mirror = None
     workspace = None
     build_uid = build_gid = None
-    root_fd = releases_fd = -1
-    previous_sha = None
+    root_fd = releases_fd = web_root_fd = web_releases_fd = -1
+    previous_api_sha = previous_web_release = None
+    commerce_snapshot = None
+    switch_attempted = False
+    deploy_result = "failed"
     try:
         lock_fd = promotion._acquire_lock()
         build_uid, build_gid = _build_identity()
         root_fd, releases_fd = promotion._ensure_protected_roots()
-        previous_sha = _read_active_sha(root_fd)
-        if not _service_owned_by_runtime() or not _health_matches(previous_sha):
+        web_root_fd, web_releases_fd = frontend.open_frontend_roots(WEB_ROOT)
+        previous_api_sha = _read_active_sha(root_fd)
+        previous_web_release = frontend._current_sha(web_root_fd, releases_root=WEB_RELEASES)
+        if previous_web_release is None:
+            raise DeployError("Protected frontend current symlink is missing; manual setup is required.")
+        if not _service_owned_by_runtime() or not _health_matches(previous_api_sha):
             raise DeployError("Current protected API is not healthy as the shawhposh service user.")
-        _log("PRECHECK", f"active_sha={previous_sha} runtime_user=shawhposh current_health=passed")
+        if not _website_health_matches(previous_web_release, web_root_fd):
+            raise DeployError("Current protected frontend is not served correctly by Nginx.")
+        commerce_snapshot = _read_commerce_snapshots()
+        _log(
+            "PRECHECK",
+            f"previous_api={previous_api_sha} previous_frontend={previous_web_release} "
+            "api=healthy website=healthy runtime_user=shawhposh payment_shipping=snapshotted",
+        )
 
         if not Path("/usr/bin/git").is_file() or not os.access("/usr/bin/git", os.X_OK):
             raise DeployError("Git is not installed at the approved executable path.")
@@ -842,8 +1100,8 @@ def deploy(sha: str) -> None:
         env = _root_env(workspace / "home")
         mirror = _git_mirror(workspace, env)
         _require_main_ancestor(mirror, sha, env)
-        _require_commit_available(mirror, previous_sha, env, "active production")
-        current_migrations = _migration_digest(mirror, previous_sha, env)
+        _require_commit_available(mirror, previous_api_sha, env, "active production")
+        current_migrations = _migration_digest(mirror, previous_api_sha, env)
         target_migrations = _migration_digest(mirror, sha, env)
         migration_policy(current_migrations, target_migrations)
         _log("MIGRATIONS", f"schema_set=unchanged sha256={target_migrations}")
@@ -855,30 +1113,120 @@ def deploy(sha: str) -> None:
 
         _lock_workspace(workspace, build_uid)
         _log("BUILD", "all required validation commands passed; isolated build workspace locked for promotion")
-        release = _prepare_release(sha, workspace, build_uid, build_gid, target_migrations)
-        _log("PROMOTE", f"protected_release={release} owner=root:root validation=passed")
+        api_release = _prepare_release(sha, workspace, build_uid, build_gid, target_migrations)
+        run_fd, source_fd = _source_directory_fd(workspace, build_uid)
+        try:
+            dist_fd = promotion._source_directory(
+                source_fd,
+                "dist",
+                expected_uid=build_uid,
+                display=str(workspace / "source" / "dist"),
+            )
+            try:
+                web_release = frontend._prepare_frontend_release_from_fds(
+                    sha,
+                    dist_fd,
+                    web_releases_fd,
+                    releases_root=WEB_RELEASES,
+                    expected_source_uid=build_uid,
+                    expected_source_gid=build_gid,
+                    expected_runtime_uid=0,
+                    expected_runtime_gid=0,
+                )
+            finally:
+                os.close(dist_fd)
+        finally:
+            os.close(source_fd)
+            os.close(run_fd)
+        _log(
+            "PROMOTE",
+            f"backend={api_release} frontend={web_release} owner=root:root validation=passed",
+        )
 
-        if sha == previous_sha:
-            if not _health_ready(sha):
-                raise DeployError("Requested commit is already active but did not pass the service health gate.")
-            _log("COMPLETE", f"previous_sha={previous_sha} promoted_sha={sha} health=passed result=noop")
+        if sha == previous_api_sha and sha == previous_web_release:
+            if (
+                not _health_ready(sha)
+                or not _website_health_matches(sha, web_root_fd)
+                or not _commerce_snapshots_match(commerce_snapshot)
+            ):
+                raise DeployError("Requested full-stack release is active but failed its health/configuration gate.")
+            deploy_result = "passed"
+            _log("COMPLETE", f"requester={requester} previous_api={previous_api_sha} previous_frontend={previous_web_release} promoted_sha={sha} result=noop")
             return
 
-        if promotion._current_sha(root_fd) != previous_sha:
-            raise DeployError("Protected current release changed during the deployment.")
-        promotion._atomic_switch(root_fd, sha)
-        restarted = promotion._run(["/usr/bin/systemctl", "restart", SERVICE_NAME], timeout=30)
-        health_ok = restarted.returncode == 0 and _health_ready(sha)
-        _log("HEALTH", f"sha={sha} service_restart={'passed' if restarted.returncode == 0 else 'failed'} result={'passed' if health_ok else 'failed'}")
-        if not health_ok:
-            raise DeployError("New release failed the API, database, version, or runtime-owner health gate.")
-        _log("COMPLETE", f"requester={requester} previous_sha={previous_sha} promoted_sha={sha} health=passed rollback=not-needed")
+        if promotion._current_sha(root_fd) != previous_api_sha:
+            raise DeployError("Protected API current release changed during the deployment.")
+        if frontend._current_sha(web_root_fd, releases_root=WEB_RELEASES) != previous_web_release:
+            raise DeployError("Protected frontend current release changed during the deployment.")
+        switch_attempted = True
+        _activate_release_pair(
+            root_fd,
+            web_root_fd,
+            requested_sha=sha,
+            previous_api_sha=previous_api_sha,
+            previous_web_release=previous_web_release,
+            commerce_snapshot=commerce_snapshot,
+        )
+        deploy_result = "passed"
+        _log(
+            "COMPLETE",
+            f"requester={requester} previous_api={previous_api_sha} previous_frontend={previous_web_release} "
+            f"promoted_api={sha} promoted_frontend={sha} api_health=passed website_health=passed rollback=not-needed",
+        )
+        try:
+            removed_api = _retain_backend_releases(releases_fd, current=sha, previous=previous_api_sha)
+            for release_id in removed_api:
+                _log("RETENTION", f"removed_backend=/opt/shawhposh/releases/{release_id}")
+            removed_web = frontend._retain_frontend_releases(
+                web_root_fd,
+                web_releases_fd,
+                current=sha,
+                previous=previous_web_release,
+                releases_root=WEB_RELEASES,
+                keep_count=3,
+            )
+            for release_id in removed_web:
+                _log("RETENTION", f"removed_frontend=/var/www/shawhposh/releases/{release_id}")
+        except Exception as retention_error:
+            _log("RETENTION", f"result=skipped error={retention_error}")
     except Exception as exc:
-        if root_fd >= 0 and previous_sha is not None:
-            _rollback_after_failed_switch(root_fd, sha, previous_sha)
-        _log("FAIL", f"requester={requester} sha={sha} previous_sha={previous_sha or 'unknown'} error={exc}")
+        rollback_result = "not-needed"
+        if (
+            switch_attempted
+            and root_fd >= 0
+            and web_root_fd >= 0
+            and previous_api_sha is not None
+            and previous_web_release is not None
+            and commerce_snapshot is not None
+        ):
+            rollback_result = (
+                "passed"
+                if _rollback_release_pair(
+                    root_fd,
+                    web_root_fd,
+                    requested_sha=sha,
+                    previous_api_sha=previous_api_sha,
+                    previous_web_release=previous_web_release,
+                    commerce_snapshot=commerce_snapshot,
+                )
+                else "failed"
+            )
+        _log(
+            "FAIL",
+            f"requester={requester} sha={sha} previous_api={previous_api_sha or 'unknown'} "
+            f"previous_frontend={previous_web_release or 'unknown'} rollback={rollback_result} error={exc}",
+        )
         raise
     finally:
+        _log(
+            "END",
+            f"requester={requester} sha={sha} result={deploy_result} "
+            f"ended={time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())}",
+        )
+        if web_releases_fd >= 0:
+            os.close(web_releases_fd)
+        if web_root_fd >= 0:
+            os.close(web_root_fd)
         if releases_fd >= 0:
             os.close(releases_fd)
         if root_fd >= 0:

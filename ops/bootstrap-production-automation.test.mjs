@@ -151,6 +151,11 @@ test('runtime cutover internal mode is root-only, fixed-SHA, single-confirmation
   assert.ok(cutover.indexOf('install_sudo_policy\n  CUTOVER_ACCEPTED=1') > cutover.indexOf('verify_payment_shipping_disabled'));
   assert.ok(cutover.includes('pm2_api_metadata > "$SNAPSHOT_DIR/pm2-api-before.json"'));
   assert.ok(cutover.includes('ownership-before.txt'));
+  assert.ok(cutover.includes('frontend-ownership-before.txt'));
+  assert.ok(cutover.includes('static release tree -> root:root; directories 0755, files 0644.'));
+  assert.ok(cutover.includes("stat -c '%U:%G:%a' -- \"$WEB_ROOT\") == 'root:root:755'"));
+  assert.ok(cutover.includes('runuser -u ubuntu -- test ! -w "$WEB_CURRENT/index.html"'));
+  assert.ok(cutover.includes('Restored the pre-cutover ubuntu ownership of the static release tree.'));
 });
 
 test('bootstrap snapshots hash-verified scripts as root-owned inputs before executing either mutation script', () => {

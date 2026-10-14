@@ -15,6 +15,9 @@ readonly GIT_TEMPLATE_ROOT=/var/cache/shawhposh-deploy/templates
 readonly RUNTIME_ROOT=/opt/shawhposh
 readonly RUNTIME_RELEASES=/opt/shawhposh/releases
 readonly RUNTIME_CURRENT=/opt/shawhposh/current
+readonly WEB_ROOT=/var/www/shawhposh
+readonly WEB_RELEASES=/var/www/shawhposh/releases
+readonly WEB_CURRENT=/var/www/shawhposh/current
 readonly LIB_ROOT=/usr/local/lib/shawhposh-deploy
 readonly DEPLOY_COMMAND=/usr/local/sbin/shawhposh-deploy
 readonly SUDOERS_TARGET=/etc/sudoers.d/ubuntu-shawhposh
@@ -116,6 +119,7 @@ fi
 
 for source in \
   "$repo_root/ops/automated_deploy.py" \
+  "$repo_root/ops/promote_frontend.py" \
   "$repo_root/ops/promote_release.py" \
   "$repo_root/ops/shawhposh-deploy" \
   "$repo_root/ops/sudoers.d/ubuntu-shawhposh"; do
@@ -160,6 +164,25 @@ printf '%s' "$health" | /usr/bin/python3 -c 'import json,sys; d=json.load(sys.st
   || die 'The current API health version or database state does not match the protected release.'
 log "Protected API baseline verified: $active_sha"
 
+require_exact_dir /var/www root root 755
+require_exact_dir "$WEB_ROOT" root root 755
+require_exact_dir "$WEB_RELEASES" root root 755
+[[ -L $WEB_CURRENT && $(stat -c '%U:%G' -- "$WEB_CURRENT") == root:root ]] \
+  || die 'Frontend current is not a root-owned symlink.'
+web_target=$(readlink -e -- "$WEB_CURRENT")
+[[ $(dirname -- "$web_target") == "$WEB_RELEASES" && $(basename -- "$web_target") =~ ^([0-9a-f]{40}|20[0-9]{6}-[0-9a-f]{8})$ \
+  && $(stat -c '%U:%G:%a' -- "$web_target") == root:root:755 && -f $web_target/index.html ]] \
+  || die 'Active frontend release is outside the protected root-owned static release tree.'
+web_problem=$(find -P "$WEB_RELEASES" -xdev \
+  \( -type d \( ! -user root -o ! -group root -o ! -perm 0755 \) \
+    -o -type f \( ! -user root -o ! -group root -o ! -perm 0644 -o -links +1 \) \
+    -o \( ! -type d -a ! -type f \) \) -print -quit)
+[[ -z $web_problem ]] || die "Frontend release tree contains an unsafe artifact: $web_problem"
+runuser -u www-data -- test -r "$WEB_CURRENT/index.html" || die 'Nginx cannot read the protected frontend release.'
+runuser -u ubuntu -- test ! -w "$WEB_ROOT" && runuser -u ubuntu -- test ! -w "$WEB_CURRENT/index.html" \
+  || die 'ubuntu can modify the protected frontend tree.'
+/usr/sbin/nginx -T 2>&1 | grep -Fq "root $WEB_CURRENT;" || die 'Nginx is not configured to serve the protected frontend current path.'
+
 if [[ -e $SUDOERS_TARGET || -L $SUDOERS_TARGET ]]; then
   [[ -f $SUDOERS_TARGET && ! -L $SUDOERS_TARGET && $(stat -c '%U:%G:%a' -- "$SUDOERS_TARGET") == root:root:440 ]] \
     || die 'Existing Shawhposh sudoers file has unexpected type, owner, or mode.'
@@ -193,7 +216,7 @@ if [[ -e $DEPLOY_COMMAND || -L $DEPLOY_COMMAND ]]; then
   [[ -f $DEPLOY_COMMAND && ! -L $DEPLOY_COMMAND && $(stat -c '%U:%G:%a' -- "$DEPLOY_COMMAND") == root:root:755 ]] \
     || die 'Existing automated deploy command has unexpected type, owner, or mode.'
 fi
-for installed in "$LIB_ROOT/automated_deploy.py" "$LIB_ROOT/promote_release.py"; do
+for installed in "$LIB_ROOT/automated_deploy.py" "$LIB_ROOT/promote_frontend.py" "$LIB_ROOT/promote_release.py"; do
   if [[ -e $installed || -L $installed ]]; then
     [[ -f $installed && ! -L $installed && $(stat -c '%U:%G:%a' -- "$installed") == root:root:644 ]] \
       || die "Existing deployment library file has unexpected type, owner, or mode: $installed"
@@ -201,7 +224,7 @@ for installed in "$LIB_ROOT/automated_deploy.py" "$LIB_ROOT/promote_release.py";
 done
 while IFS= read -r entry; do
   case "$(basename -- "$entry")" in
-    automated_deploy.py|promote_release.py) ;;
+    automated_deploy.py|promote_frontend.py|promote_release.py) ;;
     *) die "Unexpected file in root-owned deployment library: $entry" ;;
   esac
 done < <(find "$LIB_ROOT" -mindepth 1 -maxdepth 1 -print)
@@ -223,14 +246,16 @@ policy_committed=0
 trap restore_previous_sudo_policy EXIT
 
 install -o root -g root -m 0644 -- "$repo_root/ops/promote_release.py" "$LIB_ROOT/promote_release.py"
+install -o root -g root -m 0644 -- "$repo_root/ops/promote_frontend.py" "$LIB_ROOT/promote_frontend.py"
 install -o root -g root -m 0644 -- "$repo_root/ops/automated_deploy.py" "$LIB_ROOT/automated_deploy.py"
 install -o root -g root -m 0755 -- "$repo_root/ops/shawhposh-deploy" "$HELPER_TEMP"
 /usr/bin/python3 -I -c 'import ast,sys; [ast.parse(open(p,encoding="utf-8").read()) for p in sys.argv[1:]]' \
-  "$LIB_ROOT/promote_release.py" "$LIB_ROOT/automated_deploy.py" "$HELPER_TEMP" \
+  "$LIB_ROOT/promote_release.py" "$LIB_ROOT/promote_frontend.py" "$LIB_ROOT/automated_deploy.py" "$HELPER_TEMP" \
   || die 'Installed Python deployment files failed syntax validation.'
 mv -T -- "$HELPER_TEMP" "$DEPLOY_COMMAND"
 [[ $(stat -c '%U:%G:%a' -- "$DEPLOY_COMMAND") == root:root:755 ]] || die 'Deployment command ownership/mode validation failed.'
 [[ $(stat -c '%U:%G:%a' -- "$LIB_ROOT/automated_deploy.py") == root:root:644 ]] || die 'Deployment library ownership/mode validation failed.'
+[[ $(stat -c '%U:%G:%a' -- "$LIB_ROOT/promote_frontend.py") == root:root:644 ]] || die 'Frontend deployment library ownership/mode validation failed.'
 
 install -o root -g root -m 0440 -- "$repo_root/ops/sudoers.d/ubuntu-shawhposh" "$SUDOERS_TEMP"
 /usr/sbin/visudo -cf "$SUDOERS_TEMP" >/dev/null || die 'New Shawhposh sudoers policy failed isolated validation.'

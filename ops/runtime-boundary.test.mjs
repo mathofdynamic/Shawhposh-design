@@ -63,6 +63,7 @@ test('sudo policy permits only the SHA-scoped automatic deployment helper', () =
 
 test('automatic deployment helper uses trusted main source and a fixed API service only', () => {
   const helper = read('automated_deploy.py');
+  const frontend = read('promote_frontend.py');
   assert.match(helper, /REPOSITORY_URL = "https:\/\/github\.com\/mathofdynamic\/Shawhposh-design\.git"/);
   assert.match(helper, /TRUSTED_BRANCH = "refs\/remotes\/origin\/main"/);
   assert.match(helper, /merge-base", "--is-ancestor"/);
@@ -70,6 +71,17 @@ test('automatic deployment helper uses trusted main source and a fixed API servi
   assert.match(helper, /MANUAL MIGRATION REQUIRED/);
   assert.match(helper, /systemctl", "restart", SERVICE_NAME/);
   assert.match(helper, /SERVICE_NAME = "shawhposh-api\.service"/);
+  assert.match(helper, /WEB_ROOT = frontend\.WEB_ROOT/);
+  assert.match(helper, /frontend\._prepare_frontend_release_from_fds/);
+  assert.match(helper, /frontend\._atomic_switch\(web_root_fd, requested_sha/);
+  assert.match(helper, /_rollback_release_pair\(/);
+  assert.match(helper, /_website_health_matches\(requested_sha, web_root_fd\)/);
+  assert.match(helper, /_commerce_snapshots_match\(commerce_snapshot\)/);
+  assert.match(helper, /_retain_backend_releases/);
+  assert.match(frontend, /WEB_ROOT = Path\("\/var\/www\/shawhposh"\)/);
+  assert.match(frontend, /WEB_RELEASES = WEB_ROOT \/ "releases"/);
+  assert.match(frontend, /WEB_CURRENT = WEB_ROOT \/ "current"/);
+  assert.ok(!frontend.includes('/home/ubuntu/shawhposh'));
   assert.match(helper, /_atomic_switch\(root_fd, previous_sha\)/);
   assert.ok(!helper.includes('/home/ubuntu/shawhposh/releases'));
   assert.ok(!helper.includes('shell=True'));
@@ -96,6 +108,9 @@ test('one-time installer refuses the current PM2-era state and restores failed s
   assert.ok(installer.includes('sudo -ll -U ubuntu'));
   assert.ok(installer.includes('blocks != [("root", expected)]'));
   assert.ok(installer.includes('Unexpected file in root-owned deployment library'));
+  assert.ok(installer.includes('promote_frontend.py'));
+  assert.ok(installer.includes('/var/www/shawhposh/releases'));
+  assert.ok(installer.includes('Nginx is not configured to serve the protected frontend current path.'));
   assert.ok(!installer.includes('__pycache__'));
   assert.match(installer, /ubuntu ALL=\(root\) NOPASSWD: \$DEPLOY_COMMAND \$SHA_SUDO_ARGUMENT/);
   assert.ok(installer.includes("readonly SHA_SUDO_ARGUMENT='^[0-9a-f]{40}$'"));
@@ -108,6 +123,20 @@ test('automated deployment Python policy and command construction tests pass', (
     cwd: dirname(directory),
     encoding: 'utf8',
   });
+  assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
+});
+
+test('protected frontend promotion and two-pointer rollback tests pass', () => {
+  const python = process.platform === 'win32' ? 'python' : 'python3';
+  const result = spawnSync(python, [join(directory, 'test_promote_frontend.py')], {
+    cwd: dirname(directory),
+    encoding: 'utf8',
+  });
+  if (process.platform === 'win32') {
+    assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
+    assert.match(`${result.stdout}\n${result.stderr}`, /skipped=/);
+    return;
+  }
   assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
 });
 

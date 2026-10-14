@@ -448,6 +448,14 @@ restore_runtime_ownership_to_ubuntu() {
   done
   chown ubuntu:ubuntu -- "$BACKUP_ROOT" "$STATE_ROOT"
   chmod 0700 -- "$BACKUP_ROOT" "$STATE_ROOT"
+  [[ -d $WEB_ROOT && ! -L $WEB_ROOT && -d $WEB_RELEASES && ! -L $WEB_RELEASES && -L $WEB_CURRENT ]] \
+    || { log 'ROLLBACK' 'Frontend release tree changed type during ownership rollback.'; return 1; }
+  chown ubuntu:ubuntu -- "$WEB_ROOT" "$WEB_RELEASES"
+  chown -h ubuntu:ubuntu -- "$WEB_CURRENT"
+  find -P "$WEB_RELEASES" -xdev -type d -exec chown ubuntu:ubuntu -- {} + -exec chmod 0755 -- {} +
+  find -P "$WEB_RELEASES" -xdev -type f -exec chown ubuntu:ubuntu -- {} + -exec chmod 0644 -- {} +
+  chmod 0755 -- "$WEB_ROOT" "$WEB_RELEASES"
+  log 'ROLLBACK' 'Restored the pre-cutover ubuntu ownership of the static release tree.'
 }
 
 restore_old_timers() {
@@ -627,6 +635,16 @@ validate_preflight() {
   local web_target
   web_target=$(readlink -e -- "$WEB_CURRENT")
   [[ $(dirname -- "$web_target") == "$WEB_RELEASES" && -f $web_target/index.html ]] || die 'Frontend current points outside its expected release tree.'
+  [[ $(stat -c '%U:%G:%a' -- "$WEB_ROOT") == 'ubuntu:ubuntu:755' \
+    && $(stat -c '%U:%G:%a' -- "$WEB_RELEASES") == 'ubuntu:ubuntu:755' \
+    && $(stat -c '%U:%G' -- "$WEB_CURRENT") == 'ubuntu:ubuntu' ]] \
+    || die 'Frontend root ownership differs from the reviewed pre-cutover model.'
+  local frontend_problem
+  frontend_problem=$(find -P "$WEB_RELEASES" -xdev \
+    \( -type d \( ! -user ubuntu -o ! -group ubuntu -o ! -perm 0755 \) \
+      -o -type f \( ! -user ubuntu -o ! -group ubuntu -o ! -perm 0644 -o -links +1 \) \
+      -o \( ! -type d -a ! -type f \) \) -print -quit)
+  [[ -z $frontend_problem ]] || die "Frontend release tree is not a regular ubuntu-owned static tree: $frontend_problem"
   [[ $(stat -c '%U:%G:%a' -- "$STATE_ROOT") == 'ubuntu:ubuntu:700' ]] || die 'Persistent-state directory differs from the reviewed pre-cutover ownership.'
   [[ $(stat -c '%U:%G:%a' -- "$DATABASE_FILE") == 'ubuntu:ubuntu:600' ]] || die 'Database ownership differs from the reviewed pre-cutover ownership.'
   [[ $(stat -c '%U:%G:%a' -- "$ENV_FILE") == 'ubuntu:ubuntu:600' ]] || die 'Environment-file ownership differs from the reviewed pre-cutover ownership.'
@@ -714,6 +732,9 @@ capture_unit_snapshot() {
     done
   } > "$SNAPSHOT_DIR/ownership-before.txt"
   chmod 0600 -- "$SNAPSHOT_DIR/ownership-before.txt"
+  find -P "$WEB_ROOT" -xdev -printf '%P|%u:%g:%m|%y|%n\n' \
+    > "$SNAPSHOT_DIR/frontend-ownership-before.txt"
+  chmod 0600 -- "$SNAPSHOT_DIR/frontend-ownership-before.txt"
   for unit in "$API_UNIT" "$BACKUP_UNIT" "$BACKUP_TIMER" "$RESERVATION_UNIT" "$RESERVATION_TIMER" "$REPLICATION_UNIT" ubuntu-shawhposh; do
     if [[ $unit == ubuntu-shawhposh ]]; then
       if [[ -e /etc/sudoers.d/$unit || -L /etc/sudoers.d/$unit ]]; then
@@ -831,11 +852,15 @@ apply_runtime_permissions() {
   log 'PERMISSIONS' "$STATE_ROOT -> shawhposh:shawhposh 0700"
   chown shawhposh:shawhposh -- "$STATE_ROOT"
   chmod 0700 -- "$STATE_ROOT"
-  log 'PERMISSIONS' "$WEB_ROOT and its release entries -> ubuntu:ubuntu; public files remain readable by Nginx."
-  chown ubuntu:ubuntu -- "$WEB_ROOT"
-  chown -h ubuntu:ubuntu -- "$WEB_CURRENT"
-  find -P "$WEB_RELEASES" -xdev -exec chown -h ubuntu:ubuntu -- {} +
+  log 'PERMISSIONS' "$WEB_ROOT and its static release tree -> root:root; directories 0755, files 0644."
+  chown root:root -- "$WEB_ROOT" "$WEB_RELEASES"
+  chown -h root:root -- "$WEB_CURRENT"
+  find -P "$WEB_RELEASES" -xdev -type d -exec chown root:root -- {} + -exec chmod 0755 -- {} +
+  find -P "$WEB_RELEASES" -xdev -type f -exec chown root:root -- {} + -exec chmod 0644 -- {} +
+  chmod 0755 -- "$WEB_ROOT" "$WEB_RELEASES"
   runuser -u www-data -- test -r "$WEB_CURRENT/index.html" || die 'Nginx worker cannot read the current frontend after ownership changes.'
+  runuser -u ubuntu -- test ! -w "$WEB_CURRENT/index.html" || die 'ubuntu can still write the active frontend.'
+  runuser -u ubuntu -- test ! -w "$WEB_ROOT" || die 'ubuntu can still replace the frontend current symlink.'
   runuser -u shawhposh -- test -r "$ENV_FILE" || die 'Runtime user cannot read the protected environment file.'
   runuser -u shawhposh -- test -w "$DATABASE_FILE" || die 'Runtime user cannot write the SQLite database.'
   runuser -u shawhposh -- test -w "$RECEIPT_ROOT" || die 'Runtime user cannot write receipt storage.'
@@ -847,7 +872,7 @@ apply_runtime_permissions() {
 }
 
 verify_active_runtime_release() {
-  local sha=$1 release path
+  local sha=$1 release path web_target frontend_problem
   [[ $sha =~ ^[0-9a-f]{40}$ ]] || die 'Active runtime release identifier is invalid.'
   release="$RUNTIME_RELEASES/$sha"
   [[ $(readlink -e -- "$RUNTIME_CURRENT") == "$release" ]] || die 'Runtime current does not point inside protected releases.'
@@ -855,6 +880,21 @@ verify_active_runtime_release() {
   [[ $(stat -c '%U:%G:%a' -- "$RUNTIME_RELEASES") == 'root:root:755' ]] || die 'Runtime releases ownership/mode is incorrect.'
   [[ $(stat -c '%U:%G:%a' -- "$release") == 'root:root:755' ]] || die 'Active release is not root-owned and protected.'
   [[ $(stat -c '%U:%G:%F' -- "$RUNTIME_CURRENT") == 'root:root:symbolic link' ]] || die 'Runtime current symlink is not root-owned.'
+  [[ $(stat -c '%U:%G:%a' -- "$WEB_ROOT") == 'root:root:755' \
+    && $(stat -c '%U:%G:%a' -- "$WEB_RELEASES") == 'root:root:755' ]] \
+    || die 'Protected frontend root ownership/mode is incorrect.'
+  [[ $(stat -c '%U:%G:%F' -- "$WEB_CURRENT") == 'root:root:symbolic link' ]] || die 'Frontend current symlink is not root-owned.'
+  web_target=$(readlink -e -- "$WEB_CURRENT")
+  [[ $(dirname -- "$web_target") == "$WEB_RELEASES" && $(stat -c '%U:%G:%a' -- "$web_target") == 'root:root:755' \
+    && -f $WEB_CURRENT/index.html ]] || die 'Active frontend release is outside the protected root-owned tree.'
+  runuser -u www-data -- test -r "$WEB_CURRENT/index.html" || die 'Nginx cannot read the protected frontend.'
+  runuser -u ubuntu -- test ! -w "$WEB_ROOT" && runuser -u ubuntu -- test ! -w "$WEB_CURRENT/index.html" \
+    || die 'ubuntu can modify the protected frontend tree.'
+  frontend_problem=$(find -P "$WEB_RELEASES" -xdev \
+    \( -type d \( ! -user root -o ! -group root -o ! -perm 0755 \) \
+      -o -type f \( ! -user root -o ! -group root -o ! -perm 0644 -o -links +1 \) \
+      -o \( ! -type d -a ! -type f \) \) -print -quit)
+  [[ -z $frontend_problem ]] || die "Protected frontend has unsafe ownership, mode, or file type: $frontend_problem"
   for path in \
     "$RUNTIME_CURRENT/package.json" \
     "$RUNTIME_CURRENT/server-dist/index.js" \
@@ -873,7 +913,7 @@ verify_active_runtime_release() {
   runuser -u shawhposh -- test ! -w /opt/shawhposh/current/server-dist/modules/orders/expire-reservations.js || die 'shawhposh can write active reservation code.'
   runuser -u ubuntu -- test ! -w "$RUNTIME_ROOT" || die 'ubuntu can replace the protected runtime current symlink.'
   runuser -u shawhposh -- test ! -w "$RUNTIME_ROOT" || die 'Runtime account can replace the protected current symlink.'
-  log 'PERMISSIONS' "Active release $sha is root-owned; ubuntu and runtime cannot edit code or replace current."
+  log 'PERMISSIONS' "Backend and frontend release $sha are root-owned; ubuntu and runtime cannot edit code or replace current."
 }
 
 install_units() {

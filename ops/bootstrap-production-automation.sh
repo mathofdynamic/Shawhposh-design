@@ -15,6 +15,9 @@ readonly ENV_FILE=/var/lib/shawhposh/.env
 readonly RECEIPT_ROOT=/var/lib/shawhposh/uploads/payment-receipts
 readonly BACKUP_ROOT=/var/backups/shawhposh
 readonly RUNTIME_CURRENT=/opt/shawhposh/current
+readonly WEB_ROOT=/var/www/shawhposh
+readonly WEB_RELEASES=/var/www/shawhposh/releases
+readonly WEB_CURRENT=/var/www/shawhposh/current
 readonly API_UNIT=shawhposh-api.service
 readonly BACKUP_TIMER=shawhposh-backup.timer
 readonly RESERVATION_TIMER=shawhposh-reservations.timer
@@ -71,7 +74,7 @@ check_checkout() {
 }
 
 validate_artifacts() {
-  local root=$1 file
+  local root=$1 role=$2 file
   for file in package.json node_modules/.package-lock.json server-dist/index.js \
     server-dist/db/backup.js server-dist/modules/orders/expire-reservations.js \
     ops/replicate-backups.mjs ops/promote_release.py ops/runtime-cutover.sh \
@@ -81,6 +84,7 @@ validate_artifacts() {
     ops/shawhposh-reservations.timer ops/shawhposh-replicate.service; do
     require_file "$root/$file"
   done
+  if [[ $role == controller ]]; then require_file "$root/ops/promote_frontend.py"; fi
   require_dir "$root/node_modules"
   require_dir "$root/server-dist"
   [[ $(stat -c '%U' -- "$root/node_modules") == ubuntu ]] || die "node_modules is not ubuntu-owned: $root"
@@ -109,8 +113,8 @@ bootstrap_preflight() {
   branch=$(git_as_ubuntu_from "$CONTROLLER_RELEASE" branch --show-current)
   log 'PRECHECK' "bootstrap_source=$controller_sha branch=${branch:-detached} runtime_candidate=$runtime_head"
 
-  validate_artifacts "$CONTROLLER_RELEASE"
-  validate_artifacts "$EXPECTED_RUNTIME_RELEASE"
+  validate_artifacts "$CONTROLLER_RELEASE" controller
+  validate_artifacts "$EXPECTED_RUNTIME_RELEASE" runtime
   for file in ops/bootstrap-production-automation.sh ops/runtime-cutover.sh ops/install-automated-deploy.sh; do
     [[ $(stat -c '%U' -- "$CONTROLLER_RELEASE/$file") == ubuntu ]] || die "Bootstrap source is not ubuntu-owned: $file"
     mode=$(stat -c '%a' -- "$CONTROLLER_RELEASE/$file")
@@ -129,7 +133,7 @@ bootstrap_preflight() {
   /usr/sbin/visudo -cf "$SUDOERS_TARGET" >/dev/null || die 'Existing Shawhposh sudoers file is invalid.'
   [[ -x /usr/sbin/visudo && -x /usr/bin/sudo && -x /usr/bin/systemctl && -x /usr/bin/curl ]] || die 'Required system utilities are missing.'
   /usr/sbin/visudo -cf /etc/sudoers >/dev/null || die 'Current sudoers configuration is invalid.'
-  for file in ops/runtime-cutover.sh ops/install-automated-deploy.sh ops/automated_deploy.py \
+  for file in ops/runtime-cutover.sh ops/install-automated-deploy.sh ops/automated_deploy.py ops/promote_frontend.py \
     ops/promote_release.py ops/shawhposh-deploy ops/sudoers.d/ubuntu-shawhposh; do
     CONTROLLER_HASHES[$file]=$(sha256sum -- "$CONTROLLER_RELEASE/$file")
     CONTROLLER_HASHES[$file]=${CONTROLLER_HASHES[$file]%% *}
@@ -189,7 +193,7 @@ capture_bootstrap_snapshot() {
     [[ $(stat -c '%U:%G:%a' -- "$path") == root:root:700 ]] || die "Trusted snapshot directory is not private: $path"
   done
   for source in ops/runtime-cutover.sh ops/install-automated-deploy.sh ops/automated_deploy.py \
-    ops/promote_release.py ops/shawhposh-deploy ops/sudoers.d/ubuntu-shawhposh; do
+    ops/promote_frontend.py ops/promote_release.py ops/shawhposh-deploy ops/sudoers.d/ubuntu-shawhposh; do
     destination=$BOOTSTRAP_SNAPSHOT/trusted/$source
     [[ -f $CONTROLLER_RELEASE/$source && ! -L $CONTROLLER_RELEASE/$source ]] || die "Trusted controller source changed type: $source"
     [[ $(stat -c '%U' -- "$CONTROLLER_RELEASE/$source") == ubuntu ]] || die "Trusted controller source is not ubuntu-owned: $source"
@@ -304,7 +308,7 @@ verify_empty_methods() {
 }
 
 verify_runtime() {
-  local health pid owner target path
+  local health pid owner target path web_target frontend_problem
   health=$(/usr/bin/curl --fail --silent --show-error --max-time 8 --resolve "$DOMAIN:443:127.0.0.1" "https://$DOMAIN/api/health") || return 1
   printf '%s\n' "$health" | /usr/bin/python3 -c 'import json,sys; d=json.load(sys.stdin); print("status=%s database=%s version=%s"%(d.get("status"),d.get("database"),d.get("version"))); sys.exit(0 if d.get("status")=="ok" and d.get("database")=="connected" and d.get("version")==sys.argv[1] else 1)' "$EXPECTED_RUNTIME_SHA" || return 1
   [[ $(systemctl is-active "$API_UNIT") == active && $(systemctl show -p User --value "$API_UNIT") == shawhposh ]] \
@@ -316,6 +320,23 @@ verify_runtime() {
   target=$(readlink -e -- "$RUNTIME_CURRENT") || return 1
   [[ $target == /opt/shawhposh/releases/$EXPECTED_RUNTIME_SHA && $(stat -c '%U:%G:%a' "$target") == root:root:755 ]] \
     || { die 'Active runtime path or ownership is incorrect.'; return 1; }
+  [[ $(stat -c '%U:%G:%a' "$WEB_ROOT") == root:root:755 \
+    && $(stat -c '%U:%G:%a' "$WEB_RELEASES") == root:root:755 \
+    && -L $WEB_CURRENT && $(stat -c '%U:%G:%F' "$WEB_CURRENT") == root:root:symbolic\ link ]] \
+    || { die 'Protected frontend directories or current symlink have incorrect ownership/modes.'; return 1; }
+  web_target=$(readlink -e -- "$WEB_CURRENT") || return 1
+  [[ $(dirname -- "$web_target") == "$WEB_RELEASES" && $(stat -c '%U:%G:%a' "$web_target") == root:root:755 \
+    && -f $WEB_CURRENT/index.html ]] \
+    || { die 'Active frontend path or ownership is incorrect.'; return 1; }
+  frontend_problem=$(find -P "$WEB_RELEASES" -xdev \
+    \( -type d \( ! -user root -o ! -group root -o ! -perm 0755 \) \
+      -o -type f \( ! -user root -o ! -group root -o ! -perm 0644 -o -links +1 \) \
+      -o \( ! -type d -a ! -type f \) \) -print -quit) || return 1
+  [[ -z $frontend_problem ]] || { die "Protected frontend contains an unsafe artifact: $frontend_problem"; return 1; }
+  runuser -u www-data -- test -r "$WEB_CURRENT/index.html" \
+    || { die 'Nginx cannot read the protected frontend.'; return 1; }
+  runuser -u ubuntu -- test ! -w "$WEB_ROOT" && runuser -u ubuntu -- test ! -w "$WEB_CURRENT/index.html" \
+    || { die 'ubuntu can modify the protected frontend tree.'; return 1; }
   runuser -u ubuntu -- test ! -w /opt/shawhposh && runuser -u shawhposh -- test ! -w /opt/shawhposh \
     || { die 'An unprivileged service/deployment account can replace the protected current pointer.'; return 1; }
   for path in "$RUNTIME_CURRENT/server-dist/index.js" "$RUNTIME_CURRENT/server-dist/db/backup.js" \
@@ -409,6 +430,8 @@ verify_final_install() {
   [[ $(stat -c '%U:%G:%a' "$DEPLOY_COMMAND") == root:root:755 ]] || { die 'Deploy helper owner/mode is incorrect.'; return 1; }
   [[ $(stat -c '%U:%G:%a' /usr/local/lib/shawhposh-deploy/automated_deploy.py) == root:root:644 ]] \
     || { die 'Deploy library is not root-owned/read-only.'; return 1; }
+  [[ $(stat -c '%U:%G:%a' /usr/local/lib/shawhposh-deploy/promote_frontend.py) == root:root:644 ]] \
+    || { die 'Frontend deployment library is not root-owned/read-only.'; return 1; }
   getent passwd shawhposh-build >/dev/null || { die 'Isolated build account is missing.'; return 1; }
 }
 
