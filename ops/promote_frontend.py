@@ -499,9 +499,15 @@ def _current_sha(
         raise FrontendPromotionError("Frontend current entry is not a root-owned symlink.")
     target = os.readlink("current", dir_fd=root_fd)
     match = re.fullmatch(r"releases/([0-9a-f]{40}|20[0-9]{6}-[0-9a-f]{8})", target)
-    if match is None:
-        raise FrontendPromotionError("Frontend current symlink points outside the fixed release namespace.")
-    release_id = match.group(1)
+    if match is not None:
+        release_id = match.group(1)
+    else:
+        absolute_prefix = f"{os.path.abspath(os.fspath(releases_root))}{os.sep}"
+        if not target.startswith(absolute_prefix):
+            raise FrontendPromotionError("Frontend current symlink points outside the fixed release namespace.")
+        release_id = target[len(absolute_prefix) :]
+        if RELEASE_PATTERN.fullmatch(release_id) is None:
+            raise FrontendPromotionError("Frontend current symlink points outside the fixed release namespace.")
     validate_frontend_release(
         releases_root / release_id,
         release_id,

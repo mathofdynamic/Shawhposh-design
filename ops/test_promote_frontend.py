@@ -86,6 +86,25 @@ class PromoteFrontendTests(unittest.TestCase):
                 self.assertEqual(
                     _current_sha(root_fd, releases_root=release.parent, expected_uid=uid, expected_gid=gid), SHA
                 )
+                os.unlink(root / "web/current")
+                os.symlink(str(release), root / "web/current")
+                self.assertEqual(
+                    _current_sha(root_fd, releases_root=release.parent, expected_uid=uid, expected_gid=gid), SHA
+                )
+            finally:
+                os.close(root_fd)
+                os.close(releases_fd)
+
+    def test_current_rejects_absolute_symlink_outside_release_namespace(self) -> None:
+        uid, gid = os.getuid(), os.getgid()
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            release, root_fd, releases_fd, _ = self._prepare(root)
+            try:
+                current = root / "web/current"
+                os.symlink(str(root / "outside" / SHA), current)
+                with self.assertRaisesRegex(FrontendPromotionError, "outside the fixed release namespace"):
+                    _current_sha(root_fd, releases_root=release.parent, expected_uid=uid, expected_gid=gid)
             finally:
                 os.close(root_fd)
                 os.close(releases_fd)
