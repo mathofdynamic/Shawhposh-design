@@ -21,6 +21,17 @@ SHA = "a" * 40
 
 
 class AutomatedDeployPolicyTests(unittest.TestCase):
+    def test_log_survives_a_closed_ssh_output_pipe(self) -> None:
+        class ClosedPipe:
+            def write(self, _: str) -> int:
+                raise BrokenPipeError(32, "Broken pipe")
+
+            def flush(self) -> None:
+                raise BrokenPipeError(32, "Broken pipe")
+
+        with patch.object(deployment.sys, "stdout", ClosedPipe()):
+            deployment._log("BUILD", "step=npm-ci result=passed")
+
     def test_promotion_runner_preserves_binary_output_when_requested(self) -> None:
         completed = subprocess.CompletedProcess(["curl"], 0, stdout=b"\xff", stderr=b"")
         with patch.object(deployment.promotion.subprocess, "run", return_value=completed) as run:

@@ -72,17 +72,38 @@ class DeployError(RuntimeError):
     pass
 
 
+class _NullConsole:
+    def write(self, value: str) -> int:
+        return len(value)
+
+    def flush(self) -> None:
+        return None
+
+
+_NULL_CONSOLE = _NullConsole()
+
+
 def validate_sha(value: str) -> str:
     if not isinstance(value, str) or SHA_PATTERN.fullmatch(value) is None:
         raise DeployError("Release ID must be exactly 40 lowercase hexadecimal characters.")
     return value
 
 
+def _console(message: str, *, stream) -> None:
+    try:
+        print(message, file=stream, flush=True)
+    except BrokenPipeError:
+        if stream is sys.stdout:
+            sys.stdout = _NULL_CONSOLE
+        elif stream is sys.stderr:
+            sys.stderr = _NULL_CONSOLE
+
+
 def _log(stage: str, message: str) -> None:
     safe = re.sub(r"[\r\n\x00-\x1f]", " ", message)[:900]
     if syslog is not None:
         syslog.syslog(syslog.LOG_NOTICE, f"stage={stage} {safe}")
-    print(f"[{stage}] {safe}", flush=True)
+    _console(f"[{stage}] {safe}", stream=sys.stdout)
 
 
 def _safe_tail(value: str) -> str:
@@ -1271,14 +1292,14 @@ def deploy(sha: str) -> None:
 
 def main(argv: list[str]) -> int:
     if len(argv) != 1:
-        print("Usage: shawhposh-deploy <40-char-sha>", file=sys.stderr)
+        _console("Usage: shawhposh-deploy <40-char-sha>", stream=sys.stderr)
         return 2
     try:
         sha = validate_sha(argv[0])
         deploy(sha)
         return 0
     except Exception as exc:
-        print(f"[DEPLOY] {exc}", file=sys.stderr)
+        _console(f"[DEPLOY] {exc}", stream=sys.stderr)
         return 1
 
 
