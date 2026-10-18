@@ -619,7 +619,8 @@ def _build_command_argv(
         f"--property=PrivateNetwork={'no' if network else 'yes'}",
         *(
             [
-                "--property=IPAddressDeny=localhost link-local 10.0.0.0/8 172.16.0.0/12 192.168.0.0/16 fc00::/7",
+                "--property=IPAddressDeny=127.0.0.0/8 ::1/128 169.254.0.0/16 fe80::/10 "
+                "10.0.0.0/8 172.16.0.0/12 192.168.0.0/16 fc00::/7",
                 "--property=IPAddressAllow=127.0.0.53/32",
             ]
             if network

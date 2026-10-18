@@ -293,9 +293,11 @@ class AutomatedDeployPolicyTests(unittest.TestCase):
         self.assertIn("--property=CPUQuota=40%", command)
         self.assertIn("--property=InaccessiblePaths=/var/lib/shawhposh /var/backups/shawhposh /opt/shawhposh /home/ubuntu", command)
         self.assertIn(
-            "--property=IPAddressDeny=localhost link-local 10.0.0.0/8 172.16.0.0/12 192.168.0.0/16 fc00::/7",
+            "--property=IPAddressDeny=127.0.0.0/8 ::1/128 169.254.0.0/16 fe80::/10 "
+            "10.0.0.0/8 172.16.0.0/12 192.168.0.0/16 fc00::/7",
             command,
         )
+        self.assertFalse(any("IPAddressDeny=localhost" in value or "link-local" in value for value in command))
         self.assertIn("--property=IPAddressAllow=127.0.0.53/32", command)
         separator = command.index("--")
         self.assertEqual(command[separator + 1], "/usr/bin/env")
