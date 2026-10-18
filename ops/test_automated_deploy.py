@@ -3,8 +3,9 @@
 
 from __future__ import annotations
 
-import sys
 import io
+import subprocess
+import sys
 import tempfile
 import unittest
 from contextlib import redirect_stderr
@@ -20,6 +21,14 @@ SHA = "a" * 40
 
 
 class AutomatedDeployPolicyTests(unittest.TestCase):
+    def test_promotion_runner_preserves_binary_output_when_requested(self) -> None:
+        completed = subprocess.CompletedProcess(["curl"], 0, stdout=b"\xff", stderr=b"")
+        with patch.object(deployment.promotion.subprocess, "run", return_value=completed) as run:
+            result = deployment.promotion._run(["/usr/bin/curl"], binary=True)
+
+        self.assertEqual(result.stdout, b"\xff")
+        self.assertFalse(run.call_args.kwargs["text"])
+
     def test_release_id_is_exact_lowercase_sha_and_not_a_path_or_ref(self) -> None:
         self.assertEqual(deployment.validate_sha(SHA), SHA)
         for value in (
@@ -156,7 +165,11 @@ class AutomatedDeployPolicyTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             release = Path(temporary) / SHA
             (release / "assets").mkdir(parents=True)
-            html = b'<script type="module" src="/assets/app.js"></script>\n'
+            html = (
+                b'<!doctype html>\r\n<html><head>\r\n'
+                b'<script type="module" src="/assets/app.js"></script>\r\n'
+                b'</head>\r\n<body>\r\n</body></html>\r'
+            )
             (release / "index.html").write_bytes(html)
             (release / "assets/app.js").write_bytes(b"app()")
 
@@ -172,7 +185,7 @@ class AutomatedDeployPolicyTests(unittest.TestCase):
                             (),
                             {"returncode": 0, "stdout": f"{headers}\n200\n{content_type}"},
                         )()
-                    return type("Result", (), {"returncode": 0, "stdout": html.decode() + "\n200"})()
+                    return type("Result", (), {"returncode": 0, "stdout": html + b"\n200"})()
 
                 return curl
 
@@ -183,6 +196,7 @@ class AutomatedDeployPolicyTests(unittest.TestCase):
             ):
                 self.assertTrue(deployment._website_health_matches(SHA, 11))
             self.assertEqual(run.call_count, 2)
+            self.assertTrue(run.call_args_list[0].kwargs["binary"])
 
             with (
                 patch.object(deployment, "WEB_RELEASES", release.parent),

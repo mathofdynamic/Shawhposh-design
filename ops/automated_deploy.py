@@ -843,11 +843,12 @@ def _website_health_matches(expected_release: str, web_root_fd: int) -> bool:
                 f"https://{DOMAIN}/",
             ],
             timeout=10,
+            binary=True,
         )
         if result.returncode != 0:
             return False
-        served_html, status_text = result.stdout.rsplit("\n", 1)
-        if status_text.strip() != "200" or served_html.encode("utf-8") != expected_html:
+        served_html, status_text = result.stdout.rsplit(b"\n", 1)
+        if status_text.strip() != b"200" or served_html != expected_html:
             return False
         html = expected_html.decode("utf-8")
         references = re.findall(r"\b(?:src|href)\s*=\s*['\"]([^'\"]+)['\"]", html, re.IGNORECASE)

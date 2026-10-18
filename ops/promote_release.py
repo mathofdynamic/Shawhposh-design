@@ -883,13 +883,18 @@ def _remove_current(root_fd: int, expected_sha: str) -> None:
     os.fsync(root_fd)
 
 
-def _run(argv: list[str], *, timeout: int = 12) -> subprocess.CompletedProcess[str]:
+def _run(
+    argv: list[str],
+    *,
+    timeout: int = 12,
+    binary: bool = False,
+) -> subprocess.CompletedProcess[str] | subprocess.CompletedProcess[bytes]:
     try:
         return subprocess.run(
             argv,
             check=False,
             capture_output=True,
-            text=True,
+            text=not binary,
             timeout=timeout,
             env={"PATH": FIXED_PATH, "LC_ALL": "C", "LANG": "C"},
         )
