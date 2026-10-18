@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { tmpdir } from 'node:os';
@@ -427,16 +428,16 @@ test('installed runner compatibility reconstructs rollback units from the fixed 
   assert.ok(bootstrap.includes('object_mode == 100644 && $object_type == blob'));
 });
 
-test('legacy recovery units exactly match the reviewed PM2-era production commit', () => {
-  const sha = '2ede63d7d207735dce0958464f4e6462f80494e1';
-  for (const unit of [
-    'shawhposh-backup.service',
-    'shawhposh-backup.timer',
-    'shawhposh-reservations.service',
-    'shawhposh-reservations.timer',
-  ]) {
-    const expected = spawnSync('git', ['show', `${sha}:ops/${unit}`], { cwd: root, encoding: 'utf8' });
-    assert.equal(expected.status, 0, expected.stderr);
-    assert.equal(read(`legacy-systemd/${unit}`).replace(/\r\n/g, '\n'), expected.stdout.replace(/\r\n/g, '\n'));
+test('legacy recovery units match hashes from the reviewed PM2-era production commit', () => {
+  const expectedSha256 = {
+    'shawhposh-backup.service': '561b975e140d21697f3abdad5e4f6b7c10edf57876cff34783ebf613dc42c552',
+    'shawhposh-backup.timer': 'a3be042958a104e2439ba34c707ac316aa06834feab7d4669e53e04efc5ba327',
+    'shawhposh-reservations.service': 'e2e95feaf3926e0e918d3ea536ef7a0b145d4736a8d6bf63bf9a6166ab5b20da',
+    'shawhposh-reservations.timer': 'e7cba52d8ea5024e6d0206777b4b57fc90c80575c49c6a4c83e7b077fb31866f',
+  };
+  for (const [unit, expected] of Object.entries(expectedSha256)) {
+    const actual = read(`legacy-systemd/${unit}`).replace(/\r\n/g, '\n');
+    const actualSha256 = createHash('sha256').update(actual, 'utf8').digest('hex');
+    assert.equal(actualSha256, expected, `${unit} no longer matches the reviewed production commit`);
   }
 });
