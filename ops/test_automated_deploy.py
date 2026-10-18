@@ -302,8 +302,12 @@ class AutomatedDeployPolicyTests(unittest.TestCase):
         separator = command.index("--")
         self.assertEqual(command[separator + 1], "/usr/bin/env")
         self.assertEqual(command[separator + 2], "-i")
-        self.assertIn("NPM_CONFIG_USERCONFIG=/dev/null", command)
-        self.assertIn("NPM_CONFIG_GLOBALCONFIG=/dev/null", command)
+        self.assertIn(f"NPM_CONFIG_USERCONFIG={workspace / 'home' / 'npm-userconfig'}", command)
+        self.assertIn(f"NPM_CONFIG_GLOBALCONFIG={workspace / 'home' / 'npm-globalconfig'}", command)
+        self.assertNotEqual(
+            f"NPM_CONFIG_USERCONFIG={workspace / 'home' / 'npm-userconfig'}",
+            f"NPM_CONFIG_GLOBALCONFIG={workspace / 'home' / 'npm-globalconfig'}",
+        )
         self.assertIn("NODE_OPTIONS=--max-old-space-size=640", command)
         self.assertNotIn("DATABASE_URL", command)
         self.assertNotIn("SESSION_SECRET", command)

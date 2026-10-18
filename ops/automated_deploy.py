@@ -487,6 +487,23 @@ def _create_workspace(run_id: str, build_uid: int, build_gid: int) -> Path:
         for path in (source, home, cache):
             os.mkdir(path, 0o755 if path == source else 0o700)
             os.chown(path, build_uid, build_gid)
+        home_fd = os.open(home, os.O_RDONLY | promotion.DIRECTORY | promotion.NOFOLLOW | promotion.CLOEXEC)
+        try:
+            for name in ("npm-userconfig", "npm-globalconfig"):
+                config_fd = os.open(
+                    name,
+                    os.O_WRONLY | os.O_CREAT | os.O_EXCL | promotion.NOFOLLOW | promotion.CLOEXEC,
+                    0o600,
+                    dir_fd=home_fd,
+                )
+                try:
+                    os.fchown(config_fd, build_uid, build_gid)
+                    os.fchmod(config_fd, 0o600)
+                    os.fsync(config_fd)
+                finally:
+                    os.close(config_fd)
+        finally:
+            os.close(home_fd)
     except Exception:
         os.chown(workspace, 0, 0)
         os.chmod(workspace, 0o700)
@@ -634,8 +651,8 @@ def _build_command_argv(
         "CI=1",
         f"NPM_CONFIG_CACHE={workspace / 'npm-cache'}",
         f"NODE_OPTIONS=--max-old-space-size={BUILD_NODE_HEAP_MB}",
-        "NPM_CONFIG_USERCONFIG=/dev/null",
-        "NPM_CONFIG_GLOBALCONFIG=/dev/null",
+        f"NPM_CONFIG_USERCONFIG={workspace / 'home' / 'npm-userconfig'}",
+        f"NPM_CONFIG_GLOBALCONFIG={workspace / 'home' / 'npm-globalconfig'}",
         "GIT_CONFIG_NOSYSTEM=1",
         "GIT_CONFIG_GLOBAL=/dev/null",
         "GIT_TERMINAL_PROMPT=0",
