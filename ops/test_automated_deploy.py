@@ -167,17 +167,21 @@ class AutomatedDeployPolicyTests(unittest.TestCase):
             (release / "assets").mkdir(parents=True)
             html = (
                 b'<!doctype html>\r\n<html><head>\r\n'
+                b'<link rel="stylesheet" href="/assets/app.css">\r\n'
                 b'<script type="module" src="/assets/app.js"></script>\r\n'
                 b'</head>\r\n<body>\r\n</body></html>\r'
             )
             (release / "index.html").write_bytes(html)
+            (release / "assets/app.css").write_bytes(b"body{}")
             (release / "assets/app.js").write_bytes(b"app()")
 
             def curl_with_type(content_type: str):
                 def curl(argv, **kwargs):
                     if "--head" in argv:
+                        asset_name = argv[-1].rsplit("/", 1)[-1]
+                        content_length = {"app.css": 6, "app.js": 5}[asset_name]
                         headers = (
-                            "HTTP/1.1 200 OK\r\nContent-Length: 5\r\n"
+                            f"HTTP/1.1 200 OK\r\nContent-Length: {content_length}\r\n"
                             f"Content-Type: {content_type}\r\n\r\n"
                         )
                         return type(
@@ -195,7 +199,7 @@ class AutomatedDeployPolicyTests(unittest.TestCase):
                 patch.object(deployment.promotion, "_run", side_effect=curl_with_type("application/javascript")) as run,
             ):
                 self.assertTrue(deployment._website_health_matches(SHA, 11))
-            self.assertEqual(run.call_count, 2)
+            self.assertEqual(run.call_count, 3)
             self.assertTrue(run.call_args_list[0].kwargs["binary"])
 
             with (

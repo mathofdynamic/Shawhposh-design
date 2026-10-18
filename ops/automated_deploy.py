@@ -852,7 +852,7 @@ def _website_health_matches(expected_release: str, web_root_fd: int) -> bool:
             return False
         html = expected_html.decode("utf-8")
         references = re.findall(r"\b(?:src|href)\s*=\s*['\"]([^'\"]+)['\"]", html, re.IGNORECASE)
-        local_assets: set[tuple[str, Path]] = set()
+        local_assets: set[tuple[str, int]] = set()
         for reference in references:
             parsed = urlsplit(reference)
             if parsed.scheme or parsed.netloc or not parsed.path or parsed.path == "/":
@@ -868,8 +868,8 @@ def _website_health_matches(expected_release: str, web_root_fd: int) -> bool:
                 return False
             if not stat.S_ISREG(asset_info.st_mode) or stat.S_ISLNK(asset_info.st_mode):
                 return False
-            local_assets.add(("/" + quote(relative, safe="/-._~"), asset))
-        for asset_path, local_asset in local_assets:
+            local_assets.add(("/" + quote(relative, safe="/-._~"), asset_info.st_size))
+        for asset_path, expected_size in local_assets:
             asset_result = promotion._run(
                 [
                     "/usr/bin/curl",
@@ -901,7 +901,7 @@ def _website_health_matches(expected_release: str, web_root_fd: int) -> bool:
             if status_text.strip() != "200" or content_type.split(";", 1)[0].strip().lower() == "text/html":
                 return False
             content_length = re.search(r"^content-length:\s*(\d+)\s*$", headers, re.IGNORECASE | re.MULTILINE)
-            if content_length is not None and int(content_length.group(1)) != asset_info.st_size:
+            if content_length is not None and int(content_length.group(1)) != expected_size:
                 return False
         return any(urlsplit(reference).path.startswith("/assets/") for reference in references)
     except (OSError, UnicodeError, ValueError, frontend.FrontendPromotionError):
