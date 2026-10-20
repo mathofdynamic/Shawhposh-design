@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import { Product, CartItem } from '../types';
 import { handleProductImageError } from '../lib/productImage';
+import { persianSize } from '../lib/persian-labels';
 import { GlassButton } from './ui/apple-tahoe-liquid-glass-button';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -147,7 +148,7 @@ export default function ProductDetail({ theme = 'dark', product, onBack, onAddTo
                       />
                     </AnimatePresence>
                   ) : (
-                    <div role="img" aria-label={"No image registered for " + product.name} className="flex h-36 w-36 items-center justify-center rounded-full border border-white/10 bg-black/10 text-stone-500">
+                    <div role="img" aria-label={`تصویری برای ${product.name} ثبت نشده است`} className="flex h-36 w-36 items-center justify-center rounded-full border border-white/10 bg-black/10 text-stone-500">
                       <Shirt size={54} strokeWidth={1} />
                     </div>
                   )}
@@ -192,7 +193,7 @@ export default function ProductDetail({ theme = 'dark', product, onBack, onAddTo
               </div>
               <div className="flex items-center justify-between">
                 <span className={`text-[10px] uppercase font-bold tracking-wider ${isDark ? 'text-gray-400' : 'text-slate-500'}`}>برش فابریک تن‌خور</span>
-                <span className={`text-xs ${isDark ? 'text-white' : 'text-slate-800'} font-bold`}>لش‌فیت عریض (Oversized)</span>
+                <span className={`text-xs ${isDark ? 'text-white' : 'text-slate-800'} font-bold`}>لش‌فیت عریض</span>
               </div>
             </div>
           </motion.div>
@@ -288,7 +289,7 @@ export default function ProductDetail({ theme = 'dark', product, onBack, onAddTo
               {/* Size Selection */}
               <div className="flex flex-col items-start text-right">
                 <span className={`text-xs font-black mb-3 ${isDark ? 'text-gray-300' : 'text-slate-800'}`}>
-                  گزینش سایز لباس: <span className="text-[#ba8d3d] mr-1">{selectedSize}</span>
+                  گزینش اندازه لباس: <span className="text-[#ba8d3d] mr-1">{persianSize(selectedSize)}</span>
                 </span>
                 <div className="flex gap-1.5">
                   {product.sizes.map((size) => {
@@ -305,7 +306,7 @@ export default function ProductDetail({ theme = 'dark', product, onBack, onAddTo
                             : isDark ? 'bg-white/5 border border-white/5 text-gray-300 hover:border-white/15' : 'bg-slate-100 border border-slate-200 text-slate-700 hover:bg-slate-200 shadow-sm'
                         }`}
                       >
-                        {size}
+                        {persianSize(size)}
                       </motion.button>
                     );
                   })}
@@ -469,7 +470,7 @@ export default function ProductDetail({ theme = 'dark', product, onBack, onAddTo
                       <div className="rounded-2xl border border-white/10 bg-white/[0.02] p-5">
                         <p className="text-xs font-bold text-stone-200">اندازه‌های فعال این محصول</p>
                         <div className="mt-3 flex flex-wrap gap-2">
-                          {product.sizes.map(size => <span key={size} className="rounded-lg border border-[#ba8d3d]/20 bg-[#ba8d3d]/5 px-3 py-1.5 font-mono text-xs text-[#eed29d]">{size}</span>)}
+                          {product.sizes.map(size => <span key={size} className="rounded-lg border border-[#ba8d3d]/20 bg-[#ba8d3d]/5 px-3 py-1.5 text-xs text-[#eed29d]">{persianSize(size)}</span>)}
                         </div>
                         <p className="mt-4 text-[11px] leading-6 text-stone-500">ابعاد عددی هر سایز هنوز برای این محصول ثبت نشده است.</p>
                       </div>

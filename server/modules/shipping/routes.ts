@@ -9,7 +9,7 @@ import {
 } from './service';
 
 const idSchema = z.string().uuid();
-const quoteLimit = rateLimit({ windowMs: 15 * 60_000, limit: 60, standardHeaders: 'draft-7', legacyHeaders: false });
+const quoteLimit = rateLimit({ windowMs: 15 * 60_000, limit: 60, standardHeaders: 'draft-7', legacyHeaders: false, message: 'تعداد درخواست‌ها زیاد است. بعداً دوباره تلاش کنید.' });
 const shippingManager = allowRoles('owner', 'store_manager');
 
 export const publicShippingRoutes = Router();

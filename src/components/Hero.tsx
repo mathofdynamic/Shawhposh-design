@@ -32,7 +32,7 @@ export default function Hero({ theme = 'dark', products, onStartDesign, onExplor
 
       <motion.aside initial={{ opacity: 0, scale: 0.98 }} animate={{ opacity: 1, scale: 1 }} transition={{ duration: 0.65, delay: 0.1 }} className={`relative overflow-hidden rounded-[2rem] border p-6 shadow-2xl md:p-8 lg:col-span-5 ${isDark ? 'border-white/10 bg-[#151311]' : 'border-slate-200 bg-white'}`}>
         <div className="absolute -left-12 -top-12 h-44 w-44 rounded-full bg-[#ba8d3d]/10 blur-3xl"/>
-        <div className={`relative flex aspect-[4/3] items-center justify-center overflow-hidden rounded-2xl ${isDark ? 'bg-[#0c0b0a]' : 'bg-[#f2efe8]'}`}><Shirt aria-hidden="true" size={96} strokeWidth={0.8} className="text-[#ba8d3d]"/><span className="absolute bottom-4 right-4 text-[10px] uppercase tracking-[0.2em] text-stone-500">Shawhposh</span></div>
+        <div className={`relative flex aspect-[4/3] items-center justify-center overflow-hidden rounded-2xl ${isDark ? 'bg-[#0c0b0a]' : 'bg-[#f2efe8]'}`}><Shirt aria-hidden="true" size={96} strokeWidth={0.8} className="text-[#ba8d3d]"/><span className="absolute bottom-4 right-4 text-[10px] text-stone-500">شاه‌پوش</span></div>
         <div className="relative mt-5 flex items-start justify-between gap-4">
           <div className="min-w-0"><p className={`text-[10px] uppercase tracking-[0.18em] ${muted}`}>از کاتالوگ فروشگاه</p><h2 className={`mt-2 truncate text-lg font-semibold ${foreground}`}>{product?.name ?? 'محصولات فروشگاه'}</h2><p className={`mt-2 line-clamp-2 text-xs leading-6 ${muted}`}>{product?.description ?? 'در حال دریافت فهرست محصولات.'}</p></div>
           {product && <strong className="shrink-0 text-sm text-[#ba8d3d]">{product.price.toLocaleString('fa-IR')} تومان</strong>}

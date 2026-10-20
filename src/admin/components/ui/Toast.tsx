@@ -87,7 +87,7 @@ export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 export const useToast = () => {
   const ctx = useContext(ToastContext);
   if (!ctx) {
-    throw new Error('useToast must be used within a ToastProvider');
+    throw new Error('بخش پیام‌ها باید داخل فراهم‌کننده پیام قرار بگیرد.');
   }
   return ctx;
 };

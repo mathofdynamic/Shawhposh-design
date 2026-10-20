@@ -137,7 +137,7 @@ export const AdminRouterProvider: React.FC<AdminRouterProviderProps> = ({
 export const useAdminRouter = (): RouterState => {
   const context = useContext(AdminRouterContext);
   if (!context) {
-    throw new Error('useAdminRouter must be used within an AdminRouterProvider');
+    throw new Error('مسیر‌یاب مدیریت باید داخل فراهم‌کننده مسیرها استفاده شود.');
   }
   return context;
 };

@@ -4,7 +4,7 @@ import { z } from 'zod';
 import { asyncRoute } from '../../lib/errors';
 import { addCartItem, cartView, clearCart, migrateLegacyCart, removeCartItem, updateCartItem } from './service';
 
-const cartWriteLimit = rateLimit({ windowMs: 15 * 60_000, limit: 60, standardHeaders: 'draft-7', legacyHeaders: false });
+const cartWriteLimit = rateLimit({ windowMs: 15 * 60_000, limit: 60, standardHeaders: 'draft-7', legacyHeaders: false, message: 'تعداد درخواست‌ها زیاد است. بعداً دوباره تلاش کنید.' });
 const itemIdSchema = z.string().uuid();
 export const cartRoutes = Router();
 cartRoutes.get('/', asyncRoute((req, res) => res.json(cartView(req.principal!.id))));

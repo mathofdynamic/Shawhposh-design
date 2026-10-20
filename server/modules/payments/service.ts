@@ -125,7 +125,7 @@ export function updateCardPaymentSettings(input: unknown) {
     manualReviewHoldHours: patch.manualReviewHoldHours === undefined ? current.manualReviewHoldHours : patch.manualReviewHoldHours,
   };
   if (next.accountIban && !/^IR\d{24}$/.test(toDigits(next.accountIban))) {
-    throw new ApiError(422, 'VALIDATION_ERROR', 'شماره شبا باید با IR و ۲۴ رقم وارد شود.');
+    throw new ApiError(422, 'VALIDATION_ERROR', 'شماره شبا باید شامل پیش‌شماره ایران و ۲۴ رقم باشد.');
   }
   if (next.enabled) {
     if (!next.cardholderName || !next.cardNumber || !isValidIranianCardNumber(next.cardNumber)) {
@@ -610,7 +610,7 @@ export function markBaleInvoiceError(attemptId: string, definitive: boolean, ret
     if (failed) {
       const attempt = tx.select().from(paymentAttempts).where(eq(paymentAttempts.id, attemptId)).get();
       if (!attempt) return;
-      tx.update(paymentAttempts).set({ status: 'failed', failedAt: now, updatedAt: now, failureCode: 'BALE_INVOICE_REJECTED', failureMessage: 'Invoice could not be delivered by Bale.' }).where(eq(paymentAttempts.id, attempt.id)).run();
+      tx.update(paymentAttempts).set({ status: 'failed', failedAt: now, updatedAt: now, failureCode: 'BALE_INVOICE_REJECTED', failureMessage: 'صورتحساب بله ارسال نشد.' }).where(eq(paymentAttempts.id, attempt.id)).run();
       const other = tx.select({ id: paymentAttempts.id }).from(paymentAttempts).where(and(eq(paymentAttempts.orderId, attempt.orderId), inArray(paymentAttempts.status, [...activeAttemptStatuses]))).all();
       if (!other.length) tx.update(orders).set({ paymentStatus: 'unpaid', updatedAt: now }).where(eq(orders.id, attempt.orderId)).run();
     }

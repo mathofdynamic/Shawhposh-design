@@ -46,7 +46,7 @@ export const requireStaff = asyncRoute(async (req, _res, next) => {
 });
 export const requireCustomer = asyncRoute(async (req, _res, next) => {
   req.principal = await getPrincipal(req, false);
-  if (!req.principal) throw new ApiError(401, 'UNAUTHENTICATED', 'ÙˆØ±ÙˆØ¯ Ø¨Ù‡ Ø­Ø³Ø§Ø¨ Ú©Ø§Ø±Ø¨Ø±ÛŒ Ø§Ù„Ø²Ø§Ù…ÛŒ Ø§Ø³Øª.');
+  if (!req.principal) throw new ApiError(401, 'UNAUTHENTICATED', 'ورود به حساب کاربری الزامی است.');
   next();
 });
 export const allowRoles = (...roles: string[]): RequestHandler => (req, _res, next) => {

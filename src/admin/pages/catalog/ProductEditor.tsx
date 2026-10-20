@@ -52,34 +52,34 @@ export const ProductEditor: React.FC<ProductEditorProps> = ({ productId, onBack 
     setSaving(true);
     const result = current ? await updateProduct(current.id, payload) : await createProduct(payload);
     setSaving(false);
-    if (!result.success) { setError(result.error || 'Could not save product.'); return; }
-    showToast({ type: 'success', title: 'Product saved' });
+    if (!result.success) { setError(result.error || 'ذخیره محصول انجام نشد.'); return; }
+    showToast({ type: 'success', title: 'محصول ذخیره شد' });
     back();
   };
 
   const archive = async () => {
-    if (!current || !window.confirm(`Archive “${current.name}”?`)) return;
+    if (!current || !window.confirm(`آیا محصول «${current.name}» بایگانی شود؟`)) return;
     const result = await deleteProduct(current.id);
-    if (!result.success) { setError(result.error || 'Could not archive product.'); return; }
-    showToast({ type: 'success', title: 'Product archived' });
+    if (!result.success) { setError(result.error || 'بایگانی محصول انجام نشد.'); return; }
+    showToast({ type: 'success', title: 'محصول بایگانی شد' });
     back();
   };
 
   return <div className="mx-auto max-w-5xl space-y-5">
-    <AdminPageHeader title={current?.name ?? (isNew ? 'New product' : 'Product not found')} description="Edits are saved to the production catalog database." actions={<Button variant="ghost" onClick={back}><ArrowLeft size={16}/> Back to products</Button>} />
-    {!current && !isNew ? <div role="alert" className="rounded-xl border border-amber-500/30 bg-amber-500/5 p-5 text-amber-200">This product is not present in the current catalog.</div> : <form onSubmit={(event) => void save(event)} className="space-y-5 rounded-2xl border border-white/10 bg-[#141211] p-5 md:p-7">
+    <AdminPageHeader title={current?.name ?? (isNew ? 'محصول جدید' : 'محصول پیدا نشد')} description="تغییرات در فهرست محصولات ذخیره می‌شوند." actions={<Button variant="ghost" onClick={back}><ArrowLeft size={16}/> بازگشت به محصولات</Button>} />
+    {!current && !isNew ? <div role="alert" className="rounded-xl border border-amber-500/30 bg-amber-500/5 p-5 text-amber-200">این محصول در فهرست فعلی وجود ندارد.</div> : <form onSubmit={(event) => void save(event)} className="space-y-5 rounded-2xl border border-white/10 bg-[#141211] p-5 md:p-7">
       <div className="grid gap-4 md:grid-cols-2">
-        <label className="text-sm">Product name<input required maxLength={200} value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} className="mt-1 block w-full rounded-lg border border-white/15 bg-black/30 px-3 py-2"/></label>
-        <label className="text-sm">Slug<input required pattern="[a-z0-9-]+" maxLength={150} value={form.slug} onChange={(event) => setForm({ ...form, slug: event.target.value })} className="mt-1 block w-full rounded-lg border border-white/15 bg-black/30 px-3 py-2 font-mono"/></label>
-        <label className="text-sm">Category<select required value={form.category} onChange={(event) => setForm({ ...form, category: event.target.value })} className="mt-1 block w-full rounded-lg border border-white/15 bg-[#10100f] px-3 py-2">{state.categories.filter((category) => category.status === 'active').map((category) => <option key={category.id} value={category.slug}>{category.nameFa}</option>)}</select></label>
-        <label className="text-sm">Base price (Toman)<input required type="number" min="0" max="2000000000" step="1" value={form.basePriceTomans} onChange={(event) => setForm({ ...form, basePriceTomans: Number(event.target.value) })} className="mt-1 block w-full rounded-lg border border-white/15 bg-black/30 px-3 py-2"/></label>
-        <label className="text-sm">Status<select value={form.status} onChange={(event) => setForm({ ...form, status: event.target.value as FormState['status'] })} className="mt-1 block w-full rounded-lg border border-white/15 bg-[#10100f] px-3 py-2"><option value="draft">Draft</option><option value="active">Active</option><option value="archived">Archived</option></select></label>
+        <label className="text-sm">نام محصول<input required maxLength={200} value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} className="mt-1 block w-full rounded-lg border border-white/15 bg-black/30 px-3 py-2"/></label>
+        <label className="text-sm">شناسه نشانی (لاتین)<input required pattern="[a-z0-9-]+" maxLength={150} value={form.slug} onChange={(event) => setForm({ ...form, slug: event.target.value })} className="mt-1 block w-full rounded-lg border border-white/15 bg-black/30 px-3 py-2 font-mono"/></label>
+        <label className="text-sm">دسته‌بندی<select required value={form.category} onChange={(event) => setForm({ ...form, category: event.target.value })} className="mt-1 block w-full rounded-lg border border-white/15 bg-[#10100f] px-3 py-2">{state.categories.filter((category) => category.status === 'active').map((category) => <option key={category.id} value={category.slug}>{category.nameFa}</option>)}</select></label>
+        <label className="text-sm">قیمت پایه (تومان)<input required type="number" min="0" max="2000000000" step="1" value={form.basePriceTomans} onChange={(event) => setForm({ ...form, basePriceTomans: Number(event.target.value) })} className="mt-1 block w-full rounded-lg border border-white/15 bg-black/30 px-3 py-2"/></label>
+        <label className="text-sm">وضعیت<select value={form.status} onChange={(event) => setForm({ ...form, status: event.target.value as FormState['status'] })} className="mt-1 block w-full rounded-lg border border-white/15 bg-[#10100f] px-3 py-2"><option value="draft">پیش‌نویس</option><option value="active">فعال</option><option value="archived">بایگانی‌شده</option></select></label>
       </div>
-      <label className="block text-sm">Description<textarea maxLength={20000} rows={5} value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} className="mt-1 block w-full rounded-lg border border-white/15 bg-black/30 px-3 py-2 leading-6"/></label>
-      <label className="block text-sm">Product image URLs or local paths, one per line<textarea rows={3} value={imagesText} onChange={(event) => setImagesText(event.target.value)} placeholder="/images/product-front.webp" className="mt-1 block w-full rounded-lg border border-white/15 bg-black/30 px-3 py-2 font-mono text-xs"/><span className="mt-1 block text-xs text-stone-500">No product image is currently registered for this item. Upload support is not part of this release.</span></label>
-      <div className="flex flex-wrap gap-5 text-sm"><label className="flex items-center gap-2"><input type="checkbox" checked={form.isCustomizable} onChange={(event) => setForm({ ...form, isCustomizable: event.target.checked })}/>Customization available</label><label className="flex items-center gap-2"><input type="checkbox" checked={form.featured} onChange={(event) => setForm({ ...form, featured: event.target.checked })}/>Featured in catalog</label></div>
+      <label className="block text-sm">توضیحات<textarea maxLength={20000} rows={5} value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} className="mt-1 block w-full rounded-lg border border-white/15 bg-black/30 px-3 py-2 leading-6"/></label>
+      <label className="block text-sm">نشانی تصویر یا مسیر فایل (هر مورد در یک سطر)<textarea rows={3} value={imagesText} onChange={(event) => setImagesText(event.target.value)} className="mt-1 block w-full rounded-lg border border-white/15 bg-black/30 px-3 py-2 font-mono text-xs"/><span className="mt-1 block text-xs text-stone-500">برای این محصول تصویری ثبت نشده است. امکان بارگذاری تصویر در این نسخه وجود ندارد.</span></label>
+      <div className="flex flex-wrap gap-5 text-sm"><label className="flex items-center gap-2"><input type="checkbox" checked={form.isCustomizable} onChange={(event) => setForm({ ...form, isCustomizable: event.target.checked })}/>امکان شخصی‌سازی</label><label className="flex items-center gap-2"><input type="checkbox" checked={form.featured} onChange={(event) => setForm({ ...form, featured: event.target.checked })}/>نمایش ویژه در کاتالوگ</label></div>
       {error && <p role="alert" className="text-sm text-rose-300">{error}</p>}
-      <div className="flex justify-end gap-2 border-t border-white/10 pt-4">{current && <Button type="button" variant="ghost" onClick={() => void archive()}><Archive size={15}/> Archive</Button>}<Button variant="brass" type="submit" disabled={saving || !state.categories.some((category) => category.status === 'active')}><Save size={15}/>{saving ? 'Saving…' : 'Save product'}</Button></div>
+      <div className="flex justify-end gap-2 border-t border-white/10 pt-4">{current && <Button type="button" variant="ghost" onClick={() => void archive()}><Archive size={15}/> بایگانی</Button>}<Button variant="brass" type="submit" disabled={saving || !state.categories.some((category) => category.status === 'active')}><Save size={15}/>{saving ? 'در حال ذخیره…' : 'ذخیره محصول'}</Button></div>
     </form>}
   </div>;
 };

@@ -209,7 +209,7 @@ export const ProductsPage: React.FC = () => {
       id: newId,
       skuPrefix: newSkuPrefix,
       name: `کپی ${p.name}`,
-      nameEn: p.nameEn ? `Copy of ${p.nameEn}` : undefined,
+      nameEn: p.nameEn || undefined,
       slug: `${newId}-copy`,
       status: 'draft',
       isLive: false,
@@ -234,7 +234,7 @@ export const ProductsPage: React.FC = () => {
       'نوع کالا',
       'قیمت پایه (تومان)',
       'وضعیت انتشار',
-      'تعداد تنوع SKU',
+      'تعداد تنوع‌ها',
       'موجودی فیزیکی کل',
       'موجودی رزرو شده',
       'موجودی قابل فروش',
@@ -266,7 +266,7 @@ export const ProductsPage: React.FC = () => {
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.setAttribute('href', url);
-    link.setAttribute('download', `shahpoosh-products-${new Date().toISOString().slice(0, 10)}.csv`);
+    link.setAttribute('download', `محصولات-شاهپوش-${new Date().toISOString().slice(0, 10)}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -278,7 +278,7 @@ export const ProductsPage: React.FC = () => {
 
     const lines = csvText.trim().split('\n');
     if (lines.length <= 1) {
-      setCsvImportResult({ errors: ['فایل CSV خالی است یا فقط دارای سربرگ است.'] });
+      setCsvImportResult({ errors: ['فایل داده خالی است یا فقط سربرگ دارد.'] });
       return;
     }
 
@@ -366,7 +366,7 @@ export const ProductsPage: React.FC = () => {
               : 'bg-stone-800 text-stone-300 border-white/10'
           }`}
         >
-          {row.productType === 'customizable_blank' ? 'خام آتلیه (POD)' : 'فرم آماده'}
+          {row.productType === 'customizable_blank' ? 'خام آتلیه برای چاپ سفارشی' : 'فرم آماده'}
         </span>
       ),
     },
@@ -374,8 +374,8 @@ export const ProductsPage: React.FC = () => {
       key: 'category',
       header: 'دسته‌بندی',
       render: (row) => {
-        const cat = categories.find((c) => c.id === row.category);
-        return <span className="text-xs text-stone-300">{cat?.nameFa || row.category}</span>;
+        const cat = categories.find((c) => c.slug === row.category);
+        return <span className="text-xs text-stone-300">{cat?.nameFa || 'دسته‌بندی نامشخص'}</span>;
       },
     },
     {
@@ -389,7 +389,7 @@ export const ProductsPage: React.FC = () => {
     },
     {
       key: 'variantsCount',
-      header: 'تنوع‌ها (SKU)',
+      header: 'تعداد تنوع‌ها',
       render: (row) => (
         <span className="text-xs font-fanum text-stone-300">
           {toFaDigits(row.variants.length)} تنوع
@@ -450,7 +450,7 @@ export const ProductsPage: React.FC = () => {
           <button
             onClick={() => handleDuplicateProduct(row)}
             className="p-1.5 text-stone-400 hover:text-white bg-white/5 hover:bg-white/10 rounded-lg transition-colors"
-            title="ایجاد رونوشت (Duplicate)"
+            title="ایجاد نسخهٔ جدید"
           >
             <Copy size={13} />
           </button>
@@ -475,11 +475,11 @@ export const ProductsPage: React.FC = () => {
           <div className="flex items-center gap-2">
             <Button variant="outline" size="sm" onClick={() => setIsImportModalOpen(true)}>
               <Upload size={13} className="ml-1" />
-              ورود فایل CSV
+              ورود فایل جدولی
             </Button>
             <Button variant="outline" size="sm" onClick={handleExportCsv}>
               <Download size={13} className="ml-1" />
-              خروجی CSV
+              دریافت فایل جدولی
             </Button>
             <Button variant="brass" size="sm" onClick={() => setEditingProductId('new')}>
               <Plus size={13} className="ml-1" />
@@ -502,7 +502,7 @@ export const ProductsPage: React.FC = () => {
         </div>
 
         <div className="p-4 bg-[#131211] border border-white/10 rounded-2xl">
-          <span className="text-xs text-stone-400">مجموع تنوع‌های SKU انبار</span>
+          <span className="text-xs text-stone-400">مجموع تنوع‌های انبار</span>
           <div className="text-2xl font-black text-white mt-1 font-fanum">
             {toFaDigits(state.variants.length)} کد شناسایی
           </div>
@@ -594,7 +594,7 @@ export const ProductsPage: React.FC = () => {
           >
             <option value="all">همه دسته‌بندی‌ها</option>
             {categories.map((c) => (
-              <option key={c.id} value={c.id}>
+              <option key={c.id} value={c.slug}>
                 {c.nameFa}
               </option>
             ))}
@@ -626,7 +626,7 @@ export const ProductsPage: React.FC = () => {
           >
             <option value="all">همه انواع پوشاک</option>
             <option value="finished">پوشاک آماده</option>
-            <option value="customizable_blank">خام آتلیه (POD Blank)</option>
+            <option value="customizable_blank">خام آتلیه برای چاپ سفارشی</option>
           </select>
 
           {/* Low Stock Toggle */}
@@ -690,17 +690,16 @@ export const ProductsPage: React.FC = () => {
           <div className="bg-[#181716] border border-white/20 rounded-2xl p-6 max-w-lg w-full space-y-4">
             <h3 className="text-base font-black text-white flex items-center gap-2">
               <Upload size={16} className="text-[#eed29d]" />
-              ورود دسته‌جمعی محصولات از فایل CSV
+              ورود گروهی محصولات از فایل جدولی
             </h3>
             <p className="text-xs text-stone-300 leading-relaxed">
-              متن محتوای CSV را در کادر زیر جای‌گذاری کنید. ستون‌های الزامی شامل «نام محصول»، «قیمت پایه» و «دسته‌بندی» می‌باشند.
+              داده‌های محصولات را در کادر زیر جای‌گذاری کنید. ستون‌های الزامی شامل «نام محصول»، «قیمت پایه» و «دسته‌بندی» هستند.
             </p>
 
             <textarea
               rows={8}
               value={csvText}
               onChange={(e) => setCsvText(e.target.value)}
-              placeholder={`نام محصول,قیمت پایه,دسته‌بندی,پیش‌وند\nتیشرت کالکشن پاییزه,395000,calligraphy,SP105-TSH`}
               className="w-full bg-black/50 border border-white/10 rounded-xl p-3 text-xs text-white font-mono placeholder:text-stone-600 focus:border-[#eed29d] focus:outline-none"
             />
 

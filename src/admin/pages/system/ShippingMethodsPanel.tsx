@@ -178,7 +178,7 @@ export default function ShippingMethodsPanel() {
         </div>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
           <label className={labelClass}>شناسه لاتین
-            <input required minLength={2} maxLength={48} dir="ltr" value={draft.code} onChange={event => setDraft(value => ({ ...value, code: event.target.value }))} className={fieldClass} placeholder="standard-delivery" />
+            <input required minLength={2} maxLength={48} dir="ltr" value={draft.code} onChange={event => setDraft(value => ({ ...value, code: event.target.value }))} className={fieldClass} />
           </label>
           <label className={labelClass}>نام روش ارسال
             <input required minLength={2} maxLength={100} value={draft.name} onChange={event => setDraft(value => ({ ...value, name: event.target.value }))} className={fieldClass} placeholder="ارسال استاندارد" />

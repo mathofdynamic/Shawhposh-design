@@ -15,14 +15,14 @@ import { configureBaleWebhook, isValidBaleWebhookSecret, processBaleWebhookUpdat
 
 const uuidSchema = z.string().uuid();
 const idempotencyHeader = (value: string | undefined) => z.string().min(8).max(128).regex(/^[A-Za-z0-9._:-]+$/).parse(value);
-const paymentLimiter = rateLimit({ windowMs: 15 * 60_000, limit: 10, standardHeaders: 'draft-7', legacyHeaders: false });
-const uploadLimiter = rateLimit({ windowMs: 60 * 60_000, limit: 6, standardHeaders: 'draft-7', legacyHeaders: false });
+const paymentLimiter = rateLimit({ windowMs: 15 * 60_000, limit: 10, standardHeaders: 'draft-7', legacyHeaders: false, message: 'تعداد درخواست‌ها زیاد است. بعداً دوباره تلاش کنید.' });
+const uploadLimiter = rateLimit({ windowMs: 60 * 60_000, limit: 6, standardHeaders: 'draft-7', legacyHeaders: false, message: 'تعداد درخواست‌ها زیاد است. بعداً دوباره تلاش کنید.' });
 const memoryUpload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 5 * 1024 * 1024, files: 1, fields: 0, parts: 1 },
   fileFilter: (_req, file, callback) => {
     if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.mimetype)) {
-      callback(new ApiError(422, 'RECEIPT_TYPE_INVALID', 'فقط تصویر JPEG، PNG یا WebP پذیرفته می‌شود.'));
+      callback(new ApiError(422, 'RECEIPT_TYPE_INVALID', 'بارگذاری فقط برای فایل تصویری مجاز است.'));
       return;
     }
     callback(null, true);

@@ -16,7 +16,7 @@ export async function normalizeAndStoreReceipt(input: Buffer, claimedMimeType: s
     throw new ApiError(413, 'RECEIPT_SIZE_INVALID', 'حجم تصویر رسید باید حداکثر ۵ مگابایت باشد.');
   }
   if (!['image/jpeg', 'image/png', 'image/webp'].includes(claimedMimeType)) {
-    throw new ApiError(422, 'RECEIPT_TYPE_INVALID', 'فقط تصویر JPEG، PNG یا WebP پذیرفته می‌شود.');
+    throw new ApiError(422, 'RECEIPT_TYPE_INVALID', 'بارگذاری فقط برای فایل تصویری مجاز است.');
   }
   let result: { data: Buffer; info: OutputInfo };
   try {

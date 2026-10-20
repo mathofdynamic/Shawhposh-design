@@ -6,6 +6,7 @@ import { createAddress, deleteAddress, loadAccount, loadAddresses, loadCustomerO
 import type { User } from '../types';
 import { ConfirmDialog } from '../admin/components/ui';
 import { CustomerOrderPayment } from './CustomerOrderPayment';
+import { persianOrderStatus } from '../lib/persian-labels';
 
 
 interface CustomerAccountProps {
@@ -113,7 +114,7 @@ export default function CustomerAccount({ theme, user, onBack, onUserUpdated }: 
           <ArrowRight size={14} /> بازگشت به فروشگاه
         </button>
         <header className="mb-8 text-right">
-          <span className="font-mono text-[10px] tracking-wide text-[#ba8d3d]">SHAHPOOSH ACCOUNT</span>
+          <span className="font-mono text-[10px] tracking-wide text-[#ba8d3d]">حساب کاربری شاه‌پوش</span>
           <h1 className={`mt-1 text-2xl font-bold md:text-3xl ${isDark ? 'text-white' : 'text-slate-900'}`}>حساب کاربری</h1>
           <p className={`mt-2 text-sm ${isDark ? 'text-stone-400' : 'text-slate-600'}`}>{profile?.email || user.email || profile?.phone || user.phone}</p>
         </header>
@@ -174,7 +175,7 @@ export default function CustomerAccount({ theme, user, onBack, onUserUpdated }: 
               {orders === null ? <p role="alert" className="rounded-xl border border-red-400/20 bg-red-500/10 p-4 text-right text-sm text-red-200">{ordersError}<button onClick={() => void refresh()} className="mr-3 underline">{'\u0645\u062c\u062f\u062f \u062a\u0644\u0627\u0634 \u06a9\u0646\u06cc\u062f'}</button></p> : orders.length === 0 ? <p className="rounded-xl border border-dashed border-white/10 p-4 text-right text-sm text-stone-400">هنوز سفارشی ثبت نشده است.</p> : <div className="space-y-3">
                 {orders.map(order => <article key={order.id} className="rounded-2xl border border-white/[0.08] p-4 text-sm">
                   <div className="flex flex-wrap items-center justify-between gap-3"><span className="font-mono text-[#eed29d]">{Number(order.totalTomans).toLocaleString('fa-IR')} تومان</span>
-                  <div className="text-right"><strong className="block text-white">{order.orderNumber}</strong><span className="mt-1 block text-xs text-stone-400">{order.orderStatus === 'awaiting_payment' ? 'در انتظار پرداخت' : order.orderStatus === 'cancelled' ? 'لغوشده' : order.orderStatus} · {new Date(order.createdAt).toLocaleDateString('fa-IR')}</span></div></div>
+                  <div className="text-right"><strong className="block text-white">{order.orderNumber}</strong><span className="mt-1 block text-xs text-stone-400">{persianOrderStatus(order.orderStatus)} · {new Date(order.createdAt).toLocaleDateString('fa-IR')}</span></div></div>
                   <CustomerOrderPayment orderId={order.id} orderStatus={order.orderStatus} paymentStatus={order.paymentStatus} summary={order.payment} />
                 </article>)}
               </div>}

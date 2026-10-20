@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Shirt, ChevronLeft, ChevronRight } from 'lucide-react';
 import { Product } from '../types';
+import { persianSize } from '../lib/persian-labels';
 import { handleProductImageError } from '../lib/productImage';
 
 interface ProductCardProps {
@@ -64,12 +65,12 @@ export default function ProductCard({ theme = 'dark', product, onSelect }: Produ
         {/* Sizes Badge Indicators */}
         <div className="flex gap-1">
           {product.sizes.slice(0, 3).map((size) => (
-            <span key={size} className={`w-5 h-5 rounded border text-[8px] font-mono flex items-center justify-center transition-colors ${
+            <span key={size} aria-label={`اندازه ${persianSize(size)}`} className={`min-w-9 h-6 px-1 rounded border text-[8px] font-sans flex items-center justify-center transition-colors ${
               isDark 
                 ? 'bg-[#0e0d0c]/70 border-white/5 text-gray-400' 
                 : 'bg-[#fafafa]/80 border-slate-200/60 text-slate-500'
             }`}>
-              {size}
+              {persianSize(size)}
             </span>
           ))}
           {product.sizes.length > 3 && (
@@ -97,14 +98,14 @@ export default function ProductCard({ theme = 'dark', product, onSelect }: Produ
             <button 
               onClick={(e) => navigateImage('prev', e)}
               className="absolute left-2 z-20 w-8 h-8 rounded-full flex items-center justify-center bg-black/45 hover:bg-[#ba8d3d] text-white hover:text-black backdrop-blur-md opacity-0 group-hover:opacity-100 transition-all duration-300 transform -translate-x-1 hover:translate-x-0"
-              aria-label="Previous image"
+              aria-label="تصویر قبلی"
             >
               <ChevronLeft size={16} />
             </button>
             <button 
               onClick={(e) => navigateImage('next', e)}
               className="absolute right-2 z-20 w-8 h-8 rounded-full flex items-center justify-center bg-black/45 hover:bg-[#ba8d3d] text-white hover:text-black backdrop-blur-md opacity-0 group-hover:opacity-100 transition-all duration-300 transform translate-x-1 hover:translate-x-0"
-              aria-label="Next image"
+              aria-label="تصویر بعدی"
             >
               <ChevronRight size={16} />
             </button>
@@ -147,7 +148,7 @@ export default function ProductCard({ theme = 'dark', product, onSelect }: Produ
                     ? 'bg-[#ba8d3d] w-3.5' 
                     : isDark ? 'bg-white/20 hover:bg-white/50' : 'bg-black/15 hover:bg-black/45'
                 }`}
-                aria-label={`Go to slide ${index + 1}`}
+                aria-label={`نمایش تصویر ${(index + 1).toLocaleString('fa-IR')}`}
               />
             ))}
           </div>

@@ -20,7 +20,7 @@ export const DateTimeDisplay: React.FC<DateTimeDisplayProps> = ({
   return (
     <div
       className={`inline-flex flex-col text-right font-fanum select-text ${className}`}
-      title={`ISO: ${formatted.iso}`}
+      title="نمایش به وقت تهران"
     >
       <div className="flex items-center gap-1.5 text-xs text-gray-200">
         <span>{formatted.date}</span>
@@ -79,7 +79,7 @@ export const MoneyDisplay: React.FC<MoneyDisplayProps> = ({
   return (
     <div
       className={`inline-flex items-baseline gap-1 font-fanum select-text ${className}`}
-      title={`${amount.toLocaleString('en-US')} Tomans`}
+      title={`${amount.toLocaleString('fa-IR')} تومان`}
     >
       <span className={`${activeSize.value} ${trendColor}`}>
         {isNegative && <span className="ml-0.5">− </span>}

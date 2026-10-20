@@ -5,6 +5,7 @@ import { useCatalogAdmin } from '../../features/CatalogProvider';
 import type { StockMovement } from '../../domain/types';
 import { formatPersianDate } from '../../utils/formatters';
 import { useAdminRouter } from '../../router';
+import { persianStockMovement } from '../../../lib/persian-labels';
 
 export const StockMovementsPage: React.FC = () => {
   const { state } = useCatalogAdmin();
@@ -18,18 +19,18 @@ export const StockMovementsPage: React.FC = () => {
   }), [search, state.stockMovements]);
 
   const columns: ColumnDef<StockMovement>[] = [
-    { key: 'date', header: 'Recorded', render: (movement) => <time>{formatPersianDate(movement.timestamp)}</time> },
-    { key: 'sku', header: 'SKU', render: (movement) => <span className="font-mono text-[#eed29d]">{movement.sku}</span> },
-    { key: 'type', header: 'Movement', render: (movement) => movement.type },
-    { key: 'quantity', header: 'Change', align: 'center', render: (movement) => <span className={movement.quantityChange > 0 ? 'text-emerald-300' : 'text-rose-300'}>{movement.quantityChange > 0 ? '+' : ''}{movement.quantityChange}</span> },
-    { key: 'balance', header: 'On hand', align: 'center', render: (movement) => `${movement.previousOnHand} → ${movement.newOnHand}` },
-    { key: 'reason', header: 'Reason', render: (movement) => movement.reason },
-    { key: 'actor', header: 'Recorded by', render: (movement) => movement.actorName || '—' },
+    { key: 'date', header: 'زمان ثبت', render: (movement) => <time>{formatPersianDate(movement.timestamp)}</time> },
+    { key: 'sku', header: 'شناسه کالا', render: (movement) => <span className="font-mono text-[#eed29d]">{movement.sku}</span> },
+    { key: 'type', header: 'نوع تغییر', render: (movement) => persianStockMovement(movement.type) },
+    { key: 'quantity', header: 'میزان تغییر', align: 'center', render: (movement) => <span className={movement.quantityChange > 0 ? 'text-emerald-300' : 'text-rose-300'}>{movement.quantityChange > 0 ? '+' : ''}{movement.quantityChange.toLocaleString('fa-IR')}</span> },
+    { key: 'balance', header: 'موجودی فیزیکی', align: 'center', render: (movement) => `${movement.previousOnHand.toLocaleString('fa-IR')} → ${movement.newOnHand.toLocaleString('fa-IR')}` },
+    { key: 'reason', header: 'دلیل تغییر', render: (movement) => movement.reason },
+    { key: 'actor', header: 'ثبت‌کننده', render: (movement) => movement.actorName || '—' },
   ];
 
   return <div className="mx-auto max-w-7xl space-y-5">
-    <AdminPageHeader title="Stock movements" description="Append-only stock movement records from the production database." actions={<button type="button" onClick={() => navigate('/admin/catalog/inventory')} className="rounded-xl border border-white/15 px-4 py-2 text-sm hover:bg-white/5">Inventory</button>} />
-    <div className="rounded-2xl border border-white/10 bg-[#141211] p-4"><SearchInput value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search SKU, reason, or staff"/></div>
-    <Table data={movements} columns={columns} keyExtractor={(movement) => movement.id} mobileScrollHint emptyMessage={search ? 'No matching stock movements.' : 'No stock movements have been recorded.'}/>
+    <AdminPageHeader title="سوابق موجودی" description="فهرست تغییرات ثبت‌شده در موجودی کالاها." actions={<button type="button" onClick={() => navigate('/admin/catalog/inventory')} className="rounded-xl border border-white/15 px-4 py-2 text-sm hover:bg-white/5">موجودی انبار</button>} />
+    <div className="rounded-2xl border border-white/10 bg-[#141211] p-4"><SearchInput value={search} onChange={(event) => setSearch(event.target.value)} placeholder="جست‌وجوی شناسه، دلیل یا ثبت‌کننده"/></div>
+    <Table data={movements} columns={columns} keyExtractor={(movement) => movement.id} mobileScrollHint emptyMessage={search ? 'تغییری با این مشخصات پیدا نشد.' : 'هنوز تغییری در موجودی ثبت نشده است.'}/>
   </div>;
 };

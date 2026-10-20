@@ -47,7 +47,7 @@ export const DashboardPage: React.FC = () => {
   const data = summary ?? initial;
   const cards = [
     { label: 'محصول فعال', value: data.products.active, detail: `${toFaDigits(data.products.total)} محصول ثبت‌شده`, icon: Package, path: '/admin/catalog/products' },
-    { label: 'SKU فعال', value: data.variants.active, detail: `${toFaDigits(data.variants.total)} تنوع ثبت‌شده · ${toFaDigits(data.variants.lowStock)} کم‌موجود`, icon: Boxes, path: '/admin/catalog/inventory' },
+    { label: 'شناسه کالای فعال', value: data.variants.active, detail: `${toFaDigits(data.variants.total)} تنوع ثبت‌شده · ${toFaDigits(data.variants.lowStock)} کم‌موجود`, icon: Boxes, path: '/admin/catalog/inventory' },
     { label: 'موجودی قابل فروش', value: data.inventory.available, detail: `${toFaDigits(data.inventory.onHand)} موجود · ${toFaDigits(data.inventory.reserved)} رزروشده`, icon: Activity, path: '/admin/catalog/inventory' },
     { label: 'سفارش', value: data.orders.total, detail: `${toFaDigits(data.orders.awaitingPayment)} در انتظار پرداخت`, icon: ShoppingBag, path: '/admin/sales/orders' },
     { label: 'حساب مشتری', value: data.customers, detail: 'حساب ثبت‌شده در سامانه', icon: Users, path: '/admin/customers/directory' },
@@ -62,7 +62,7 @@ export const DashboardPage: React.FC = () => {
           const Icon = card.icon;
           return <button key={card.label} type="button" onClick={() => navigate(card.path)} className="min-h-36 rounded-2xl border border-white/10 bg-[#131211] p-5 text-right transition-colors hover:border-[#ba8d3d]/40 hover:bg-[#171513] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#ba8d3d]">
             <span className="flex items-center justify-between text-xs text-stone-400"><span>{card.label}</span><Icon size={17} className="text-[#ba8d3d]" /></span>
-            <strong className="mt-5 block font-mono text-3xl text-white">{loading ? '—' : toFaDigits(card.value.toLocaleString('en-US'))}</strong>
+            <strong className="mt-5 block font-mono text-3xl text-white">{loading ? '—' : toFaDigits(card.value.toLocaleString('fa-IR'))}</strong>
             <span className="mt-2 block text-xs text-stone-500">{card.detail}</span>
           </button>;
         })}

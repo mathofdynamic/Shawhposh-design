@@ -36,7 +36,7 @@ export function CatalogProvider({ children }: { children: React.ReactNode }) {
 
 function useContextValue() {
   const context = useContext(Context);
-  if (!context) throw new Error('CatalogProvider missing');
+  if (!context) throw new Error('بخش کاتالوگ در دسترس نیست.');
   return context;
 }
 
@@ -56,7 +56,7 @@ export function useCatalogAdmin() {
   const state = useMemo(() => ({ ...emptySnapshot, ...snapshot }), [snapshot]);
   const variantId = (sku: string) => {
     const variant = snapshot.variants.find(item => item.sku === sku);
-    if (!variant) throw new Error('SKU پیدا نشد.');
+    if (!variant) throw new Error('شناسه کالا پیدا نشد.');
     return variant.id;
   };
 

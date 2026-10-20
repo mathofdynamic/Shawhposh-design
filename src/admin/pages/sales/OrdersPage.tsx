@@ -4,6 +4,7 @@ import { AdminPageHeader } from '../../components/shell/AdminPageHeader';
 import { Badge, Button, Pagination, SearchInput, Table, type ColumnDef } from '../../components/ui';
 import { useAdminRouter } from '../../router/AdminRouterContext';
 import { listAdminOrders, type AdminOrder } from '../../features/commerceApi';
+import { persianOrderStatus, persianPaymentStatus } from '../../../lib/persian-labels';
 
 const orderLabels: Record<string, string> = {
   draft: 'پیش‌نویس', awaiting_payment: 'در انتظار پرداخت', confirmed: 'تأییدشده', cancelled: 'لغوشده', completed: 'تکمیل‌شده',
@@ -70,8 +71,8 @@ export const OrdersPage: React.FC = () => {
     { key: 'orderNumber', header: 'شماره سفارش', render: order => <span className="whitespace-nowrap font-mono font-bold text-[#eed29d]">{order.orderNumber}</span> },
     { key: 'customer', header: 'مشتری', render: order => <div><div className="font-semibold text-white">{order.customerName}</div><div className="mt-1 text-[10px] text-stone-500">{order.customerEmail || order.customerPhone || '—'}</div></div> },
     { key: 'totalTomans', header: 'مبلغ', align: 'left', render: order => <span className="font-mono">{order.totalTomans.toLocaleString('fa-IR')} تومان</span> },
-    { key: 'orderStatus', header: 'وضعیت سفارش', render: order => <Badge tone={orderTone(order.orderStatus)}>{orderLabels[order.orderStatus] ?? order.orderStatus}</Badge> },
-    { key: 'paymentStatus', header: 'وضعیت پرداخت', render: order => <Badge tone={order.paymentStatus === 'paid' ? 'success' : order.paymentStatus === 'failed' ? 'danger' : 'neutral'}>{paymentLabels[order.paymentStatus] ?? order.paymentStatus}</Badge> },
+    { key: 'orderStatus', header: 'وضعیت سفارش', render: order => <Badge tone={orderTone(order.orderStatus)}>{persianOrderStatus(order.orderStatus)}</Badge> },
+    { key: 'paymentStatus', header: 'وضعیت پرداخت', render: order => <Badge tone={order.paymentStatus === 'paid' ? 'success' : order.paymentStatus === 'failed' ? 'danger' : 'neutral'}>{persianPaymentStatus(order.paymentStatus)}</Badge> },
     { key: 'createdAt', header: 'تاریخ ثبت', render: order => <span className="text-xs text-stone-400">{new Date(order.createdAt).toLocaleString('fa-IR', { timeZone: 'Asia/Tehran' })}</span> },
     { key: 'open', header: 'جزئیات', align: 'center', render: order => <Button size="sm" variant="ghost" leftIcon={<Eye size={14} />} aria-label={`نمایش ${order.orderNumber}`}>نمایش</Button> },
   ];

@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react';
 import { X, Trash2, ShoppingBag, ArrowLeft } from 'lucide-react';
 import { CartItem } from '../types';
 import { handleProductImageError, isPlaceholderProductImage, storefrontProductImage } from '../lib/productImage';
+import { persianSize } from '../lib/persian-labels';
 
 interface CartProps {
   isOpen: boolean;
@@ -157,7 +158,7 @@ export default function Cart({ isOpen, onClose, cart, onUpdateQuantity, onRemove
                         {/* Attribute Badges */}
                         <div className="flex flex-wrap gap-1.5 mt-2">
                           <span className="text-[9px] px-2 py-0.5 rounded bg-white/5 border border-white/5 font-mono text-gray-400">
-                            سایز: {item.size}
+                            اندازه: {persianSize(item.size)}
                           </span>
                           <span className="text-[9px] px-2 py-0.5 rounded bg-white/5 border border-white/5 flex items-center gap-1.5 text-gray-400">
                             <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: item.color.hex }} />

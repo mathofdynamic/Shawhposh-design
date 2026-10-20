@@ -12,8 +12,6 @@ export interface AdminPageHeaderProps {
 }
 
 // Allowed technical English terms per design specification
-const ALLOWED_TECHNICAL_TERMS = new Set(['SKU', 'UTM', 'SEO', 'DTG', 'QC', 'MFA', 'API', 'POD', 'DPI']);
-
 export const AdminPageHeader: React.FC<AdminPageHeaderProps> = ({
   title,
   description,
@@ -43,9 +41,6 @@ export const AdminPageHeader: React.FC<AdminPageHeaderProps> = ({
     !activeRoute.allowedRoles.includes(currentRole) &&
     !activeRoute.allowedRoles.includes(normalizedRole as any);
 
-  const shouldShowEnglishTerm =
-    activeRoute?.titleEn && ALLOWED_TECHNICAL_TERMS.has(activeRoute.titleEn.toUpperCase());
-
   return (
     <div className="border-b border-white/10 pb-5 mb-6 font-sans">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -60,11 +55,6 @@ export const AdminPageHeader: React.FC<AdminPageHeaderProps> = ({
                 <h1 className="text-xl sm:text-2xl font-black text-white tracking-tight">
                   {displayTitle}
                 </h1>
-                {shouldShowEnglishTerm && (
-                  <span className="hidden sm:inline-block text-[11px] font-mono text-stone-400 bg-white/5 px-2 py-0.5 rounded border border-white/5">
-                    {activeRoute?.titleEn}
-                  </span>
-                )}
               </div>
               <p className="text-xs sm:text-sm text-stone-400 mt-1 leading-relaxed">
                 {displayDescription}

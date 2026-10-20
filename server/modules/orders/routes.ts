@@ -14,7 +14,7 @@ import {
 const idempotencySchema = z.string().min(8).max(128);
 export const checkoutRoutes = Router();
 checkoutRoutes.get('/config', (_req, res) => res.json(checkoutAvailability(config.CHECKOUT_RESERVATION_MINUTES)));
-checkoutRoutes.post('/orders', requireCustomer, rateLimit({ windowMs: 15 * 60_000, limit: 12, standardHeaders: 'draft-7', legacyHeaders: false }), asyncRoute((req, res) => {
+checkoutRoutes.post('/orders', requireCustomer, rateLimit({ windowMs: 15 * 60_000, limit: 12, standardHeaders: 'draft-7', legacyHeaders: false, message: 'تعداد درخواست‌ها زیاد است. بعداً دوباره تلاش کنید.' }), asyncRoute((req, res) => {
   const result = createCheckoutOrder(req.principal!.id, idempotencySchema.parse(req.get('Idempotency-Key')), req.body);
   res.status(result.replayed ? 200 : 201).json(result);
 }));

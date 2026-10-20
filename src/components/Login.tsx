@@ -142,7 +142,7 @@ export default function Login({ theme, onLogin, onClose, onNavigateToSignup }: L
                     ورود به حساب کاربری
                   </h2>
                   <p className={`text-xs mt-2.5 leading-relaxed ${isDark ? 'text-gray-400' : 'text-slate-500'}`}>
-                    جهت دسترسی به کارگاه طراحی شخصی POD، مدیریت خریدهای سفارشی و سوابق طراحی خود، وارد حساب کاربری‌تان شوید.
+                    برای دسترسی به کارگاه طراحی سفارشی، مدیریت خریدها و سوابق طراحی خود وارد حساب کاربری شوید.
                   </p>
                 </div>
 
@@ -163,7 +163,7 @@ export default function Login({ theme, onLogin, onClose, onNavigateToSignup }: L
                         type="text" autoComplete="username" required
                         value={email}
                         onChange={(e) => setEmail(e.target.value)}
-                        placeholder="user@example.com / 09123456789"
+                        placeholder="ایمیل یا شماره همراه"
                         className="w-full text-xs pr-10 pl-4 py-3.5 rounded-xl border outline-none transition-all text-left font-sans text-right placeholder:text-right"
                         style={{
                           backgroundColor: isDark ? 'rgba(255, 255, 255, 0.03)' : '#fdfbfa',
@@ -260,7 +260,7 @@ export default function Login({ theme, onLogin, onClose, onNavigateToSignup }: L
                         d="M12.24 10.285V14.4h6.887c-.275 1.564-1.88 4.604-6.887 4.604-4.33 0-7.859-3.579-7.859-7.989 0-4.41 3.529-7.989 7.859-7.989 2.464 0 4.112 1.025 5.057 1.926l3.245-3.125C18.3 1.95 15.547 1 12.24 1c-6.075 0-11 4.925-11 11s4.925 11 11 11c6.34 0 10.556-4.45 10.556-10.74 0-.72-.08-1.27-.18-1.815H12.24z"
                       />
                     </svg>
-                    <span>Google</span>
+                    <span>گوگل</span>
                   </button>
 
                   <button
@@ -275,7 +275,7 @@ export default function Login({ theme, onLogin, onClose, onNavigateToSignup }: L
                     <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24">
                       <path d="M12.152 6.896c-.22 0-.74-.24-.74-.24s-.48-.22-.32-.58c.2-.44.5-.86.76-1.28c.3-.48.58-.66.86-.66c.26 0 .54.16.8.64c.28.5.54.98.66 1.4c.1.36-.26.72-.56.72c-.22 0-.42-.04-.54.14c-.16.24.12 1-.22 1.08c-.14.04-.22-.22-.22-.22zM18.66 11.232c-.31.258-.871.554-1.127.871l-.14.179c-.105.152-.162.339-.162.531c0 .487.359.888.847.962l.142.022c.284.053.64.212.871.493a3.504 3.504 0 0 1 .475 2.18c0 .351-.23.951-.43 1.341c-.48 1.071-1.07 2.15-1.92 2.15c-.45 0-.82-.25-1.39-.25c-.56 0-.96.25-1.39.25c-.83 0-1.57-1.12-2.12-2.19c-.83-1.63-1.46-4-.56-5.591a3.513 3.513 0 0 1 .53-.78c.621-.611 1.481-1.011 2.37-1.011c1.07 0 1.631.62 1.631.62s.37-.54 1.25-.59s1.42.34 1.83.82c.452.541.681 1.241.521 1.941c-.04.162-.11.31-.22.45L18.66 11.232z" />
                     </svg>
-                    <span>Apple ID</span>
+                    <span>حساب اپل</span>
                   </button>
                 </div>
               </>
@@ -285,7 +285,7 @@ export default function Login({ theme, onLogin, onClose, onNavigateToSignup }: L
           {/* Bottom fineprint / license */}
           <div className="z-10 text-center mt-auto pt-6 border-t" style={{ borderColor: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.04)' }}>
             <p className="text-[9px] text-gray-500 leading-relaxed font-mono">
-              SECURE AUTHORIZATION HOST BY SHAHPOOSH APPAREL CO. ALL RIGHTS REVERSED.
+              درگاه ورود حساب کاربری شاه‌پوش · کلیه حقوق محفوظ است.
             </p>
           </div>
         </div>

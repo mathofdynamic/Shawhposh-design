@@ -5,12 +5,10 @@ import { Badge, Button, ConfirmDialog } from '../../components/ui';
 import { useAdminRouter } from '../../router/AdminRouterContext';
 import { useStaff } from '../../features/StaffAuth';
 import { addAdminOrderNote, cancelAdminOrder, getAdminOrder, updateAdminOrderAddress, type AdminOrder } from '../../features/commerceApi';
+import { persianFulfillmentStatus, persianOrderEvent, persianOrderStatus, persianPaymentStatus, persianSize } from '../../../lib/persian-labels';
 
 export interface OrderDetailPageProps { orderIdProp?: string; }
 
-const orderLabels: Record<string, string> = { draft: 'پیش‌نویس', awaiting_payment: 'در انتظار پرداخت', confirmed: 'تأییدشده', cancelled: 'لغوشده', completed: 'تکمیل‌شده' };
-const paymentLabels: Record<string, string> = { unpaid: 'پرداخت‌نشده', pending: 'در حال پرداخت', paid: 'پرداخت‌شده', failed: 'ناموفق', partially_refunded: 'بازپرداخت بخشی', refunded: 'بازپرداخت‌شده' };
-const fulfillmentLabels: Record<string, string> = { unfulfilled: 'آماده‌نشده', ready_to_pack: 'آماده بسته‌بندی', packed: 'بسته‌بندی‌شده', shipped: 'ارسال‌شده', delivered: 'تحویل‌شده', returned: 'مرجوع‌شده' };
 const inputClass = 'w-full rounded-xl border border-white/10 bg-[#181716] px-3 py-2.5 text-sm text-white outline-none focus:border-[#ba8d3d]';
 
 export const OrderDetailPage: React.FC<OrderDetailPageProps> = ({ orderIdProp }) => {
@@ -89,7 +87,7 @@ export const OrderDetailPage: React.FC<OrderDetailPageProps> = ({ orderIdProp })
         <section className="space-y-4 rounded-2xl border border-white/10 bg-[#131211] p-5 lg:col-span-2">
           <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/5 pb-4">
             <div><p className="font-mono text-lg font-bold text-[#eed29d]">{currentOrder.orderNumber}</p><p className="mt-1 text-xs text-stone-500">ثبت‌شده در {new Date(currentOrder.createdAt).toLocaleString('fa-IR')}</p></div>
-            <div className="flex flex-wrap gap-2"><Badge tone={currentOrder.orderStatus === 'cancelled' ? 'danger' : 'warning'}>{orderLabels[currentOrder.orderStatus] ?? currentOrder.orderStatus}</Badge><Badge tone={currentOrder.paymentStatus === 'paid' ? 'success' : 'neutral'}>{paymentLabels[currentOrder.paymentStatus] ?? currentOrder.paymentStatus}</Badge><Badge tone="neutral">ارسال: {fulfillmentLabels[currentOrder.fulfillmentStatus] ?? currentOrder.fulfillmentStatus}</Badge></div>
+            <div className="flex flex-wrap gap-2"><Badge tone={currentOrder.orderStatus === 'cancelled' ? 'danger' : 'warning'}>{persianOrderStatus(currentOrder.orderStatus)}</Badge><Badge tone={currentOrder.paymentStatus === 'paid' ? 'success' : 'neutral'}>{persianPaymentStatus(currentOrder.paymentStatus)}</Badge><Badge tone="neutral">ارسال: {persianFulfillmentStatus(currentOrder.fulfillmentStatus)}</Badge></div>
           </div>
           <div className="grid grid-cols-2 gap-4 text-sm sm:grid-cols-4">
             <div><span className="block text-[10px] text-stone-500">جمع کالاها</span><strong className="mt-1 block font-mono">{currentOrder.subtotalTomans.toLocaleString('fa-IR')} تومان</strong></div>
@@ -99,10 +97,10 @@ export const OrderDetailPage: React.FC<OrderDetailPageProps> = ({ orderIdProp })
           </div>
           <div className="grid grid-cols-1 gap-3 border-t border-white/5 pt-3 text-xs sm:grid-cols-2">
             <div><span className="block text-[10px] text-stone-500">روش ارسال ثبت‌شده</span><strong className="mt-1 block text-stone-200">{currentOrder.shippingMethodName || 'ثبت نشده'}</strong></div>
-            <div><span className="block text-[10px] text-stone-500">وضعیت آماده‌سازی و ارسال</span><strong className="mt-1 block text-stone-200">{fulfillmentLabels[currentOrder.fulfillmentStatus] ?? currentOrder.fulfillmentStatus}</strong></div>
+            <div><span className="block text-[10px] text-stone-500">وضعیت آماده‌سازی و ارسال</span><strong className="mt-1 block text-stone-200">{persianFulfillmentStatus(currentOrder.fulfillmentStatus)}</strong></div>
           </div>
             <div className="overflow-hidden rounded-xl border border-white/5">
-            <div role="region" tabIndex={0} aria-label={'\u0622\u06cc\u062a\u0645\u200c\u0647\u0627\u06cc \u0633\u0641\u0627\u0631\u0634. \u0628\u0631\u0627\u06cc \u0645\u0634\u0627\u0647\u062f\u0647 \u0647\u0645\u0647 \u0633\u062a\u0648\u0646\u200c\u0647\u0627 \u062f\u0631 \u0645\u0648\u0628\u0627\u06cc\u0644 \u0627\u0641\u0642\u06cc \u067e\u06cc\u0645\u0627\u06cc\u0634 \u06a9\u0646\u06cc\u062f.'} className="overflow-x-auto focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#ba8d3d]"><table className="w-full min-w-[560px] text-right text-xs"><thead className="bg-white/[0.03] text-stone-400"><tr><th className="p-3">کالا</th><th className="p-3">SKU</th><th className="p-3">ویژگی</th><th className="p-3">تعداد</th><th className="p-3">قیمت نهایی</th></tr></thead><tbody className="divide-y divide-white/5">{currentOrder.items.map(item => <tr key={item.id}><td className="p-3 font-medium text-white">{item.productName}</td><td className="p-3 font-mono text-stone-400">{item.sku}</td><td className="p-3 text-stone-400">{item.variant.colorName} · {item.variant.size}</td><td className="p-3">{item.quantity.toLocaleString('fa-IR')}</td><td className="p-3 font-mono">{item.lineTotalTomans.toLocaleString('fa-IR')} تومان</td></tr>)}</tbody></table></div>
+            <div role="region" tabIndex={0} aria-label={'\u0622\u06cc\u062a\u0645\u200c\u0647\u0627\u06cc \u0633\u0641\u0627\u0631\u0634. \u0628\u0631\u0627\u06cc \u0645\u0634\u0627\u0647\u062f\u0647 \u0647\u0645\u0647 \u0633\u062a\u0648\u0646\u200c\u0647\u0627 \u062f\u0631 \u0645\u0648\u0628\u0627\u06cc\u0644 \u0627\u0641\u0642\u06cc \u067e\u06cc\u0645\u0627\u06cc\u0634 \u06a9\u0646\u06cc\u062f.'} className="overflow-x-auto focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#ba8d3d]"><table className="w-full min-w-[560px] text-right text-xs"><thead className="bg-white/[0.03] text-stone-400"><tr><th className="p-3">کالا</th><th className="p-3">شناسه کالا</th><th className="p-3">ویژگی</th><th className="p-3">تعداد</th><th className="p-3">قیمت نهایی</th></tr></thead><tbody className="divide-y divide-white/5">{currentOrder.items.map(item => <tr key={item.id}><td className="p-3 font-medium text-white">{item.productName}</td><td className="p-3 font-mono text-stone-400">{item.sku}</td><td className="p-3 text-stone-400">{item.variant.colorName} · {persianSize(item.variant.size)}</td><td className="p-3">{item.quantity.toLocaleString('fa-IR')}</td><td className="p-3 font-mono">{item.lineTotalTomans.toLocaleString('fa-IR')} تومان</td></tr>)}</tbody></table></div>
             <p className="border-t border-white/5 px-3 py-2 text-right text-[10px] text-stone-500 sm:hidden">{'\u0628\u0631\u0627\u06cc \u0645\u0634\u0627\u0647\u062f\u0647 \u0647\u0645\u0647 \u0633\u062a\u0648\u0646\u200c\u0647\u0627\u060c \u062c\u062f\u0648\u0644 \u0631\u0627 \u0627\u0641\u0642\u06cc \u0628\u06a9\u0634\u06cc\u062f.'}</p>
           </div>
         </section>
@@ -143,7 +141,7 @@ export const OrderDetailPage: React.FC<OrderDetailPageProps> = ({ orderIdProp })
 
       <section className="rounded-2xl border border-white/10 bg-[#131211] p-5">
         <h2 className="mb-4 flex items-center gap-2 text-sm font-bold"><Package size={15} className="text-[#eed29d]" />تاریخچه سفارش</h2>
-        <ol className="space-y-4">{[...currentOrder.timeline].reverse().map((event, index) => <li key={`${event.type}-${event.createdAt}-${index}`} className="flex gap-3 border-r border-[#ba8d3d]/30 pr-4 text-xs"><span className="mt-1 h-2 w-2 shrink-0 rounded-full bg-[#ba8d3d]" /><div><strong className="text-stone-200">{event.note || event.type}</strong><time className="mt-1 block text-[10px] text-stone-500">{new Date(event.createdAt).toLocaleString('fa-IR')}</time></div></li>)}</ol>
+        <ol className="space-y-4">{[...currentOrder.timeline].reverse().map((event, index) => <li key={`${event.type}-${event.createdAt}-${index}`} className="flex gap-3 border-r border-[#ba8d3d]/30 pr-4 text-xs"><span className="mt-1 h-2 w-2 shrink-0 rounded-full bg-[#ba8d3d]" /><div><strong className="text-stone-200">{event.note || persianOrderEvent(event.type)}</strong><time className="mt-1 block text-[10px] text-stone-500">{new Date(event.createdAt).toLocaleString('fa-IR')}</time></div></li>)}</ol>
       </section>
       <p className="rounded-xl border border-amber-400/15 bg-amber-500/5 p-3 text-xs text-amber-200">تأیید پرداخت از صفحه پرداخت‌ها انجام می‌شود: رسید کارت‌به‌کارت نیازمند تطبیق بانکی است و پرداخت بله به استعلام رسمی وابسته است.</p>
     </>}

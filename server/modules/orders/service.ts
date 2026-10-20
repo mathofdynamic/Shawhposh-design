@@ -193,12 +193,12 @@ export function createCheckoutOrder(userId: string, idempotencyKeyInput: unknown
 export function adminOrderList(query: unknown) {
   const filters = z.object({ search: z.string().trim().max(200).optional(), status: z.enum(['draft','awaiting_payment','confirmed','cancelled','completed']).optional(),
     paymentStatus: z.enum(['unpaid','pending','paid','failed','partially_refunded','refunded']).optional(),
-    dateFrom: z.string().refine(isCalendarDate, 'Expected a valid YYYY-MM-DD business date').optional(),
-    dateTo: z.string().refine(isCalendarDate, 'Expected a valid YYYY-MM-DD business date').optional(),
+    dateFrom: z.string().refine(isCalendarDate, 'تاریخ واردشده معتبر نیست.').optional(),
+    dateTo: z.string().refine(isCalendarDate, 'تاریخ واردشده معتبر نیست.').optional(),
     page: z.coerce.number().int().min(1).max(100000).default(1), pageSize: z.coerce.number().int().min(1).max(100).default(20),
   }).superRefine((value, context) => {
     if (value.dateFrom && value.dateTo && value.dateFrom > value.dateTo) {
-      context.addIssue({ code: z.ZodIssueCode.custom, path: ['dateTo'], message: 'dateTo must not precede dateFrom' });
+      context.addIssue({ code: z.ZodIssueCode.custom, path: ['dateTo'], message: 'تاریخ پایان نباید پیش از تاریخ آغاز باشد.' });
     }
   }).parse(query);
   const conditions: SQL[] = [];
@@ -236,7 +236,7 @@ function isCalendarDate(value: string) {
 }
 
 export function tehranDateStartUtc(value: string) {
-  if (!isCalendarDate(value)) throw new Error('Invalid Tehran calendar date');
+  if (!isCalendarDate(value)) throw new Error('تاریخ شمسی در تقویم تهران معتبر نیست.');
   const [year, month, day] = value.split('-').map(Number);
   const targetUtc = Date.UTC(year, month - 1, day);
   let candidate = targetUtc;
@@ -345,7 +345,7 @@ export function expireReservations(now = new Date()) {
       }
       for (const attempt of attempts) {
         tx.update(paymentAttempts).set({ status: 'expired', failureCode: 'RESERVATION_EXPIRED',
-          failureMessage: 'Payment reservation expired before verification.', updatedAt: now, failedAt: now })
+          failureMessage: 'مهلت رزرو پرداخت پیش از تأیید به پایان رسید.', updatedAt: now, failedAt: now })
           .where(and(eq(paymentAttempts.id, attempt.id), inArray(paymentAttempts.status, ['created', 'awaiting_customer', 'pending_verification']))).run();
         tx.update(manualPaymentReceipts).set({ reviewStatus: 'rejected', reviewedAt: now,
           reviewNote: 'مهلت بررسی پایان یافت و رزرو سفارش آزاد شد.' })
@@ -364,7 +364,7 @@ export function expireReservations(now = new Date()) {
         const after = tx.select().from(inventory).where(eq(inventory.variantId, reservation.variantId)).get()!;
         tx.insert(stockMovements).values({ variantId: reservation.variantId, movementType: 'reservation_expired', quantityDelta: 0,
           onHandBefore: before.onHand, onHandAfter: after.onHand, referenceType: 'order', referenceId: order.id,
-          reason: `Reservation expired for ${order.orderNumber}`, actorStaffId: null }).run();
+          reason: `مهلت رزرو سفارش ${order.orderNumber} به پایان رسید.`, actorStaffId: null }).run();
         tx.insert(orderEvents).values({ orderId: order.id, eventType: 'reservation_released', actorType: 'system',
           note: 'مهلت پرداخت پایان یافت و رزرو موجودی آزاد شد.', metadata: { reservationId: reservation.id, quantity: reservation.quantity }, createdAt: now }).run();
         released++;

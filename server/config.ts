@@ -6,7 +6,7 @@ export function isAllowedBaleApiBase(value: string, nodeEnv: string) {
 }
 
 const baleApiBaseSchema = z.string().url().refine(value => isAllowedBaleApiBase(value, process.env.NODE_ENV ?? 'development'), {
-  message: 'Production Bale API base must be https://tapi.bale.ai.',
+  message: 'نشانی پایهٔ API بله در محیط تولید باید https://tapi.bale.ai باشد.',
 });
 
 export const config = z.object({

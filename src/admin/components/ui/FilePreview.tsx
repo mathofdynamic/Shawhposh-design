@@ -30,6 +30,12 @@ export const FilePreview: React.FC<FilePreviewProps> = ({
   const [isOpen, setIsOpen] = useState(false);
 
   const aspectClasses = aspectRatio === 'square' ? 'aspect-square' : 'aspect-[3/4]';
+  const formatLabel = ({ SVG: 'گرافیک برداری', PNG: 'تصویر نقطه‌ای', PDF: 'سند چاپ', TIFF: 'تصویر چاپی' } as const)[metadata?.format ?? 'SVG'];
+  const colorProfileLabel = ({ CMYK: 'چهاررنگ چاپی', RGB: 'رنگ نمایشی' } as const)[metadata?.colorProfile ?? 'RGB'];
+  const dimensionsFa = metadata?.dimensionsMm
+    .replace(/\s*x\s*/i, ' × ')
+    .replace(/\s*mm\b/i, ' میلی‌متر')
+    .replace(/[0-9]/g, (digit) => '۰۱۲۳۴۵۶۷۸۹'[Number(digit)]);
 
   return (
     <>
@@ -62,24 +68,24 @@ export const FilePreview: React.FC<FilePreviewProps> = ({
               </Badge>
             </div>
 
-            <div className="grid grid-cols-2 gap-1.5 text-[10px] text-gray-400 font-mono" dir="ltr">
+            <div className="grid grid-cols-2 gap-1.5 text-[10px] text-gray-400 font-mono" dir="rtl">
               <div className="flex justify-between bg-white/5 px-2 py-1 rounded">
-                <span className="text-gray-500">FORMAT:</span>
-                <span className="text-gray-300 font-bold">{metadata.format}</span>
+                <span className="font-sans text-gray-500">قالب:</span>
+                <span className="text-gray-300 font-bold">{formatLabel}</span>
               </div>
               <div className="flex justify-between bg-white/5 px-2 py-1 rounded">
-                <span className="text-gray-500">DPI:</span>
-                <span className={metadata.resolutionDpi >= 300 ? 'text-emerald-400 font-bold' : 'text-amber-400'}>
-                  {metadata.resolutionDpi}
+                <span className="font-sans text-gray-500">وضوح (نقطه در اینچ):</span>
+                <span dir="ltr" className={metadata.resolutionDpi >= 300 ? 'text-emerald-400 font-bold' : 'text-amber-400'}>
+                  {metadata.resolutionDpi.toLocaleString('fa-IR')}
                 </span>
               </div>
               <div className="flex justify-between bg-white/5 px-2 py-1 rounded">
-                <span className="text-gray-500">PROFILE:</span>
-                <span className="text-gray-300">{metadata.colorProfile}</span>
+                <span className="font-sans text-gray-500">فضای رنگ:</span>
+                <span className="text-gray-300">{colorProfileLabel}</span>
               </div>
               <div className="flex justify-between bg-white/5 px-2 py-1 rounded">
-                <span className="text-gray-500">SIZE:</span>
-                <span className="text-gray-300">{metadata.dimensionsMm}</span>
+                <span className="font-sans text-gray-500">ابعاد:</span>
+                <span className="font-sans text-gray-300">{dimensionsFa}</span>
               </div>
             </div>
           </div>
@@ -101,7 +107,7 @@ export const FilePreview: React.FC<FilePreviewProps> = ({
             <div className="p-4 bg-white/5 rounded-xl border border-white/10 text-xs space-y-2 text-right">
               <div className="flex items-center gap-2 font-bold text-white">
                 <FileText size={15} className="text-[#ba8d3d]" />
-                <span>بررسی استانداردهای کارگاه چاپ دیجیتال (DTG):</span>
+                <span>بررسی استانداردهای چاپ مستقیم روی پارچه:</span>
               </div>
               <p className="text-gray-300 font-sans leading-relaxed">
                 {metadata.notes || 'طرح وکتوری استخراج شده از ادیتور وب با قابلیت بزرگنمایی بدون کاهش شارپنس.'}

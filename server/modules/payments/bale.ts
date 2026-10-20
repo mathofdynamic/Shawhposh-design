@@ -19,7 +19,7 @@ export interface BaleClient {
 
 export class BaleApiError extends Error {
   constructor(public readonly safeCode: string, public readonly definitive: boolean) {
-    super('Bale API request failed');
+    super('درخواست از رابط بله ناموفق بود.');
     this.name = 'BaleApiError';
   }
 }
@@ -151,8 +151,8 @@ async function handleStartMessage(updateId: string, message: NonNullable<z.infer
   try {
     const sent = await client.sendInvoice({
       chatId: String(message.chat.id),
-      title: 'Shawhposh order',
-      description: `Payment for ${claimed.order.orderNumber}`.slice(0, 255),
+      title: 'سفارش شاه‌پوش',
+      description: `پرداخت سفارش ${claimed.order.orderNumber}`.slice(0, 255),
       payload: claimed.invoicePayload,
       providerToken: config.BALE_PAYMENT_PROVIDER_TOKEN,
       amountRials: claimed.attempt.amountProviderUnits!,
@@ -219,7 +219,7 @@ async function handleSuccessfulPayment(updateId: string, message: NonNullable<z.
 }
 
 export async function processBaleWebhookUpdate(raw: unknown, client: BaleClient = baleClient) {
-  if (!isBalePaymentConfigured()) throw new ApiError(503, 'BALE_NOT_CONFIGURED', 'Webhook بله پیکربندی نشده است.');
+  if (!isBalePaymentConfigured()) throw new ApiError(503, 'BALE_NOT_CONFIGURED', 'وب‌هوک بله پیکربندی نشده است.');
   const update = updateSchema.parse(raw);
   const updateId = String(update.update_id);
   const type = updateType(update);
@@ -239,7 +239,7 @@ export async function processBaleWebhookUpdate(raw: unknown, client: BaleClient 
 }
 
 export async function reverifyBalePayment(attemptId: string, client: BaleClient = baleClient) {
-  if (!isBalePaymentConfigured()) throw new ApiError(503, 'BALE_NOT_CONFIGURED', 'Webhook بله پیکربندی نشده است.');
+  if (!isBalePaymentConfigured()) throw new ApiError(503, 'BALE_NOT_CONFIGURED', 'وب‌هوک بله پیکربندی نشده است.');
   const context = getBaleReverificationContext(attemptId);
   const transaction = await client.inquireTransaction(context.attempt.externalTransactionId!);
   return completeVerifiedBalePayment({
@@ -254,7 +254,7 @@ export async function reverifyBalePayment(attemptId: string, client: BaleClient 
 export async function configureBaleWebhook(client: BaleClient = baleClient) {
   if (!isBalePaymentConfigured()) throw new ApiError(409, 'BALE_CREDENTIALS_MISSING', 'تنظیمات امن ربات بله روی سرور کامل نیست.');
   if (config.NODE_ENV === 'production' && new URL(config.APP_ORIGIN).protocol !== 'https:') {
-    throw new ApiError(409, 'BALE_HTTPS_REQUIRED', 'وب‌هوک بله به نشانی امن HTTPS نیاز دارد.');
+    throw new ApiError(409, 'BALE_HTTPS_REQUIRED', 'نشانی وب‌هوک بله باید با اتصال امن آغاز شود.');
   }
   const url = `${config.APP_ORIGIN.replace(/\/$/, '')}/api/v1/payments/bale/webhook/${config.BALE_WEBHOOK_SECRET}`;
   try {

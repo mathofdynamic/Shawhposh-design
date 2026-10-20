@@ -3,6 +3,7 @@ import { RefreshCw, Search } from 'lucide-react';
 import { AdminPageHeader } from '../../components/shell/AdminPageHeader';
 import { useAdminRouter } from '../../router/AdminRouterContext';
 import { listPayments, type AdminPaymentRow } from '../../features/paymentsApi';
+import { persianPaymentStatus } from '../../../lib/persian-labels';
 
 const statusLabels: Record<string, string> = {
   created: 'ایجادشده', awaiting_customer: 'در انتظار مشتری', pending_verification: 'در انتظار بررسی',
@@ -68,7 +69,7 @@ export function PaymentsPage() {
                 <p className="mt-1 break-all text-[10px] text-stone-500">{payment.customer.email || payment.customer.phone || '—'}</p>
                 <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-white/[0.06] pt-3">
                   <span className="text-stone-400">{methodLabels[payment.method]}</span>
-                  <span className={`rounded-full px-2.5 py-1 text-[10px] ${payment.status === 'verified' ? 'bg-emerald-400/10 text-emerald-200' : payment.status === 'rejected' || payment.status === 'failed' || payment.status === 'expired' ? 'bg-red-400/10 text-red-200' : 'bg-amber-400/10 text-amber-200'}`}>{statusLabels[payment.status] ?? payment.status}</span>
+                  <span className={`rounded-full px-2.5 py-1 text-[10px] ${payment.status === 'verified' ? 'bg-emerald-400/10 text-emerald-200' : payment.status === 'rejected' || payment.status === 'failed' || payment.status === 'expired' ? 'bg-red-400/10 text-red-200' : 'bg-amber-400/10 text-amber-200'}`}>{persianPaymentStatus(payment.status)}</span>
                 </div>
                 <p className="mt-2 text-[10px] text-stone-500">{new Date(payment.createdAt).toLocaleString('fa-IR', { timeZone: 'Asia/Tehran' })}</p>
               </article>)}
@@ -79,7 +80,7 @@ export function PaymentsPage() {
                 <tbody>{payments.map(payment => <tr key={payment.id} className="border-b border-white/[0.06] text-stone-300 transition-colors hover:bg-white/[0.03]">
                   <td className="whitespace-nowrap px-3 py-3 font-mono font-semibold text-[#eed29d]"><button type="button" onClick={() => navigate(`/admin/sales/payments/${payment.id}`)} aria-label={`نمایش پرداخت سفارش ${payment.orderNumber}`} className="rounded-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#eed29d]">{payment.orderNumber}</button></td><td className="px-3 py-3"><span className="block font-medium text-white">{payment.customer.name}</span><span className="mt-1 block text-[10px] text-stone-500">{payment.customer.email || payment.customer.phone || '—'}</span></td>
                   <td className="px-3 py-3">{methodLabels[payment.method]}</td><td className="whitespace-nowrap px-3 py-3 font-mono">{payment.amountTomans.toLocaleString('fa-IR')} تومان</td>
-                  <td className="px-3 py-3"><span className={`rounded-full px-2.5 py-1 text-[10px] ${payment.status === 'verified' ? 'bg-emerald-400/10 text-emerald-200' : payment.status === 'rejected' || payment.status === 'failed' || payment.status === 'expired' ? 'bg-red-400/10 text-red-200' : 'bg-amber-400/10 text-amber-200'}`}>{statusLabels[payment.status] ?? payment.status}</span></td>
+                  <td className="px-3 py-3"><span className={`rounded-full px-2.5 py-1 text-[10px] ${payment.status === 'verified' ? 'bg-emerald-400/10 text-emerald-200' : payment.status === 'rejected' || payment.status === 'failed' || payment.status === 'expired' ? 'bg-red-400/10 text-red-200' : 'bg-amber-400/10 text-amber-200'}`}>{persianPaymentStatus(payment.status)}</span></td>
                   <td className="whitespace-nowrap px-3 py-3 text-stone-500">{new Date(payment.createdAt).toLocaleString('fa-IR', { timeZone: 'Asia/Tehran' })}</td><td aria-hidden="true" className="px-3 py-3 text-left text-[#eed29d]">›</td>
                 </tr>)}</tbody>
               </table>

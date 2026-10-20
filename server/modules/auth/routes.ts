@@ -4,7 +4,7 @@ import { asyncRoute } from '../../lib/errors';
 import { getPrincipal, login, logout, register, safeUser } from './service';
 export function authRoutes(staff = false) {
   const router = Router();
-  const limiter = rateLimit({ windowMs: 15 * 60000, limit: 20, standardHeaders: 'draft-7', legacyHeaders: false, message: { error: { code: 'RATE_LIMITED', message: 'تعداد تلاش‌ها زیاد است. بعداً تلاش کنید.' } } });
+  const limiter = rateLimit({ windowMs: 15 * 60000, limit: 20, standardHeaders: 'draft-7', legacyHeaders: false, message: { error: { code: 'RATE_LIMITED', message: 'تعداد تلاش‌ها زیاد است. بعداً دوباره تلاش کنید.' } } });
   if (!staff) router.post('/register', limiter, asyncRoute(register));
   router.post('/login', limiter, asyncRoute((req, res) => login(req, res, staff)));
   router.post('/logout', asyncRoute((req, res) => logout(req, res, staff)));

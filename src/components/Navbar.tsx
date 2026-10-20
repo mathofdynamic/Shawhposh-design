@@ -418,7 +418,7 @@ export default function Navbar({
                   className="w-full py-3.5 rounded-2xl text-center text-xs font-bold border border-white/10 flex items-center justify-center gap-2 cursor-pointer text-stone-400 hover:text-white bg-white/5"
                 >
                   <Shield size={14} className="text-[#ba8d3d]" />
-                  <span>ورود به میز مدیریت کارگاه (Admin)</span>
+                  <span>ورود به میز مدیریت کارگاه</span>
                 </button>
               )}
             </motion.div>

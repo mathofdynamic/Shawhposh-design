@@ -192,7 +192,7 @@ export default function App() {
           let oldItems: unknown[];
           try {
             const parsed: unknown = JSON.parse(legacyRaw);
-            if (!Array.isArray(parsed)) throw new Error('invalid legacy cart');
+            if (!Array.isArray(parsed)) throw new Error('ساختار سبد خرید قدیمی معتبر نیست.');
             oldItems = parsed;
           } catch {
             setCartError('سبد خرید ذخیره‌شده در این مرورگر قابل خواندن نیست؛ داده موجود حفظ شده است.');
@@ -460,7 +460,7 @@ export default function App() {
                   className="flex flex-col md:flex-row justify-between items-end mb-16"
                 >
                   <div className="text-right">
-                    <span className="text-[10px] text-gray-500 font-mono">SELECTED ORIGINAL WEAR</span>
+                    <span className="text-[10px] text-gray-500 font-mono">پوشاک اصیل برگزیده</span>
                     <h2 className={`text-2xl md:text-4xl font-display font-black tracking-tight mt-1 ${isDark ? 'text-white' : 'text-slate-900'}`}>
                       تیشرت‌های آماده طلایی شهپوش
                     </h2>
@@ -537,7 +537,7 @@ export default function App() {
                 }}
                 className="mb-12 text-right"
               >
-                <span className="text-[10px] text-gray-500 font-mono">SHAHPOOSH ONLINE CATALOG</span>
+                <span className="text-[10px] text-gray-500 font-mono">کاتالوگ اینترنتی شاه‌پوش</span>
                 <h1 className={`text-3xl md:text-5xl font-display font-medium tracking-tight mt-1 ${
                   isDark ? 'text-white' : 'text-slate-900'
                 }`}>
@@ -904,7 +904,7 @@ export default function App() {
               className="hover:text-[#ba8d3d] transition-colors cursor-pointer inline-flex items-center gap-1.5 font-mono text-[10px] text-gray-400 bg-white/5 hover:bg-white/10 px-2.5 py-1 rounded-lg border border-white/5"
             >
               <span>میز عملیات کارگاه</span>
-              <span className="bg-[#ba8d3d]/20 text-[#eed29d] px-1 rounded text-[8px] font-bold">ADMIN</span>
+              <span className="bg-[#ba8d3d]/20 text-[#eed29d] px-1 rounded text-[8px] font-bold">مدیریت</span>
             </button>
           </div>
         </div>

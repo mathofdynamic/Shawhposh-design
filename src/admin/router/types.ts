@@ -7,7 +7,6 @@ export interface AdminRouteDef {
   path: string;
   groupId: AdminGroupId;
   titleFa: string;
-  titleEn: string;
   shortTitleFa: string;
   descriptionFa: string;
   iconName: string;
@@ -20,7 +19,6 @@ export interface AdminRouteDef {
 export interface AdminNavGroupDef {
   id: AdminGroupId;
   titleFa: string;
-  titleEn: string;
   iconName: string;
   routes: AdminRouteDef[];
 }
