@@ -4,6 +4,7 @@ import { AdminPageHeader } from '../../components/shell/AdminPageHeader';
 import { useAdminRouter } from '../../router/AdminRouterContext';
 import { approvePayment, getPayment, rejectPayment, reverifyBalePayment } from '../../features/paymentsApi';
 import { persianPaymentStatus } from '../../../lib/persian-labels';
+import { useAppDialog } from '../../components/ui/DialogProvider';
 
 const panel = 'rounded-2xl border border-white/[0.08] bg-[#131211] p-4 sm:p-6';
 const action = 'inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-xs font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-50';
@@ -38,6 +39,7 @@ function eventSummary(event: { eventType: string; metadata: Record<string, unkno
 
 export function PaymentDetailPage({ paymentId }: { paymentId: string }) {
   const { navigate } = useAdminRouter();
+  const { confirm: confirmDialog } = useAppDialog();
   const [payment, setPayment] = useState<Awaited<ReturnType<typeof getPayment>>['payment'] | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -54,7 +56,13 @@ export function PaymentDetailPage({ paymentId }: { paymentId: string }) {
   useEffect(() => { void refresh(); }, [refresh]);
 
   const approve = async () => {
-    if (!window.confirm('رسید و واریز بانکی یا پیامک بانک را بررسی کرده‌اید؟ تصویر رسید به‌تنهایی اثبات واریز نیست.')) return;
+    const confirmed = await confirmDialog({
+      title: 'تأیید پرداخت بانکی',
+      description: 'رسید و واریز بانکی یا پیامک بانک را بررسی کرده‌اید؟ تصویر رسید به‌تنهایی اثبات واریز نیست.',
+      confirmLabel: 'تأیید پرداخت',
+      cancelLabel: 'بازبینی دوباره',
+    });
+    if (!confirmed) return;
     setSaving(true); setError(''); setNotice('');
     try { await approvePayment(paymentId); setNotice('پرداخت پس از بررسی ثبت شد.'); await refresh(); }
     catch (failure) { setError(failure instanceof Error ? failure.message : 'تأیید پرداخت انجام نشد.'); }

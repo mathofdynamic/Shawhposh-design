@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { AdminPageHeader } from '../../components/shell/AdminPageHeader';
-import { Button, Table, type ColumnDef, useToast } from '../../components/ui';
+import { Button, Table, type ColumnDef, useAppDialog, useToast } from '../../components/ui';
 import { useCatalogAdmin } from '../../features/CatalogProvider';
 import type { ProductVariant } from '../../domain/types';
 import { persianFit, persianSize } from '../../../lib/persian-labels';
@@ -11,6 +11,7 @@ const emptyForm = (productId = ''): VariantForm => ({ productId, sku: '', colorN
 export const VariantsPage: React.FC = () => {
   const { state, createVariant, updateVariant, deleteVariant } = useCatalogAdmin();
   const { showToast } = useToast();
+  const { confirm: confirmDialog } = useAppDialog();
   const [editing, setEditing] = useState<ProductVariant | null>(null);
   const [openForm, setOpenForm] = useState(false);
   const [form, setForm] = useState<VariantForm>(emptyForm());
@@ -30,7 +31,12 @@ export const VariantsPage: React.FC = () => {
   };
 
   const archive = async (variant: ProductVariant) => {
-    if (!window.confirm(`شناسه ${variant.sku} به بایگانی منتقل شود؟`)) return;
+    const confirmed = await confirmDialog({
+      title: 'بایگانی شناسه کالا',
+      description: `شناسه ${variant.sku} به بایگانی منتقل شود؟`,
+      confirmLabel: 'انتقال به بایگانی',
+    });
+    if (!confirmed) return;
     const result = await deleteVariant(variant.sku);
     showToast({ type: result.success ? 'success' : 'error', title: result.success ? 'تنوع بایگانی شد' : 'بایگانی تنوع انجام نشد', message: result.error });
   };

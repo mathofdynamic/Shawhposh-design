@@ -31,6 +31,7 @@ import {
   SearchInput,
   Pagination,
   useToast,
+  useAppDialog,
 } from '../../components/ui';
 import { useCatalogAdmin } from '../../features/CatalogProvider';
 import { AdminProduct } from '../../domain/types';
@@ -48,6 +49,7 @@ export const ProductsPage: React.FC = () => {
     importProductsCsv,
   } = useCatalogAdmin();
   const { addToast } = useToast();
+  const { confirm: confirmDialog } = useAppDialog();
 
   const categories = getCategories();
 
@@ -169,10 +171,14 @@ export const ProductsPage: React.FC = () => {
 
   // Delete handler
   const handleDeleteProduct = async (p: AdminProduct) => {
-    const confirm = window.confirm(
-      `آیا از حذف محصول «${p.name}» (${p.id}) اطمینان دارید؟ در صورت ثبت سفارش با این محصول، حذف به منظور حفظ یکپارچگی سوابق مالی ممنوع است.`
-    );
-    if (!confirm) return;
+    const confirmed = await confirmDialog({
+      title: 'حذف محصول',
+      description: `آیا از حذف محصول «${p.name}» (${p.id}) اطمینان دارید؟ در صورت ثبت سفارش با این محصول، حذف به منظور حفظ یکپارچگی سوابق مالی ممنوع است.`,
+      confirmLabel: 'حذف محصول',
+      cancelLabel: 'انصراف',
+      isDestructive: true,
+    });
+    if (!confirmed) return;
 
     const res = await deleteProduct(p.id);
     if (!res.success) {

@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { ArrowLeft, Archive, Save } from 'lucide-react';
 import { AdminPageHeader } from '../../components/shell/AdminPageHeader';
-import { Button, useToast } from '../../components/ui';
+import { Button, useAppDialog, useToast } from '../../components/ui';
 import { useCatalogAdmin } from '../../features/CatalogProvider';
 import { useAdminRouter } from '../../router';
 import type { AdminProduct } from '../../domain/types';
@@ -13,6 +13,7 @@ type FormState = Pick<AdminProduct, 'name' | 'slug' | 'category' | 'description'
 export const ProductEditor: React.FC<ProductEditorProps> = ({ productId, onBack }) => {
   const { navigate } = useAdminRouter();
   const { showToast } = useToast();
+  const { confirm: confirmDialog } = useAppDialog();
   const { state, getProductById, createProduct, updateProduct, deleteProduct } = useCatalogAdmin();
   const isNew = !productId || productId === 'new';
   const current = useMemo(() => isNew ? undefined : getProductById(productId), [getProductById, isNew, productId]);
@@ -58,7 +59,13 @@ export const ProductEditor: React.FC<ProductEditorProps> = ({ productId, onBack 
   };
 
   const archive = async () => {
-    if (!current || !window.confirm(`آیا محصول «${current.name}» بایگانی شود؟`)) return;
+    if (!current) return;
+    const confirmed = await confirmDialog({
+      title: 'بایگانی محصول',
+      description: `آیا محصول «${current.name}» به بایگانی منتقل شود؟`,
+      confirmLabel: 'انتقال به بایگانی',
+    });
+    if (!confirmed) return;
     const result = await deleteProduct(current.id);
     if (!result.success) { setError(result.error || 'بایگانی محصول انجام نشد.'); return; }
     showToast({ type: 'success', title: 'محصول بایگانی شد' });

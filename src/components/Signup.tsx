@@ -3,6 +3,7 @@ import React, { useState } from 'react';
 import { Mail, Lock, Eye, EyeOff, User, ArrowRight, ShieldCheck, Phone, CheckSquare, Square, Sparkles } from 'lucide-react';
 import { User as UserType } from '../types';
 import { GlassButton } from './ui/apple-tahoe-liquid-glass-button';
+import { useAppDialog } from '../admin/components/ui/DialogProvider';
 
 interface SignupProps {
   theme: 'dark' | 'light';
@@ -12,6 +13,7 @@ interface SignupProps {
 }
 
 export default function Signup({ theme, onLogin, onClose, onNavigateToLogin }: SignupProps) {
+  const { showMessage } = useAppDialog();
   const isDark = theme === 'dark';
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
@@ -255,7 +257,7 @@ export default function Signup({ theme, onLogin, onClose, onNavigateToLogin }: S
                       {agreeTerms ? <CheckSquare size={15} /> : <Square size={15} />}
                     </button>
                     <p className={`leading-relaxed text-right ${isDark ? 'text-gray-400' : 'text-slate-600'}`}>
-                      با عضویت در پلتفرم، <button type="button" className="underline hover:text-[#ba8d3d]" onClick={() => alert('قوانین شامل حفظ حریم خصوصی، رعایت اصالت کپی‌رایت نقوش تاریخی گبه و خوش‌نویسی و خطوط اختصاصی شهپوش است.')}>قوانین، شرایط خدمات و بیانیه حریم خصوصی</button> شرکت البسه فاخر شهپوش را می‌پذیرم.
+                      با عضویت در پلتفرم، <button type="button" className="underline hover:text-[#ba8d3d]" onClick={() => { void showMessage({ title: 'قوانین و حریم خصوصی', description: 'قوانین شامل حفظ حریم خصوصی، رعایت اصالت کپی‌رایت نقوش تاریخی گبه و خوش‌نویسی و خطوط اختصاصی شهپوش است.' }); }}>قوانین، شرایط خدمات و بیانیه حریم خصوصی</button> شرکت البسه فاخر شهپوش را می‌پذیرم.
                     </p>
                   </div>
 

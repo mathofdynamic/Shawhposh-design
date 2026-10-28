@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useId, useRef } from 'react';
 import { AlertTriangle, X } from 'lucide-react';
 import { Button, IconButton } from './Button';
 
@@ -10,6 +10,7 @@ export interface DialogProps {
   children?: React.ReactNode;
   footer?: React.ReactNode;
   size?: 'sm' | 'md' | 'lg' | 'xl';
+  role?: 'dialog' | 'alertdialog';
 }
 
 export const Dialog: React.FC<DialogProps> = ({
@@ -20,23 +21,38 @@ export const Dialog: React.FC<DialogProps> = ({
   children,
   footer,
   size = 'md',
+  role = 'dialog',
 }) => {
   const dialogRef = useRef<HTMLDivElement>(null);
   const previouslyFocusedElementRef = useRef<HTMLElement | null>(null);
+  const onCloseRef = useRef(onClose);
+  const generatedId = useId();
+  const titleId = `dialog-title-${generatedId}`;
+  const descriptionId = `dialog-description-${generatedId}`;
+
+  useEffect(() => {
+    onCloseRef.current = onClose;
+  }, [onClose]);
 
   useEffect(() => {
     if (!isOpen) return;
 
     previouslyFocusedElementRef.current = document.activeElement as HTMLElement | null;
+    const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
 
-    // Focus first focusable element or dialog container
+    // Prefer the safe action (usually cancel), then fall back to the first control.
     const timer = setTimeout(() => {
       if (dialogRef.current) {
         const focusable = dialogRef.current.querySelectorAll<HTMLElement>(
-          'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+          'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
         );
-        if (focusable.length > 0) {
+        const preferred = dialogRef.current.querySelector<HTMLElement>(
+          '[data-dialog-initial-focus]:not([disabled])'
+        );
+        if (preferred) {
+          preferred.focus();
+        } else if (focusable.length > 0) {
           focusable[0].focus();
         } else {
           dialogRef.current.focus();
@@ -46,8 +62,9 @@ export const Dialog: React.FC<DialogProps> = ({
 
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
+        e.preventDefault();
         e.stopPropagation();
-        onClose();
+        onCloseRef.current();
         return;
       }
 
@@ -67,16 +84,14 @@ export const Dialog: React.FC<DialogProps> = ({
         const firstElement = focusableElements[0] as HTMLElement | undefined;
         const lastElement = focusableElements[focusableElements.length - 1] as HTMLElement | undefined;
 
-        if (e.shiftKey) {
-          if (document.activeElement === firstElement || document.activeElement === dialogRef.current) {
-            e.preventDefault();
-            lastElement?.focus();
-          }
-        } else {
-          if (document.activeElement === lastElement) {
-            e.preventDefault();
-            firstElement?.focus();
-          }
+        const activeElement = document.activeElement;
+        const activeInsideDialog = dialogRef.current.contains(activeElement);
+        if (e.shiftKey && (!activeInsideDialog || activeElement === firstElement || activeElement === dialogRef.current)) {
+          e.preventDefault();
+          lastElement?.focus();
+        } else if (!e.shiftKey && (!activeInsideDialog || activeElement === lastElement)) {
+          e.preventDefault();
+          firstElement?.focus();
         }
       }
     };
@@ -85,13 +100,13 @@ export const Dialog: React.FC<DialogProps> = ({
 
     return () => {
       clearTimeout(timer);
-      document.body.style.overflow = '';
+      document.body.style.overflow = previousOverflow;
       window.removeEventListener('keydown', handleKeyDown);
-      if (previouslyFocusedElementRef.current && typeof previouslyFocusedElementRef.current.focus === 'function') {
+      if (previouslyFocusedElementRef.current?.isConnected) {
         previouslyFocusedElementRef.current.focus();
       }
     };
-  }, [isOpen, onClose]);
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
@@ -104,11 +119,12 @@ export const Dialog: React.FC<DialogProps> = ({
 
   return (
     <div
-      role="dialog"
+      role={role}
       aria-modal="true"
-      aria-labelledby="dialog-title"
-      aria-describedby={description ? 'dialog-description' : undefined}
-      className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 overflow-y-auto"
+      aria-labelledby={titleId}
+      aria-describedby={description ? descriptionId : undefined}
+      dir="rtl"
+      className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto p-3 sm:p-4"
     >
       {/* Backdrop */}
       <div
@@ -125,11 +141,11 @@ export const Dialog: React.FC<DialogProps> = ({
       >
         <div className="flex items-start justify-between gap-4 mb-4">
           <div className="space-y-1 pr-1">
-            <h3 id="dialog-title" className="text-sm sm:text-base font-bold text-white leading-snug">
+            <h3 id={titleId} className="text-sm sm:text-base font-bold text-white leading-snug">
               {title}
             </h3>
             {description && (
-              <p id="dialog-description" className="text-xs text-stone-400 leading-relaxed font-sans">
+              <p id={descriptionId} className="text-xs text-stone-400 leading-relaxed font-sans">
                 {description}
               </p>
             )}
@@ -139,7 +155,7 @@ export const Dialog: React.FC<DialogProps> = ({
             size="sm"
             aria-label="بستن دیالوگ"
             onClick={onClose}
-            className="text-stone-400 hover:text-white shrink-0"
+            className="text-stone-400 hover:text-white shrink-0 min-h-[44px] min-w-[44px]"
           >
             <X size={16} />
           </IconButton>
@@ -190,9 +206,10 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
       title={title}
       description={effectiveDescription}
       size="sm"
+      role="alertdialog"
       footer={
         <>
-          <Button variant="secondary" size="sm" onClick={onClose} disabled={isLoading}>
+          <Button data-dialog-initial-focus variant="secondary" size="sm" onClick={onClose} disabled={isLoading} className="min-h-[44px] px-4 focus:ring-2 focus:ring-[#ba8d3d] focus:ring-offset-2 focus:ring-offset-[#0e0d0c]">
             {cancelLabel}
           </Button>
           <Button
@@ -200,6 +217,7 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
             size="sm"
             isLoading={isLoading}
             onClick={onConfirm}
+            className="min-h-[44px] px-4"
           >
             {confirmLabel}
           </Button>

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { AdminPageHeader } from '../../components/shell/AdminPageHeader';
-import { Button, Table, type ColumnDef, useToast } from '../../components/ui';
+import { Button, Table, type ColumnDef, useAppDialog, useToast } from '../../components/ui';
 import { useCatalogAdmin } from '../../features/CatalogProvider';
 import type { AdminCategory } from '../../domain/types';
 
@@ -10,6 +10,7 @@ const blankCategory: CategoryForm = { nameFa: '', nameEn: '', slug: '', descript
 export const CategoriesPage: React.FC = () => {
   const { state, createCategory, updateCategory, deleteCategory } = useCatalogAdmin();
   const { showToast } = useToast();
+  const { confirm: confirmDialog } = useAppDialog();
   const [editing, setEditing] = useState<AdminCategory | null>(null);
   const [openForm, setOpenForm] = useState(false);
   const [form, setForm] = useState<CategoryForm>(blankCategory);
@@ -35,7 +36,12 @@ export const CategoriesPage: React.FC = () => {
   };
 
   const archive = async (category: AdminCategory) => {
-    if (!window.confirm(`دسته‌بندی «${category.nameFa}» به بایگانی منتقل شود؟`)) return;
+    const confirmed = await confirmDialog({
+      title: 'بایگانی دسته‌بندی',
+      description: `دسته‌بندی «${category.nameFa}» به بایگانی منتقل شود؟`,
+      confirmLabel: 'انتقال به بایگانی',
+    });
+    if (!confirmed) return;
     const result = await deleteCategory(category.id);
     showToast({ type: result.success ? 'success' : 'error', title: result.success ? 'دسته‌بندی بایگانی شد' : 'بایگانی دسته‌بندی انجام نشد', message: result.error });
   };
