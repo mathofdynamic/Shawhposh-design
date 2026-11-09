@@ -1,17 +1,21 @@
 import { Router } from 'express';
+import multer from 'multer';
 import { z } from 'zod';
 import { catalogSnapshot, publicProducts, saveCategory, saveProduct, saveVariant, productSchema, categorySchema, variantSchema } from './service';
 import { allowRoles } from '../auth/service';
 import { adjustStock } from '../inventory/service';
 import { asyncRoute, ApiError } from '../../lib/errors';
+import { readProductImage, storeProductImage } from './mediaStorage';
 const idSchema=z.string().uuid();
 export const publicCatalog=Router();
+publicCatalog.get('/product-media/:id',asyncRoute((req,res)=>{const id=idSchema.parse(req.params.id);res.type('image/webp').set('Cache-Control','public, max-age=31536000, immutable').send(readProductImage(id));}));
 publicCatalog.get('/products',asyncRoute((req,res)=>{res.json({products:publicProducts(req.query),categories:catalogSnapshot(true).categories.filter(c=>c.status==='active')});}));
 publicCatalog.get('/products/:slug',asyncRoute((req,res)=>{const product=publicProducts({}).find(p=>p.slug===req.params.slug);if(!product)throw new ApiError(404,'NOT_FOUND','محصول یافت نشد.');res.json({product});}));
 publicCatalog.get('/categories',asyncRoute((_req,res)=>{res.json({categories:catalogSnapshot(true).categories.filter(c=>c.status==='active')});}));
 export const adminCatalog=Router();
 const catalogWrite=allowRoles('owner','store_manager');
 const inventoryWrite=allowRoles('owner','store_manager','inventory');
+const imageUpload=multer({storage:multer.memoryStorage(),limits:{fileSize:5*1024*1024,files:1}});
 adminCatalog.post('/catalog/import',catalogWrite,asyncRoute((req,res)=>{
   const rows=z.array(z.record(z.string(),z.string())).min(1).max(100).parse(req.body.rows);
   const errors:string[]=[];let importedCount=0;
@@ -30,6 +34,12 @@ adminCatalog.post('/catalog/import',catalogWrite,asyncRoute((req,res)=>{
   res.json({success:importedCount>0,importedCount,errors});
 }));
 adminCatalog.get('/catalog/snapshot',asyncRoute((_req,res)=>{res.json(catalogSnapshot());}));
+adminCatalog.post('/products/:id/images',catalogWrite,imageUpload.single('image'),asyncRoute(async(req,res)=>{
+  const productId=idSchema.parse(req.params.id);
+  if(!req.file)throw new ApiError(422,'PRODUCT_IMAGE_REQUIRED','یک فایل تصویر انتخاب کنید.');
+  const image=await storeProductImage(productId,req.file.buffer,req.file.mimetype,typeof req.body?.altText==='string'?req.body.altText:'');
+  res.status(201).json({image});
+}));
 for(const resource of ['products','categories','variants'] as const){
   adminCatalog.get('/'+resource,asyncRoute((_req,res)=>{res.json({[resource]:catalogSnapshot()[resource]});}));
   adminCatalog.get('/'+resource+'/:id',asyncRoute((req,res)=>{const id=idSchema.parse(req.params.id);const item=catalogSnapshot()[resource].find(item=>item.id===id);if(!item)throw new ApiError(404,'NOT_FOUND','رکورد یافت نشد.');res.json({[resource.slice(0,-1)]:item});}));

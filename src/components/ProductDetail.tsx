@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useId, useRef } from 'react';
 import { 
   ArrowLeft, 
   ArrowRight, 
@@ -12,10 +12,12 @@ import {
   CheckCircle2,
 } from 'lucide-react';
 import { Product, CartItem } from '../types';
-import { handleProductImageError } from '../lib/productImage';
+import { handleProductImageError, PRODUCT_IMAGE_FALLBACK } from '../lib/productImage';
 import { persianSize } from '../lib/persian-labels';
 import { GlassButton } from './ui/apple-tahoe-liquid-glass-button';
-import { motion, AnimatePresence } from 'motion/react';
+import { motion, AnimatePresence, useReducedMotion } from 'motion/react';
+
+type DetailTab = 'story' | 'size' | 'workshop';
 
 interface ProductDetailProps {
   theme?: 'light' | 'dark';
@@ -34,7 +36,27 @@ export default function ProductDetail({ theme = 'dark', product, onBack, onAddTo
   const [selectedSize, setSelectedSize] = useState(product.sizes[1] || product.sizes[0]);
   const [quantity, setQuantity] = useState(1);
   const [addedMessage, setAddedMessage] = useState(false);
-  const [activeTab, setActiveTab] = useState<'story' | 'size' | 'workshop'>('story');
+  const [activeTab, setActiveTab] = useState<DetailTab>('story');
+  const prefersReducedMotion = useReducedMotion();
+  const detailTabsId = useId();
+  const detailTabRefs = useRef<Partial<Record<DetailTab, HTMLButtonElement | null>>>({});
+  const detailTabOrder: DetailTab[] = ['story', 'size', 'workshop'];
+  const handleDetailTabKeyDown = (event: React.KeyboardEvent<HTMLButtonElement>) => {
+    const currentIndex = detailTabOrder.indexOf(activeTab);
+    const nextTab = event.key === 'ArrowRight'
+      ? detailTabOrder[(currentIndex + 1) % detailTabOrder.length]
+      : event.key === 'ArrowLeft'
+        ? detailTabOrder[(currentIndex - 1 + detailTabOrder.length) % detailTabOrder.length]
+        : event.key === 'Home'
+          ? detailTabOrder[0]
+          : event.key === 'End'
+            ? detailTabOrder[detailTabOrder.length - 1]
+            : undefined;
+    if (!nextTab) return;
+    event.preventDefault();
+    setActiveTab(nextTab);
+    detailTabRefs.current[nextTab]?.focus();
+  };
 
   useEffect(() => {
     setSelectedImageIndex(0);
@@ -48,16 +70,15 @@ export default function ProductDetail({ theme = 'dark', product, onBack, onAddTo
     if(!product.sizes.includes(selectedSize))setSelectedSize(product.sizes[0]);
     if(selectedImageIndex>=product.images.length)setSelectedImageIndex(0);
   },[product.colors,product.sizes,product.images,selectedColor.hex,selectedSize,selectedImageIndex]);
-  const formattedPrice = (product.variants?.find(v=>v.colorHex===selectedColor?.hex && v.size===selectedSize)?.priceTomans ?? product.price).toLocaleString('fa-IR');
-
   const selectedVariant = product.variants?.find(v=>v.colorHex===selectedColor?.hex && v.size===selectedSize);
-  const available = selectedVariant?.available ?? 0;
+  const formattedPrice = (selectedVariant?.priceTomans ?? product.price).toLocaleString('fa-IR');
+  const originalPrice = selectedVariant?.originalPriceTomans ?? product.originalPriceTomans;
+  const available = selectedVariant?.inStock ?? false;
   const handleAddToCart = () => {
-    if (!selectedVariant || quantity < 1 || available < 1 || quantity > available) return;
+    if (!selectedVariant || quantity < 1 || !available || quantity > 20) return;
     onAddToCart({
       productId: product.id,
       variantId: selectedVariant!.id,
-      sku: selectedVariant!.sku,
       productName: product.name,
       price: selectedVariant?.priceTomans ?? product.price,
       quantity,
@@ -95,7 +116,7 @@ export default function ProductDetail({ theme = 'dark', product, onBack, onAddTo
       isDark ? 'bg-[#0e0d0c]' : 'bg-[#faf8f5]'
     }`}>
       <motion.div 
-        initial="hidden"
+        initial={false}
         animate="visible"
         variants={containerVariants}
         className="max-w-7xl mx-auto"
@@ -137,12 +158,12 @@ export default function ProductDetail({ theme = 'dark', product, onBack, onAddTo
                       <motion.img
                         key={selectedImageIndex}
                         onError={handleProductImageError}
-                        initial={{ opacity: 0, scale: 0.95, filter: 'blur(5px)' }}
+                        initial={prefersReducedMotion ? false : { opacity: 0, scale: 0.95, filter: 'blur(5px)' }}
                         animate={{ opacity: 1, scale: 1, filter: 'blur(0px)' }}
-                        exit={{ opacity: 0, scale: 1.03, filter: 'blur(5px)' }}
-                        transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
+                        exit={prefersReducedMotion ? { opacity: 0 } : { opacity: 0, scale: 1.03, filter: 'blur(5px)' }}
+                        transition={{ duration: prefersReducedMotion ? 0 : 0.3, ease: [0.16, 1, 0.3, 1] }}
                         src={product.images[selectedImageIndex]}
-                        alt={product.name}
+                        alt={product.images[selectedImageIndex] === PRODUCT_IMAGE_FALLBACK ? `تصویر واقعی ${product.name} ثبت نشده است` : `${product.name}، تصویر ${selectedImageIndex + 1}`}
                         referrerPolicy="no-referrer"
                         className="product-media-source w-full h-full max-h-[380px] object-contain p-6 drop-shadow-[0_20px_40px_rgba(0,0,0,0.15)] dark:drop-shadow-[0_25px_45px_rgba(0,0,0,0.55)]"
                       />
@@ -162,9 +183,11 @@ export default function ProductDetail({ theme = 'dark', product, onBack, onAddTo
                 {product.images.map((img, index) => (
                   <motion.button
                     key={index}
-                    whileHover={{ scale: 1.03 }}
-                    whileTap={{ scale: 0.97 }}
+                    whileHover={prefersReducedMotion ? undefined : { scale: 1.03 }}
+                    whileTap={prefersReducedMotion ? undefined : { scale: 0.97 }}
                     onClick={() => setSelectedImageIndex(index)}
+                    aria-label={`نمایش تصویر ${index + 1} از ${product.images.length}`}
+                    aria-pressed={selectedImageIndex === index}
                     className={`aspect-square rounded-xl overflow-hidden p-1.5 border cursor-pointer transition-all duration-300 ${
                       selectedImageIndex === index 
                         ? 'border-[#ba8d3d] scale-[0.98] ring-2 ring-[#ba8d3d]/25' 
@@ -173,7 +196,7 @@ export default function ProductDetail({ theme = 'dark', product, onBack, onAddTo
                   >
                     <img
                       src={img}
-                      alt={`${product.name} - تصویر ${index + 1}`}
+                      alt={img === PRODUCT_IMAGE_FALLBACK ? `تصویر واقعی ${product.name} ثبت نشده است` : `${product.name}، تصویر ${index + 1}`}
                       referrerPolicy="no-referrer"
                       onError={handleProductImageError}
                       className="product-media-source w-full h-full object-contain filter contrast-[1.05]"
@@ -188,12 +211,8 @@ export default function ProductDetail({ theme = 'dark', product, onBack, onAddTo
               isDark ? 'bg-white/[0.02] border-white/[0.05]' : 'bg-white border-slate-200/80 shadow-[0_10px_20px_rgba(0,0,0,0.02)]'
             }`}>
               <div className="flex items-center justify-between pb-3 border-b border-dashed border-slate-200/50 dark:border-white/[0.03]">
-                <span className={`text-[10px] uppercase font-bold tracking-wider ${isDark ? 'text-gray-400' : 'text-slate-500'}`}>شناسه انحصاری اثر</span>
-                <span className="font-mono text-xs text-[#ba8d3d] font-bold">{product.id}</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className={`text-[10px] uppercase font-bold tracking-wider ${isDark ? 'text-gray-400' : 'text-slate-500'}`}>برش فابریک تن‌خور</span>
-                <span className={`text-xs ${isDark ? 'text-white' : 'text-slate-800'} font-bold`}>لش‌فیت عریض</span>
+                <span className={`text-[10px] font-bold ${isDark ? 'text-gray-400' : 'text-slate-500'}`}>نوع پوشاک</span>
+                <span className={`text-xs font-bold ${isDark ? 'text-white' : 'text-slate-800'}`}>{({ hoodie: 'هودی', dors: 'دورس', tshirt: 'تیشرت', sweatshirt: 'سویشرت', halfzip: 'نیم‌زیپ', pants: 'شلوار' } as Record<string, string>)[product.garmentType ?? ''] ?? 'پوشاک'}</span>
               </div>
             </div>
           </motion.div>
@@ -213,8 +232,8 @@ export default function ProductDetail({ theme = 'dark', product, onBack, onAddTo
           >
             
             <motion.div variants={slideUpVariants} className="flex items-center gap-2 mb-4">
-              <span className="bg-[#ba8d3d]/10 border border-[#ba8d3d]/20 text-[#eed29d] text-[9px] font-black px-3 py-1 rounded-full uppercase tracking-wider">
-                {product.category === 'calligraphy' ? 'کالکشن کالیگرافی' : product.category === 'graphic' ? 'کالکشن گرافیک ملل' : 'کالکشن مینیمال'}
+              <span className={`bg-[#ba8d3d]/10 border border-[#ba8d3d]/20 text-[9px] font-black px-3 py-1 rounded-full uppercase tracking-wider ${isDark ? 'text-[#eed29d]' : 'text-[var(--text-accent)]'}`}>
+                {product.category === 'calligraphy' ? 'کالکشن خوشنویسی' : product.category === 'graphic' ? 'طرح‌های گرافیکی' : 'طرح‌های مینیمال'}
               </span>
 
             </motion.div>
@@ -238,8 +257,9 @@ export default function ProductDetail({ theme = 'dark', product, onBack, onAddTo
             >
               <span className={`text-[11px] font-bold ${isDark ? 'text-gray-400' : 'text-slate-500'}`}>قیمت محصول:</span>
               <div className="flex flex-col items-start text-left">
+                {originalPrice != null && <div className="flex items-center gap-2 text-xs text-stone-500"><del>{originalPrice.toLocaleString('fa-IR')} تومان</del><span className="rounded-full bg-rose-500/10 px-2 py-1 font-bold text-rose-300">{product.discountPercent}% تخفیف</span></div>}
                 <div className="flex items-baseline gap-1">
-                  <span className={`font-mono text-2xl md:text-3.5xl font-black tracking-tight ${isDark ? 'text-[#eed29d]' : 'text-[#ba8d3d]'}`}>
+                  <span className={`font-mono text-2xl md:text-3.5xl font-black tracking-tight ${isDark ? 'text-[#eed29d]' : 'text-[var(--text-accent)]'}`}>
                     {formattedPrice}
                   </span>
                   <span className={`text-xs font-bold ${isDark ? 'text-gray-400' : 'text-slate-500'}`}>تومان</span>
@@ -258,7 +278,7 @@ export default function ProductDetail({ theme = 'dark', product, onBack, onAddTo
               {/* Color Picker */}
               <div className="flex flex-col items-start text-right">
                 <span className={`text-xs font-black mb-3 ${isDark ? 'text-gray-300' : 'text-slate-800'}`}>
-                  گزینش رنگ پارچه: <span className="text-[#ba8d3d] mr-1">{selectedColor.name}</span>
+                  گزینش رنگ پارچه: <span className="mr-1 text-[var(--text-accent)]">{selectedColor.name}</span>
                 </span>
                 <div className="flex gap-2.5">
                   {product.colors.map((color) => {
@@ -266,10 +286,12 @@ export default function ProductDetail({ theme = 'dark', product, onBack, onAddTo
                     return (
                       <motion.button
                         key={color.name}
-                        whileHover={{ scale: 1.08 }}
-                        whileTap={{ scale: 0.95 }}
+                        whileHover={prefersReducedMotion ? undefined : { scale: 1.08 }}
+                        whileTap={prefersReducedMotion ? undefined : { scale: 0.95 }}
                         onClick={() => setSelectedColor(color)}
-                        className={`w-9.5 h-9.5 rounded-full relative flex items-center justify-center border transition-all duration-300 cursor-pointer ${
+                        aria-label={`رنگ ${color.name}`}
+                        aria-pressed={isSelected}
+                        className={`min-w-11 min-h-11 rounded-full relative flex items-center justify-center border transition-all duration-300 cursor-pointer ${
                           isSelected 
                             ? 'border-[#ba8d3d] scale-105 ring-2 ring-[#ba8d3d]/30 shadow-md' 
                             : isDark ? 'border-white/10 hover:border-white/20' : 'border-slate-300 hover:border-slate-400 shadow-sm'
@@ -289,7 +311,7 @@ export default function ProductDetail({ theme = 'dark', product, onBack, onAddTo
               {/* Size Selection */}
               <div className="flex flex-col items-start text-right">
                 <span className={`text-xs font-black mb-3 ${isDark ? 'text-gray-300' : 'text-slate-800'}`}>
-                  گزینش اندازه لباس: <span className="text-[#ba8d3d] mr-1">{persianSize(selectedSize)}</span>
+                  گزینش اندازه لباس: <span className="text-[var(--text-accent)] mr-1">{persianSize(selectedSize)}</span>
                 </span>
                 <div className="flex gap-1.5">
                   {product.sizes.map((size) => {
@@ -297,10 +319,11 @@ export default function ProductDetail({ theme = 'dark', product, onBack, onAddTo
                     return (
                       <motion.button
                         key={size}
-                        whileHover={{ scale: 1.05 }}
-                        whileTap={{ scale: 0.95 }}
+                        whileHover={prefersReducedMotion ? undefined : { scale: 1.05 }}
+                        whileTap={prefersReducedMotion ? undefined : { scale: 0.95 }}
                         onClick={() => setSelectedSize(size)}
-                        className={`w-10 h-10 rounded-xl font-mono text-xs font-bold transition-all duration-300 cursor-pointer flex items-center justify-center ${
+                        aria-pressed={isSelected}
+                        className={`min-w-11 min-h-11 rounded-xl font-mono text-xs font-bold transition-all duration-300 cursor-pointer flex items-center justify-center ${
                           isSelected 
                             ? 'bg-[#ba8d3d] text-[#0e0d0c] shadow-[0_2px_12px_rgba(186,141,61,0.3)]' 
                             : isDark ? 'bg-white/5 border border-white/5 text-gray-300 hover:border-white/15' : 'bg-slate-100 border border-slate-200 text-slate-700 hover:bg-slate-200 shadow-sm'
@@ -328,11 +351,11 @@ export default function ProductDetail({ theme = 'dark', product, onBack, onAddTo
                 isDark ? 'bg-[#141211] border-white/5' : 'bg-slate-100 border-slate-200 shadow-sm'
               }`}>
                 <motion.button
-                  whileTap={{ scale: 0.9 }}
+                  whileTap={prefersReducedMotion ? undefined : { scale: 0.9 }}
                   aria-label="کاهش تعداد"
-                  disabled={available < 1 || quantity <= 1}
+                  disabled={!available || quantity <= 1}
                   onClick={() => setQuantity(Math.max(1, quantity - 1))}
-                  className={`w-8 h-8 rounded-full flex items-center justify-center cursor-pointer font-bold transition-colors ${
+                  className={`min-w-11 min-h-11 rounded-full flex items-center justify-center cursor-pointer font-bold transition-colors ${
                     isDark ? 'bg-white/5 text-gray-400 hover:text-white disabled:cursor-not-allowed disabled:opacity-35 disabled:hover:text-gray-400' : 'bg-white text-slate-600 border border-slate-200 shadow-sm hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-35 disabled:hover:bg-white'
                   }`}
                 >
@@ -342,11 +365,11 @@ export default function ProductDetail({ theme = 'dark', product, onBack, onAddTo
                   {quantity.toLocaleString('fa-IR')}
                 </span>
                 <motion.button
-                  whileTap={{ scale: 0.9 }}
+                  whileTap={prefersReducedMotion ? undefined : { scale: 0.9 }}
                   aria-label="افزایش تعداد"
-                  disabled={quantity>=available}
-                  onClick={() => setQuantity(Math.max(1,Math.min(available, quantity + 1)))}
-                  className={`w-8 h-8 rounded-full flex items-center justify-center cursor-pointer font-bold transition-colors ${
+                  disabled={!available || quantity >= 20}
+                  onClick={() => { if (available) setQuantity(Math.min(20, quantity + 1)); }}
+                  className={`min-w-11 min-h-11 rounded-full flex items-center justify-center cursor-pointer font-bold transition-colors ${
                     isDark ? 'bg-white/5 text-gray-400 hover:text-white disabled:hover:text-gray-400' : 'bg-white text-slate-600 border border-slate-200 shadow-sm hover:bg-slate-50 disabled:hover:bg-white'
                   }`}
                 >
@@ -356,13 +379,13 @@ export default function ProductDetail({ theme = 'dark', product, onBack, onAddTo
 
               {/* Add To Cart Button-in-Button */}
               <GlassButton
-                disabled={!selectedVariant || available < 1 || quantity < 1 || available < quantity}
+                disabled={!selectedVariant || !available || quantity < 1 || quantity > 20}
                 onClick={handleAddToCart}
                 glassColor={isDark ? "rgb(186, 141, 61)" : "rgb(238, 210, 157)"}
                 className="flex-1 group relative flex items-center justify-center gap-4 px-8 py-4 rounded-full text-xs font-bold shadow-lg transition-all duration-300 transform active:scale-95 cursor-pointer text-[#0e0d0c] disabled:cursor-not-allowed disabled:opacity-50 disabled:active:scale-100"
               >
                 <ShoppingBag size={14} className="stroke-[2.5px]" />
-                <span>{available < 1 ? 'ناموجود' : 'افزودن به سبد خرید'}</span>
+                <span>{!available ? 'ناموجود' : 'افزودن به سبد خرید'}</span>
                 {addedMessage && (
                   <span className="absolute -top-12 left-1/2 transform -translate-x-1/2 bg-[#4AF626]/15 border border-[#4AF626]/20 text-[#2db312] dark:text-[#4AF626] font-bold text-[10px] px-3.5 py-1.5 rounded-full shadow-lg block animate-fade-in whitespace-nowrap">
                     ✓ با موفقیت به سبد خرید اضافه شد
@@ -378,7 +401,7 @@ export default function ProductDetail({ theme = 'dark', product, onBack, onAddTo
                   isDark ? 'text-[#eed29d] border border-white/5' : 'text-slate-800 border border-slate-200 shadow-sm'
                 }`}
               >
-                <Sparkles size={13} className={`transition-colors ${isDark ? 'text-[#eed29d] group-hover:rotate-12 duration-200' : 'text-[#ba8d3d] group-hover:rotate-12 duration-200'}`} />
+                <Sparkles size={13} className={`transition-colors ${isDark ? 'text-[#eed29d] group-hover:rotate-12 duration-200' : 'text-[var(--text-accent)] group-hover:rotate-12 duration-200'}`} />
                 <span>شخصی‌سازی مجدد طرح</span>
               </GlassButton>
             </motion.div>
@@ -391,12 +414,20 @@ export default function ProductDetail({ theme = 'dark', product, onBack, onAddTo
               }`}
             >
               {/* Tab Toggles */}
-              <div className="grid grid-cols-3 border-b border-slate-200/50 dark:border-white/[0.04] bg-neutral-500/[0.02]">
+              <div role="tablist" aria-label="اطلاعات محصول" className="grid grid-cols-3 border-b border-slate-200/50 dark:border-white/[0.04] bg-neutral-500/[0.02]">
                 <button
+                  ref={element => { detailTabRefs.current.story = element; }}
+                  id={`${detailTabsId}-story`}
+                  type="button"
+                  role="tab"
+                  aria-selected={activeTab === 'story'}
+                  aria-controls={`${detailTabsId}-panel`}
+                  tabIndex={activeTab === 'story' ? 0 : -1}
+                  onKeyDown={handleDetailTabKeyDown}
                   onClick={() => setActiveTab('story')}
                   className={`py-4 text-xs font-black transition-all tracking-tight cursor-pointer ${
                     activeTab === 'story'
-                      ? 'border-b-2 border-[#ba8d3d] text-[#ba8d3d] bg-neutral-500/[0.04]'
+                      ? 'border-b-2 border-[#ba8d3d] text-[var(--text-accent)] bg-neutral-500/[0.04]'
                       : `text-gray-400 dark:text-gray-500 hover:text-slate-800 dark:hover:text-white`
                   }`}
                 >
@@ -406,10 +437,18 @@ export default function ProductDetail({ theme = 'dark', product, onBack, onAddTo
                   </span>
                 </button>
                 <button
+                  ref={element => { detailTabRefs.current.size = element; }}
+                  id={`${detailTabsId}-size`}
+                  type="button"
+                  role="tab"
+                  aria-selected={activeTab === 'size'}
+                  aria-controls={`${detailTabsId}-panel`}
+                  tabIndex={activeTab === 'size' ? 0 : -1}
+                  onKeyDown={handleDetailTabKeyDown}
                   onClick={() => setActiveTab('size')}
                   className={`py-4 text-xs font-black transition-all tracking-tight cursor-pointer ${
                     activeTab === 'size'
-                      ? 'border-b-2 border-[#ba8d3d] text-[#ba8d3d] bg-neutral-500/[0.04]'
+                      ? 'border-b-2 border-[#ba8d3d] text-[var(--text-accent)] bg-neutral-500/[0.04]'
                       : `text-gray-400 dark:text-gray-500 hover:text-slate-800 dark:hover:text-white`
                   }`}
                 >
@@ -419,10 +458,18 @@ export default function ProductDetail({ theme = 'dark', product, onBack, onAddTo
                   </span>
                 </button>
                 <button
+                  ref={element => { detailTabRefs.current.workshop = element; }}
+                  id={`${detailTabsId}-workshop`}
+                  type="button"
+                  role="tab"
+                  aria-selected={activeTab === 'workshop'}
+                  aria-controls={`${detailTabsId}-panel`}
+                  tabIndex={activeTab === 'workshop' ? 0 : -1}
+                  onKeyDown={handleDetailTabKeyDown}
                   onClick={() => setActiveTab('workshop')}
                   className={`py-4 text-xs font-black transition-all tracking-tight cursor-pointer ${
                     activeTab === 'workshop'
-                      ? 'border-b-2 border-[#ba8d3d] text-[#ba8d3d] bg-neutral-500/[0.04]'
+                      ? 'border-b-2 border-[#ba8d3d] text-[var(--text-accent)] bg-neutral-500/[0.04]'
                       : `text-gray-400 dark:text-gray-500 hover:text-slate-800 dark:hover:text-white`
                   }`}
                 >
@@ -434,20 +481,20 @@ export default function ProductDetail({ theme = 'dark', product, onBack, onAddTo
               </div>
 
               {/* Tab Contents with animations */}
-              <div className="p-6 text-right">
+              <div id={`${detailTabsId}-panel`} role="tabpanel" aria-labelledby={`${detailTabsId}-${activeTab}`} tabIndex={0} style={{ outlineColor: 'var(--focus-ring)' }} className="p-6 text-right focus-visible:outline focus-visible:outline-2">
                 <AnimatePresence mode="wait">
                   {activeTab === 'story' && (
                     <motion.div
                       key="story"
-                      initial={{ opacity: 0, x: -10 }}
+                      initial={prefersReducedMotion ? false : { opacity: 0, x: -10 }}
                       animate={{ opacity: 1, x: 0 }}
-                      exit={{ opacity: 0, x: 10 }}
-                      transition={{ duration: 0.25 }}
+                      exit={prefersReducedMotion ? { opacity: 0 } : { opacity: 0, x: 10 }}
+                      transition={{ duration: prefersReducedMotion ? 0 : 0.2 }}
                       className="space-y-4"
                     >
-                      <h4 className={`text-xs font-black text-[#ba8d3d]`}>تأملی در اندیشه طرح:</h4>
+                      <h4 className="text-xs font-black text-[var(--text-accent)]">تأملی در اندیشه طرح:</h4>
                       <p className={`text-xs leading-relaxed ${isDark ? 'text-gray-300' : 'text-slate-700'}`}>
-                        {product.description}
+                        {product.description.trim() || 'توضیحات این محصول هنوز ثبت نشده است.'}
                       </p>
 
                     </motion.div>
@@ -456,21 +503,21 @@ export default function ProductDetail({ theme = 'dark', product, onBack, onAddTo
                   {activeTab === 'size' && (
                     <motion.div
                       key="size"
-                      initial={{ opacity: 0, x: -10 }}
+                      initial={prefersReducedMotion ? false : { opacity: 0, x: -10 }}
                       animate={{ opacity: 1, x: 0 }}
-                      exit={{ opacity: 0, x: 10 }}
-                      transition={{ duration: 0.25 }}
+                      exit={prefersReducedMotion ? { opacity: 0 } : { opacity: 0, x: 10 }}
+                      transition={{ duration: prefersReducedMotion ? 0 : 0.2 }}
                       className="space-y-4"
                     >
                       <div className="flex items-center gap-2 mb-3">
                         <span className="w-1.5 h-1.5 rounded-full bg-[#ba8d3d]"></span>
-                        <h4 className="text-xs font-black text-[#ba8d3d]">اندازه‌های کلاسیک تیشرت عریض (بر حسب سانتی‌متر):</h4>
+                        <h4 className="text-xs font-black text-[var(--text-accent)]">اندازه‌های کلاسیک تیشرت عریض (بر حسب سانتی‌متر):</h4>
                       </div>
                       
                       <div className="rounded-2xl border border-white/10 bg-white/[0.02] p-5">
                         <p className="text-xs font-bold text-stone-200">اندازه‌های فعال این محصول</p>
                         <div className="mt-3 flex flex-wrap gap-2">
-                          {product.sizes.map(size => <span key={size} className="rounded-lg border border-[#ba8d3d]/20 bg-[#ba8d3d]/5 px-3 py-1.5 text-xs text-[#eed29d]">{persianSize(size)}</span>)}
+                          {product.sizes.map(size => <span key={size} className="rounded-lg border border-[#ba8d3d]/20 bg-[#ba8d3d]/5 px-3 py-1.5 text-xs text-[var(--text-accent)]">{persianSize(size)}</span>)}
                         </div>
                         <p className="mt-4 text-[11px] leading-6 text-stone-500">ابعاد عددی هر سایز هنوز برای این محصول ثبت نشده است.</p>
                       </div>
@@ -480,21 +527,21 @@ export default function ProductDetail({ theme = 'dark', product, onBack, onAddTo
                   {activeTab === 'workshop' && (
                     <motion.div
                       key="workshop"
-                      initial={{ opacity: 0, x: -10 }}
+                      initial={prefersReducedMotion ? false : { opacity: 0, x: -10 }}
                       animate={{ opacity: 1, x: 0 }}
-                      exit={{ opacity: 0, x: 10 }}
-                      transition={{ duration: 0.25 }}
+                      exit={prefersReducedMotion ? { opacity: 0 } : { opacity: 0, x: 10 }}
+                      transition={{ duration: prefersReducedMotion ? 0 : 0.2 }}
                       className="space-y-4.5"
                     >
-                      <h4 className="text-xs font-black text-[#ba8d3d]">استانداردهای مهندسی تولید شهپوش:</h4>
-                      <ul className="flex flex-col gap-3">
+                      <h4 className="text-xs font-black text-[var(--text-accent)]">مشخصات فنی محصول</h4>
+                      {product.details.length ? <ul className="flex flex-col gap-3">
                         {product.details.map((detail, idx) => (
                           <li key={idx} className="flex items-start gap-3 text-xs leading-relaxed">
-                            <CheckCircle2 size={13} className="text-[#eed29d] mt-1 shrink-0" />
+                            <CheckCircle2 size={13} className="text-[var(--text-accent)] mt-1 shrink-0" />
                             <span className={`${isDark ? 'text-gray-300' : 'text-slate-700'}`}>{detail}</span>
                           </li>
                         ))}
-                      </ul>
+                      </ul> : <p className={`text-xs leading-6 ${isDark ? 'text-stone-400' : 'text-slate-600'}`}>مشخصات فنی این محصول هنوز ثبت نشده است.</p>}
                     </motion.div>
                   )}
                 </AnimatePresence>

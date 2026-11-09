@@ -322,7 +322,7 @@ export default function Signup({ theme, onLogin, onClose, onNavigateToLogin }: S
           {/* Bottom license */}
           <div className="z-10 text-center mt-auto pt-6 border-t" style={{ borderColor: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.04)' }}>
             <p className="text-[9px] text-gray-500 leading-relaxed font-mono">
-              درگاه ورود حساب کاربری شاه‌پوش · کلیه حقوق محفوظ است.
+              درگاه ورود حساب کاربری شهپوش · کلیه حقوق محفوظ است.
             </p>
           </div>
         </div>

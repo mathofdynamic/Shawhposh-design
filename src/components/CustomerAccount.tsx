@@ -114,7 +114,7 @@ export default function CustomerAccount({ theme, user, onBack, onUserUpdated }: 
           <ArrowRight size={14} /> بازگشت به فروشگاه
         </button>
         <header className="mb-8 text-right">
-          <span className="font-mono text-[10px] tracking-wide text-[#ba8d3d]">حساب کاربری شاه‌پوش</span>
+          <span className="font-mono text-[10px] tracking-wide text-[#ba8d3d]">حساب کاربری شهپوش</span>
           <h1 className={`mt-1 text-2xl font-bold md:text-3xl ${isDark ? 'text-white' : 'text-slate-900'}`}>حساب کاربری</h1>
           <p className={`mt-2 text-sm ${isDark ? 'text-stone-400' : 'text-slate-600'}`}>{profile?.email || user.email || profile?.phone || user.phone}</p>
         </header>

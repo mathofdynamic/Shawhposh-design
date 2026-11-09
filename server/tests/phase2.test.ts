@@ -68,6 +68,10 @@ await registerCustomer(customerTwo, 'two').expect(201);
 
 async function createExpectedQuote(agent: ReturnType<typeof request.agent>, address: { addressId?: string; shippingAddress?: Record<string, string> }) {
   const quote = await agent.post('/api/v1/checkout/quote').set('Origin', origin).send(address).expect(200);
+  for (const item of quote.body.items as Array<Record<string, unknown>>) {
+    assert.equal(Object.hasOwn(item, 'availableQuantity'), false);
+    assert.equal(Object.hasOwn(item, 'sku'), false);
+  }
   const shippingMethod = quote.body.shippingMethods.find((method: { id: string }) => method.id === shippingMethodId);
   assert.ok(shippingMethod);
   return {
@@ -118,10 +122,10 @@ test('cart stores variant IDs, recalculates price and availability, and enforces
   const variant = catalogSnapshot().variants.find(item => item.sku === 'P2-TEST-M-BLK')!;
   await ownerAgent.post('/api/v1/admin/inventory/P2-TEST-M-BLK/adjustments').set('Origin', origin).send({ newQuantity: 3, reason: 'Phase 2 automated test setup' }).expect(200);
   const added = await customerOne.post('/api/v1/cart/items').set('Origin', origin).send({ variantId: variant.id, quantity: 1, priceTomans: 1 }).expect(200);
-  assert.equal(added.body.cart.items[0].sku, 'P2-TEST-M-BLK');
+  assert.equal(Object.hasOwn(added.body.cart.items[0], 'sku'), false);
   assert.equal(added.body.cart.items[0].unitPriceTomans, 245000);
   assert.equal(added.body.cart.items[0].lineTotalTomans, 245000);
-  assert.equal(added.body.cart.items[0].availableQuantity, 3);
+  assert.equal(Object.hasOwn(added.body.cart.items[0], 'availableQuantity'), false);
   const itemId = added.body.cart.items[0].id as string;
   const updated = await customerOne.patch(`/api/v1/cart/items/${itemId}`).set('Origin', origin).send({ quantity: 2 }).expect(200);
   assert.equal(updated.body.cart.items[0].quantity, 2);
@@ -130,7 +134,7 @@ test('cart stores variant IDs, recalculates price and availability, and enforces
   await ownerAgent.post('/api/v1/admin/inventory/P2-TEST-M-BLK/adjustments').set('Origin', origin).send({ newQuantity: 1, reason: 'Phase 2 availability test' }).expect(200);
   const stale = await customerOne.get('/api/v1/cart').expect(200);
   assert.equal(stale.body.cart.items[0].isAvailable, false);
-  assert.equal(stale.body.cart.items[0].availableQuantity, 1);
+  assert.equal(Object.hasOwn(stale.body.cart.items[0], 'availableQuantity'), false);
   const otherCart = await customerTwo.get('/api/v1/cart').expect(200);
   assert.equal(otherCart.body.cart.items.length, 0);
   assert.equal((await customerTwo.patch(`/api/v1/cart/items/${itemId}`).set('Origin', origin).send({ quantity: 1 })).status, 404);
@@ -295,7 +299,7 @@ test('simultaneous checkout cannot sell the last unit twice; support is read-onl
     (select count(distinct user_id) from orders) as customersWithOrdersCount,
     (select coalesce(sum(case when payment_status = 'paid' then total_tomans else 0 end), 0) from orders) as paidSpendTomans
   `).get();
-  assert.deepEqual(customers.body.summary, expectedSummary);
+  assert.deepEqual(customers.body.summary, { ...expectedSummary as object, offlineCount: 0 });
   assert.ok(customers.body.customers[0].orderCount >= 1, JSON.stringify(customers.body.customers[0]));
   assert.equal(customers.body.customers[0].lifetimeSpendTomans, 0);
   assert.equal((await supportAgent.post(`/api/v1/admin/orders/${winner.body.order.id}/cancel`).set('Origin', origin).send({ reason: 'Must be denied' })).status, 403);

@@ -5,12 +5,17 @@ export class ApiError extends Error {
   constructor(public status: number, public code: string, message: string, public fields?: Record<string, unknown>) { super(message); }
 }
 export const asyncRoute = (handler: RequestHandler): RequestHandler => (req, res, next) => { Promise.resolve(handler(req, res, next)).catch(next); };
-export const errorHandler: ErrorRequestHandler = (err, _req, res, _next) => {
-  if (err instanceof z.ZodError) { res.status(422).json({ error: { code: 'VALIDATION_ERROR', message: 'اطلاعات واردشده معتبر نیست.', fields: err.flatten().fieldErrors } }); return; }
+export const errorHandler: ErrorRequestHandler = (err, req, res, _next) => {
+  if (err instanceof z.ZodError) {
+    const fields = err.flatten().fieldErrors;
+    const message = Object.values(fields).flat().find((value): value is string => typeof value === 'string') || 'اطلاعات واردشده را بررسی کنید.';
+    res.status(422).json({ error: { code: 'VALIDATION_ERROR', message, fields } }); return;
+  }
   if (err instanceof ApiError) { res.status(err.status).json({ error: { code: err.code, message: err.message, ...(err.fields ? { fields: err.fields } : {}) } }); return; }
   if (err instanceof multer.MulterError) {
     const tooLarge = err.code === 'LIMIT_FILE_SIZE';
-    res.status(tooLarge ? 413 : 422).json({ error: { code: tooLarge ? 'RECEIPT_SIZE_INVALID' : 'RECEIPT_UPLOAD_INVALID', message: tooLarge ? 'حجم تصویر رسید باید حداکثر ۵ مگابایت باشد.' : 'فایل رسید معتبر نیست.' } });
+    const isProductImage = req.path.startsWith('/api/v1/admin/products/');
+    res.status(tooLarge ? 413 : 422).json({ error: { code: tooLarge ? (isProductImage ? 'PRODUCT_IMAGE_SIZE_INVALID' : 'RECEIPT_SIZE_INVALID') : 'UPLOAD_INVALID', message: tooLarge ? (isProductImage ? 'حجم هر تصویر باید حداکثر ۵ مگابایت باشد.' : 'حجم تصویر رسید باید حداکثر ۵ مگابایت باشد.') : (isProductImage ? 'فایل تصویر محصول معتبر نیست.' : 'فایل رسید معتبر نیست.') } });
     return;
   }
   if (String(err?.code).startsWith('SQLITE_CONSTRAINT_UNIQUE')) { res.status(409).json({ error: { code: 'CONFLICT', message: 'این شناسه قبلاً ثبت شده است.' } }); return; }

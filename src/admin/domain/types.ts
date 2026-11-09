@@ -1,8 +1,10 @@
 export type { StaffRole } from '../router/types';
+import type { GarmentType } from '../../types';
+export type { GarmentType } from '../../types';
 
 export type ProductStatus = 'active' | 'draft' | 'archived';
 export type ProductType = 'finished' | 'customizable_blank';
-export type GarmentFit = 'oversize' | 'classic' | 'slim' | 'oversized' | 'regular' | 'crop';
+export type GarmentFit = 'oversize' | 'classic' | 'slim' | 'oversized' | 'regular' | 'crop' | 'boxy';
 
 export interface ProductVariant {
   id: string;
@@ -56,6 +58,8 @@ export interface AdminProduct {
   tags: string[];
   details?: string[];
   featured: boolean;
+  garmentType?: GarmentType;
+  discountPercent?: number | null;
 }
 
 export interface AdminCategory {

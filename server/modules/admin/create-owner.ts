@@ -14,7 +14,7 @@ const passwordHash=await hashPassword(password);
 let credentialCreated=false;
 try {
   if(output){writeFileSync(output,JSON.stringify({email,password},null,2),{mode:0o600,flag:'wx'});chmodSync(output,0o600);credentialCreated=true;}
-  db.insert(staffUsers).values({email,fullName:process.env.OWNER_NAME||'مدیر شاه‌پوش',passwordHash,role:'owner'}).run();
+  db.insert(staffUsers).values({email,fullName:process.env.OWNER_NAME||'مدیر شهپوش',passwordHash,role:'owner'}).run();
 } catch(error) {
   if(credentialCreated && output) unlinkSync(output);
   throw error;

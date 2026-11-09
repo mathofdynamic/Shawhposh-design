@@ -8,7 +8,7 @@ import { checkoutAvailability } from '../shipping/service';
 import { config } from '../../config';
 import {
   addOrderNote, adminOrderList, cancelUnpaidOrder, createCheckoutOrder,
-  getAdminCustomer, getAdminOrder, listAdminCustomers, orderIdSchema, updateOrderShippingAddress,
+  createManualCustomer, getAdminCustomer, getAdminOrder, listAdminCustomers, orderIdSchema, updateOrderShippingAddress,
 } from './service';
 
 const idempotencySchema = z.string().min(8).max(128);
@@ -38,4 +38,5 @@ adminOrderRoutes.post('/orders/:id/cancel', manageOrders, asyncRoute((req, res) 
 adminOrderRoutes.post('/orders/:id/notes', addNotes, asyncRoute((req, res) => res.json(addOrderNote(orderIdSchema.parse(req.params.id), req.principal!.id, req.body))));
 adminOrderRoutes.patch('/orders/:id/shipping-address', manageOrders, asyncRoute((req, res) => res.json(updateOrderShippingAddress(orderIdSchema.parse(req.params.id), req.principal!.id, req.body))));
 adminOrderRoutes.get('/customers', manageCustomers, asyncRoute((req, res) => res.json(listAdminCustomers(req.query))));
+adminOrderRoutes.post('/customers', manageCustomers, asyncRoute((req, res) => res.status(201).json(createManualCustomer(req.body))));
 adminOrderRoutes.get('/customers/:id', manageCustomers, asyncRoute((req, res) => res.json(getAdminCustomer(orderIdSchema.parse(req.params.id)))));

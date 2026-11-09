@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { db } from '../../db/connection';
 import { carts, cartItems, customerAddresses, inventory, productVariants, products, shippingMethods } from '../../db/schema';
 import { ApiError } from '../../lib/errors';
+import { applyProductDiscount } from '../catalog/pricing';
 import { createAddressSchema } from '../account/service';
 
 const money = z.number().int().min(0).max(1_000_000_000);
@@ -163,16 +164,16 @@ export function quoteCheckout(userId: string, input: unknown) {
     if (product.status !== 'active' || variant.status !== 'active') throw new ApiError(409, 'ITEM_UNAVAILABLE', 'یکی از کالاهای سبد دیگر فعال نیست.');
     const available = (stock?.onHand ?? 0) - (stock?.reserved ?? 0);
     if (available < item.quantity) {
-      throw new ApiError(409, 'OUT_OF_STOCK', available <= 0 ? 'یکی از کالاهای سبد دیگر موجود نیست.' : `فقط ${available} عدد از یکی از کالاها موجود است.`, { sku: variant.sku, availableQuantity: Math.max(0, available) });
+      throw new ApiError(409, 'OUT_OF_STOCK', available <= 0 ? 'یکی از کالاهای سبد دیگر موجود نیست.' : 'تعداد انتخاب‌شده برای یکی از کالاها از موجودی قابل فروش بیشتر است.');
     }
-    const unitPriceTomans = variant.priceTomans ?? product.basePriceTomans;
+    const unitPriceTomans = applyProductDiscount(variant.priceTomans ?? product.basePriceTomans,
+      typeof product.presentation.discountPercent === 'number' ? product.presentation.discountPercent : 0);
     const lineTotalTomans = unitPriceTomans * item.quantity;
     if (!Number.isSafeInteger(lineTotalTomans) || unitPriceTomans < 0) throw new ApiError(409, 'PRICE_INVALID', 'قیمت یکی از کالاها قابل محاسبه نیست.');
     return {
       cartItemId: item.id,
       productId: product.id,
       variantId: variant.id,
-      sku: variant.sku,
       productName: product.name,
       colorName: variant.colorName,
       colorHex: variant.colorHex,
@@ -180,7 +181,6 @@ export function quoteCheckout(userId: string, input: unknown) {
       quantity: item.quantity,
       unitPriceTomans,
       lineTotalTomans,
-      availableQuantity: Math.max(0, available),
     };
   });
   const subtotalTomans = items.reduce((subtotal, item) => subtotal + item.lineTotalTomans, 0);

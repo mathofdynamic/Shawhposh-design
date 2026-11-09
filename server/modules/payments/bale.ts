@@ -151,7 +151,7 @@ async function handleStartMessage(updateId: string, message: NonNullable<z.infer
   try {
     const sent = await client.sendInvoice({
       chatId: String(message.chat.id),
-      title: 'سفارش شاه‌پوش',
+      title: 'سفارش شهپوش',
       description: `پرداخت سفارش ${claimed.order.orderNumber}`.slice(0, 255),
       payload: claimed.invoicePayload,
       providerToken: config.BALE_PAYMENT_PROVIDER_TOKEN,

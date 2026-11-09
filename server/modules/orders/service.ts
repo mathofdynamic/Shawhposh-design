@@ -2,15 +2,17 @@ import { createHash } from 'node:crypto';
 import { and, asc, desc, eq, gte, inArray, lt, lte, or, sql, type SQL, type SQLWrapper } from 'drizzle-orm';
 import { z } from 'zod';
 import { config } from '../../config';
-import { db } from '../../db/connection';
+import { db, sqlite } from '../../db/connection';
 import {
   balePaymentSessions, carts, cartItems, checkoutIdempotency, customerAddresses, inventory, inventoryReservations,
-  manualPaymentReceipts, orderEvents, orderItems, orderSequences, orders, paymentAttempts, paymentEvents, productMedia, productVariants, products, shippingMethods,
+  manualCustomers, manualPaymentReceipts, orderEvents, orderItems, orderSequences, orders, paymentAttempts, paymentEvents, productMedia, productVariants, products, shippingMethods,
   stockMovements, users,
 } from '../../db/schema';
 import { ApiError } from '../../lib/errors';
+import { normalizeEmail, normalizePhone } from '../auth/service';
 import { createAddressSchema, orderDto } from '../account/service';
 import { calculateShippingTomans } from '../shipping/service';
+import { applyProductDiscount } from '../catalog/pricing';
 
 const checkoutQuoteSchema = z.object({
   subtotalTomans: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER),
@@ -29,7 +31,6 @@ const checkoutQuoteSchema = z.object({
     cartItemId: z.string().uuid(),
     productId: z.string().uuid(),
     variantId: z.string().uuid(),
-    sku: z.string().max(80),
     productName: z.string().max(200),
     colorName: z.string().max(100),
     colorHex: z.string().max(32),
@@ -109,8 +110,9 @@ export function createCheckoutOrder(userId: string, idempotencyKeyInput: unknown
     const priced = lines.map(({ item, variant, product, stock }) => {
       if (product.status !== 'active' || variant.status !== 'active') throw new ApiError(409, 'ITEM_UNAVAILABLE', 'یکی از کالاهای سبد دیگر فعال نیست.');
       const available = (stock?.onHand ?? 0) - (stock?.reserved ?? 0);
-      if (available < item.quantity) throw new ApiError(409, 'OUT_OF_STOCK', available <= 0 ? 'یکی از اندازه‌های سبد دیگر موجود نیست.' : `فقط ${available} عدد از یکی از اندازه‌ها موجود است.`, { sku: variant.sku, availableQuantity: Math.max(0, available) });
-      const unitPriceTomans = variant.priceTomans ?? product.basePriceTomans;
+      if (available < item.quantity) throw new ApiError(409, 'OUT_OF_STOCK', available <= 0 ? 'یکی از اندازه‌های سبد دیگر موجود نیست.' : 'تعداد انتخاب‌شده برای یکی از اندازه‌ها از موجودی قابل فروش بیشتر است.');
+      const unitPriceTomans = applyProductDiscount(variant.priceTomans ?? product.basePriceTomans,
+        typeof product.presentation.discountPercent === 'number' ? product.presentation.discountPercent : 0);
       const lineTotalTomans = unitPriceTomans * item.quantity;
       if (!Number.isSafeInteger(lineTotalTomans) || unitPriceTomans < 0) throw new ApiError(409, 'PRICE_INVALID', 'قیمت یکی از کالاها قابل محاسبه نیست.');
       const image = tx.select({ url: productMedia.url }).from(productMedia).where(eq(productMedia.productId, product.id)).orderBy(asc(productMedia.displayOrder)).get()?.url ?? '';
@@ -138,7 +140,6 @@ export function createCheckoutOrder(userId: string, idempotencyKeyInput: unknown
         cartItemId: item.id,
         productId: product.id,
         variantId: variant.id,
-        sku: variant.sku,
         productName: product.name,
         colorName: variant.colorName,
         colorHex: variant.colorHex,
@@ -172,7 +173,7 @@ export function createCheckoutOrder(userId: string, idempotencyKeyInput: unknown
       }).run();
       const reserved = tx.update(inventory).set({ reserved: sql`${inventory.reserved} + ${line.item.quantity}`, updatedAt: now })
         .where(and(eq(inventory.variantId, line.variant.id), sql`${inventory.onHand} - ${inventory.reserved} >= ${line.item.quantity}`)).run();
-      if (!reserved.changes) throw new ApiError(409, 'OUT_OF_STOCK', 'موجودی هنگام ثبت سفارش تغییر کرد. سبد خرید را دوباره بررسی کنید.', { sku: line.variant.sku });
+      if (!reserved.changes) throw new ApiError(409, 'OUT_OF_STOCK', 'موجودی هنگام ثبت سفارش تغییر کرد. سبد خرید را دوباره بررسی کنید.');
       tx.insert(inventoryReservations).values({ orderId: order.id, variantId: line.variant.id, quantity: line.item.quantity, status: 'active', expiresAt }).run();
       tx.insert(stockMovements).values({ variantId: line.variant.id, movementType: 'reservation', quantityDelta: 0,
         onHandBefore: line.stock?.onHand ?? 0, onHandAfter: line.stock?.onHand ?? 0,
@@ -380,41 +381,94 @@ export function expireReservations(now = new Date()) {
 export function listAdminCustomers(query: unknown) {
   const filters = z.object({ search: z.string().trim().max(200).optional(), status: z.enum(['active','inactive','all']).default('all'),
     page: z.coerce.number().int().min(1).max(100000).default(1), pageSize: z.coerce.number().int().min(1).max(100).default(20) }).parse(query);
-  const conditions: SQL[] = [];
-  if (filters.status !== 'all') conditions.push(eq(users.status, filters.status));
-  if (filters.search) {
-    conditions.push(or(containsLiteral(users.fullName, filters.search), containsLiteral(users.email, filters.search), containsLiteral(users.phone, filters.search))!);
-  }
-  const where = conditions.length ? and(...conditions) : undefined;
-  const total = db.select({ total: sql<number>`count(*)` }).from(users).where(where).get()!.total;
+  const search = filters.search?.replace(/[\\%_]/g, value => `\\${value}`);
+  const statusSql = filters.status === 'all' ? '' : ' AND status = ?';
+  const userSearchSql = search ? " AND (full_name LIKE ? ESCAPE '\\' OR coalesce(email,'') LIKE ? ESCAPE '\\' OR coalesce(phone,'') LIKE ? ESCAPE '\\')" : '';
+  const manualSearchSql = search ? " AND (name LIKE ? ESCAPE '\\' OR coalesce(email,'') LIKE ? ESCAPE '\\' OR coalesce(phone,'') LIKE ? ESCAPE '\\')" : '';
+  const filterParams: Array<string> = [];
+  if (filters.status !== 'all') filterParams.push(filters.status);
+  if (search) filterParams.push(`%${search}%`, `%${search}%`, `%${search}%`);
+  const userWhere = `WHERE 1=1${statusSql}${userSearchSql}`;
+  const manualWhere = `WHERE 1=1${statusSql}${manualSearchSql}`;
+  const totalRow = sqlite.prepare(`SELECT count(*) AS total FROM (
+    SELECT id FROM users ${userWhere}
+    UNION ALL
+    SELECT id FROM manual_customers ${manualWhere}
+  )`).get(...filterParams, ...filterParams) as { total: number };
+  const total = totalRow.total;
   const customerSummary = db.select({
     registeredCount: sql<number>`count(*)`,
     activeCount: sql<number>`coalesce(sum(case when ${users.status} = 'active' then 1 else 0 end), 0)`,
   }).from(users).get()!;
+  const manualSummary = db.select({
+    total: sql<number>`count(*)`,
+    active: sql<number>`coalesce(sum(case when ${manualCustomers.status} = 'active' then 1 else 0 end), 0)`,
+  }).from(manualCustomers).get()!;
   const orderSummary = db.select({
     customersWithOrdersCount: sql<number>`count(distinct ${orders.userId})`,
     paidSpendTomans: sql<number>`coalesce(sum(case when ${orders.paymentStatus} = 'paid' then ${orders.totalTomans} else 0 end), 0)`,
   }).from(orders).get()!;
-  const rows = db.select({ id: users.id, name: users.fullName, email: users.email, phone: users.phone, status: users.status,
-    createdAt: users.createdAt }).from(users).where(where).orderBy(desc(users.createdAt)).limit(filters.pageSize).offset((filters.page - 1) * filters.pageSize).all();
-  const aggregates = rows.length ? db.select({ userId: orders.userId, orderCount: sql<number>`count(*)`,
+  const rows = sqlite.prepare(`
+    SELECT id, full_name AS name, email, phone, status, created_at AS createdAt, 'registered' AS source FROM users ${userWhere}
+    UNION ALL
+    SELECT id, name, email, phone, status, created_at AS createdAt, 'offline' AS source FROM manual_customers ${manualWhere}
+    ORDER BY createdAt DESC LIMIT ? OFFSET ?
+  `).all(...filterParams, ...filterParams, filters.pageSize, (filters.page - 1) * filters.pageSize) as Array<{
+    id: string; name: string; email: string | null; phone: string | null; status: string; createdAt: number; source: 'registered' | 'offline';
+  }>;
+  const userIds = rows.filter(row => row.source === 'registered').map(row => row.id);
+  const aggregates = userIds.length ? db.select({ userId: orders.userId, orderCount: sql<number>`count(*)`,
     lifetimeSpendTomans: sql<number>`coalesce(sum(case when ${orders.paymentStatus} = 'paid' then ${orders.totalTomans} else 0 end),0)`,
-  }).from(orders).where(inArray(orders.userId, rows.map(row => row.id))).groupBy(orders.userId).all() : [];
+  }).from(orders).where(inArray(orders.userId, userIds)).groupBy(orders.userId).all() : [];
   const metrics = new Map(aggregates.map(row => [row.userId, row]));
-  return { customers: rows.map(row => ({ ...row, orderCount: metrics.get(row.id)?.orderCount ?? 0,
-    lifetimeSpendTomans: metrics.get(row.id)?.lifetimeSpendTomans ?? 0 })),
-    summary: { ...customerSummary, ...orderSummary },
+  return { customers: rows.map(row => ({ ...row, createdAt: new Date(row.createdAt).toISOString(),
+    orderCount: row.source === 'registered' ? metrics.get(row.id)?.orderCount ?? 0 : 0,
+    lifetimeSpendTomans: row.source === 'registered' ? metrics.get(row.id)?.lifetimeSpendTomans ?? 0 : 0 })),
+    summary: { registeredCount: customerSummary.registeredCount, activeCount: customerSummary.activeCount + manualSummary.active,
+      offlineCount: manualSummary.total, ...orderSummary },
     pagination: { page: filters.page, pageSize: filters.pageSize, total, totalPages: Math.ceil(total / filters.pageSize) } };
+}
+
+const manualCustomerSchema = z.object({
+  name: z.string().trim().min(2, 'نام مشتری باید دست‌کم دو نویسه باشد.').max(120, 'نام مشتری نباید بیشتر از ۱۲۰ نویسه باشد.'),
+  phone: z.string().trim().min(1, 'شماره تماس را وارد کنید.').transform(normalizePhone),
+  email: z.union([z.string().trim().email('نشانی ایمیل معتبر نیست.').max(254), z.literal('')]).optional().transform(value => value ? normalizeEmail(value) : undefined),
+  notes: z.string().trim().max(2000, 'یادداشت نباید بیشتر از ۲۰۰۰ نویسه باشد.').default(''),
+});
+
+export function createManualCustomer(input: unknown) {
+  const data = manualCustomerSchema.parse(input);
+  if (db.select({ id: users.id }).from(users).where(eq(users.phone, data.phone)).get()) {
+    throw new ApiError(409, 'CUSTOMER_ALREADY_REGISTERED', 'برای این شماره، حساب کاربری سایت از قبل ثبت شده است.');
+  }
+  if (db.select({ id: manualCustomers.id }).from(manualCustomers).where(eq(manualCustomers.phone, data.phone)).get()) {
+    throw new ApiError(409, 'CUSTOMER_PHONE_EXISTS', 'این شماره تماس قبلاً برای مشتری دیگری ثبت شده است.');
+  }
+  if (data.email && db.select({ id: users.id }).from(users).where(eq(users.email, data.email)).get()) {
+    throw new ApiError(409, 'CUSTOMER_ALREADY_REGISTERED', 'برای این نشانی ایمیل، حساب کاربری سایت از قبل ثبت شده است.');
+  }
+  if (data.email && db.select({ id: manualCustomers.id }).from(manualCustomers).where(eq(manualCustomers.email, data.email)).get()) {
+    throw new ApiError(409, 'CUSTOMER_EMAIL_EXISTS', 'این نشانی ایمیل قبلاً برای مشتری دیگری ثبت شده است.');
+  }
+  const row = db.insert(manualCustomers).values({ name: data.name, phone: data.phone, email: data.email ?? null, notes: data.notes }).returning().get();
+  return { customer: { id: row.id, name: row.name, email: row.email, phone: row.phone, status: row.status,
+    source: 'offline' as const, createdAt: row.createdAt.toISOString(), updatedAt: row.updatedAt.toISOString(), orderCount: 0, lifetimeSpendTomans: 0 } };
 }
 
 export function getAdminCustomer(customerId: string) {
   const user = db.select({ id: users.id, name: users.fullName, email: users.email, phone: users.phone, status: users.status,
     createdAt: users.createdAt, updatedAt: users.updatedAt }).from(users).where(eq(users.id, customerId)).get();
-  if (!user) throw new ApiError(404, 'NOT_FOUND', 'مشتری پیدا نشد.');
+  if (!user) {
+    const manual = db.select().from(manualCustomers).where(eq(manualCustomers.id, customerId)).get();
+    if (!manual) throw new ApiError(404, 'NOT_FOUND', 'مشتری پیدا نشد.');
+    return { customer: { id: manual.id, name: manual.name, email: manual.email, phone: manual.phone, status: manual.status,
+      source: 'offline' as const, createdAt: manual.createdAt.toISOString(), updatedAt: manual.updatedAt.toISOString(),
+      orderCount: 0, lifetimeSpendTomans: 0, notes: manual.notes }, addresses: [], orders: [], supportHistoryAvailable: false };
+  }
   const addresses = db.select().from(customerAddresses).where(eq(customerAddresses.userId, customerId)).orderBy(desc(customerAddresses.isDefault), asc(customerAddresses.createdAt)).all();
   const orderRows = db.select().from(orders).where(eq(orders.userId, customerId)).orderBy(desc(orders.createdAt)).limit(50).all();
   const totals = db.select({ orderCount: sql<number>`count(*)`, lifetimeSpendTomans: sql<number>`coalesce(sum(case when ${orders.paymentStatus} = 'paid' then ${orders.totalTomans} else 0 end),0)` }).from(orders).where(eq(orders.userId, customerId)).get()!;
-  return { customer: { ...user, orderCount: totals.orderCount, lifetimeSpendTomans: totals.lifetimeSpendTomans }, addresses,
+  return { customer: { ...user, source: 'registered' as const, orderCount: totals.orderCount, lifetimeSpendTomans: totals.lifetimeSpendTomans }, addresses,
     orders: orderRows.map(row => orderDto(row, true)), supportHistoryAvailable: false };
 }
 

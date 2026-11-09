@@ -57,7 +57,7 @@ export const Input = React.forwardRef<HTMLInputElement, InputProps>(
           className={`w-full min-h-[42px] bg-[#181716] border rounded-xl py-2 text-[13px] sm:text-sm text-white placeholder:text-stone-500 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#ba8d3d]/50 ${
             error
               ? 'border-rose-500/50 focus-visible:ring-rose-500'
-              : 'border-white/10 hover:border-white/20 focus-visible:border-[#ba8d3d]'
+              : 'border-white/35 hover:border-white/40 focus-visible:border-[#ba8d3d]'
           } ${rightAddon ? 'pr-10' : 'px-3.5'} ${leftAddon ? 'pl-10' : 'px-3.5'} ${className}`}
           {...props}
         />
@@ -84,7 +84,7 @@ export const Textarea = React.forwardRef<HTMLTextAreaElement, TextareaProps>(
         className={`w-full min-h-[96px] bg-[#181716] border rounded-xl p-3 text-[13px] sm:text-sm text-white placeholder:text-stone-500 transition-colors resize-none leading-relaxed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#ba8d3d]/50 ${
           error
             ? 'border-rose-500/50 focus-visible:ring-rose-500'
-            : 'border-white/10 hover:border-white/20 focus-visible:border-[#ba8d3d]'
+            : 'border-white/35 hover:border-white/40 focus-visible:border-[#ba8d3d]'
         } ${className}`}
         {...props}
       />
@@ -106,7 +106,7 @@ export const Select = React.forwardRef<HTMLSelectElement, SelectProps>(
           className={`w-full min-h-[42px] bg-[#181716] border rounded-xl py-2 px-3.5 pl-8 text-[13px] sm:text-sm text-white transition-colors appearance-none cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#ba8d3d]/50 ${
             error
               ? 'border-rose-500/50 focus-visible:ring-rose-500'
-              : 'border-white/10 hover:border-white/20 focus-visible:border-[#ba8d3d]'
+              : 'border-white/35 hover:border-white/40 focus-visible:border-[#ba8d3d]'
           } ${className}`}
           {...props}
         >

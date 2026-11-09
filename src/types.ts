@@ -1,12 +1,17 @@
+export type GarmentType = 'hoodie' | 'dors' | 'tshirt' | 'sweatshirt' | 'halfzip' | 'pants';
+
 export interface Product {
   id: string;
   slug?: string;
-  variants?: {id:string;sku:string;colorHex:string;size:string;priceTomans:number|null;available:number}[];
+  variants?: {id:string;colorHex:string;colorName:string;size:string;priceTomans:number|null;originalPriceTomans?:number;inStock:boolean}[];
   name: string;
   price: number;
+  originalPriceTomans?: number | null;
+  discountPercent?: number;
+  garmentType?: GarmentType | null;
   description: string;
   details: string[];
-  category: 'minimalist' | 'calligraphy' | 'graphic';
+  category: string;
   images: string[];
   colors: { name: string; hex: string }[];
   sizes: string[];
@@ -23,7 +28,6 @@ export interface CartItem {
   color: { name: string; hex: string };
   size: string;
   image: string;
-  availableQuantity?: number;
   availabilityCode?: string | null;
   isCustom?: boolean; // Legacy marker used only to reject old local custom-design cart entries.
 }

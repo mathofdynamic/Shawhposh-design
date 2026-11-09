@@ -1,8 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { Shirt, ChevronLeft, ChevronRight } from 'lucide-react';
 import { Product } from '../types';
 import { persianSize } from '../lib/persian-labels';
-import { handleProductImageError } from '../lib/productImage';
+import { handleProductImageError, PRODUCT_IMAGE_FALLBACK } from '../lib/productImage';
 
 interface ProductCardProps {
   key?: string;
@@ -14,26 +14,9 @@ interface ProductCardProps {
 export default function ProductCard({ theme = 'dark', product, onSelect }: ProductCardProps) {
   const isDark = theme === 'dark';
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
-  const [isHovered, setIsHovered] = useState(false);
   
   // Format price in Toman with thousand separator
   const formattedPrice = product.price.toLocaleString('fa-IR');
-
-  // Automatic slideshow on hover
-  useEffect(() => {
-    if (!isHovered || product.images.length <= 1) {
-      if (!isHovered) {
-        setCurrentImageIndex(0);
-      }
-      return;
-    }
-
-    const interval = setInterval(() => {
-      setCurrentImageIndex((prev) => (prev === product.images.length - 1 ? 0 : prev + 1));
-    }, 1200);
-
-    return () => clearInterval(interval);
-  }, [isHovered, product.images.length]);
 
   const navigateImage = (direction: 'prev' | 'next', e: React.MouseEvent) => {
     e.stopPropagation();
@@ -49,9 +32,7 @@ export default function ProductCard({ theme = 'dark', product, onSelect }: Produ
   return (
     <div 
       onClick={() => onSelect(product)}
-      onMouseEnter={() => setIsHovered(true)}
-      onMouseLeave={() => setIsHovered(false)}
-      className={`relative cursor-pointer group rounded-[2.25rem] p-5 border backdrop-blur-xl transition-all duration-500 flex flex-col justify-between min-h-[460px] ${
+      className={`relative cursor-pointer group rounded-[2.25rem] p-5 border backdrop-blur-xl transition-[border-color,box-shadow] duration-200 flex flex-col justify-between min-h-[460px] ${
         isDark 
           ? 'bg-[#151312]/60 border-white/[0.08] hover:border-[#ba8d3d]/30 shadow-[0_25px_50px_-15px_rgba(0,0,0,0.35)]' 
           : 'bg-white/70 border-slate-200/50 shadow-[0_15px_30px_rgba(0,0,0,0.02)] hover:border-[#ba8d3d]/30 hover:shadow-[0_25px_45px_rgba(0,0,0,0.05)]'
@@ -65,7 +46,7 @@ export default function ProductCard({ theme = 'dark', product, onSelect }: Produ
         {/* Sizes Badge Indicators */}
         <div className="flex gap-1">
           {product.sizes.slice(0, 3).map((size) => (
-            <span key={size} aria-label={`اندازه ${persianSize(size)}`} className={`min-w-9 h-6 px-1 rounded border text-[8px] font-sans flex items-center justify-center transition-colors ${
+              <span key={size} className={`product-size-badge min-h-7 min-w-10 px-1 rounded border text-xs font-sans flex items-center justify-center transition-colors ${
               isDark 
                 ? 'bg-[#0e0d0c]/70 border-white/5 text-gray-400' 
                 : 'bg-[#fafafa]/80 border-slate-200/60 text-slate-500'
@@ -74,7 +55,7 @@ export default function ProductCard({ theme = 'dark', product, onSelect }: Produ
             </span>
           ))}
           {product.sizes.length > 3 && (
-            <span className={`w-5 h-5 rounded border text-[8px] font-mono flex items-center justify-center transition-colors ${
+            <span className={`min-h-7 min-w-7 rounded border text-xs font-mono flex items-center justify-center transition-colors ${
               isDark 
                 ? 'bg-[#0e0d0c]/70 border-white/5 text-gray-400' 
                 : 'bg-[#fafafa]/80 border-slate-200/60 text-slate-500'
@@ -88,23 +69,23 @@ export default function ProductCard({ theme = 'dark', product, onSelect }: Produ
       {/* 2. Image Area (Fully transparent background with ambient golden/yellow glow underlying it) */}
       <div className="relative w-full aspect-square flex items-center justify-center overflow-hidden mb-4">
         {/* Ambient background glow under model */}
-        <div className={`absolute w-36 h-36 rounded-full filter blur-3xl transition-all duration-500 ${
+        <div className={`absolute w-36 h-36 rounded-full filter blur-3xl transition-colors duration-150 motion-reduce:transition-none ${
           isDark ? 'bg-[#ba8d3d]/5 group-hover:bg-[#ba8d3d]/12' : 'bg-[#ba8d3d]/8 group-hover:bg-[#ba8d3d]/15'
         }`}></div>
 
-        {/* Carousel Prev/Next Buttons (only show when multiple images exist and hovered) */}
+        {/* Carousel controls stay available on touch and reveal on desktop hover or focus. */}
         {product.images.length > 1 && (
           <>
             <button 
               onClick={(e) => navigateImage('prev', e)}
-              className="absolute left-2 z-20 w-8 h-8 rounded-full flex items-center justify-center bg-black/45 hover:bg-[#ba8d3d] text-white hover:text-black backdrop-blur-md opacity-0 group-hover:opacity-100 transition-all duration-300 transform -translate-x-1 hover:translate-x-0"
+              className="absolute left-2 z-20 flex min-h-[44px] min-w-[44px] items-center justify-center rounded-full bg-black/65 text-white transition-[background-color,color,transform] duration-150 active:scale-95 motion-reduce:transition-none motion-reduce:active:scale-100 hover:bg-[#ba8d3d] hover:text-black focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--focus-ring)] opacity-100 md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100"
               aria-label="تصویر قبلی"
             >
               <ChevronLeft size={16} />
             </button>
             <button 
               onClick={(e) => navigateImage('next', e)}
-              className="absolute right-2 z-20 w-8 h-8 rounded-full flex items-center justify-center bg-black/45 hover:bg-[#ba8d3d] text-white hover:text-black backdrop-blur-md opacity-0 group-hover:opacity-100 transition-all duration-300 transform translate-x-1 hover:translate-x-0"
+              className="absolute right-2 z-20 flex min-h-[44px] min-w-[44px] items-center justify-center rounded-full bg-black/65 text-white transition-[background-color,color,transform] duration-150 active:scale-95 motion-reduce:transition-none motion-reduce:active:scale-100 hover:bg-[#ba8d3d] hover:text-black focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--focus-ring)] opacity-100 md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100"
               aria-label="تصویر بعدی"
             >
               <ChevronRight size={16} />
@@ -117,13 +98,14 @@ export default function ProductCard({ theme = 'dark', product, onSelect }: Produ
           <img 
             key={`${img}-${index}`}
             src={img} 
-            alt={`${product.name} - ${index + 1}`}
+            alt={img === PRODUCT_IMAGE_FALLBACK ? `تصویر واقعی ${product.name} ثبت نشده است` : `${product.name}، تصویر ${index + 1}`}
+            aria-hidden={index !== currentImageIndex}
             referrerPolicy="no-referrer"
             onError={handleProductImageError}
-            className={`product-media-source absolute w-44 h-44 object-contain drop-shadow-[0_12px_24px_rgba(0,0,0,0.18)] transition-all duration-500 ease-out transform ${
+            className={`product-media-source absolute w-44 h-44 object-contain drop-shadow-[0_12px_24px_rgba(0,0,0,0.18)] transition-opacity duration-150 ease-out motion-reduce:transition-none ${
               index === currentImageIndex 
-                ? 'opacity-100 scale-100 group-hover:scale-105' 
-                : 'opacity-0 scale-95 pointer-events-none'
+                ? 'opacity-100'
+                : 'opacity-0 pointer-events-none'
             }`}
           />
         ))}
@@ -135,21 +117,25 @@ export default function ProductCard({ theme = 'dark', product, onSelect }: Produ
 
         {/* Slideshow index dots (only relevant when multiple images exist) */}
         {product.images.length > 1 && (
-          <div className="absolute bottom-2 left-1/2 transform -translate-x-1/2 flex gap-1 z-20">
+          <div className="absolute bottom-0 left-1/2 z-20 flex -translate-x-1/2 gap-0.5">
             {product.images.map((_, index) => (
-              <button
+                <button
                 key={index}
                 onClick={(e) => {
                   e.stopPropagation();
                   setCurrentImageIndex(index);
                 }}
-                className={`w-1.5 h-1.5 rounded-full transition-all duration-350 ${
-                  index === currentImageIndex 
-                    ? 'bg-[#ba8d3d] w-3.5' 
-                    : isDark ? 'bg-white/20 hover:bg-white/50' : 'bg-black/15 hover:bg-black/45'
-                }`}
                 aria-label={`نمایش تصویر ${(index + 1).toLocaleString('fa-IR')}`}
-              />
+                aria-pressed={index === currentImageIndex}
+                className="flex h-11 w-11 items-center justify-center rounded-full transition-transform duration-150 active:scale-95 motion-reduce:transition-none motion-reduce:active:scale-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--focus-ring)]"
+                type="button"
+              >
+                <span aria-hidden="true" className={`block h-1.5 rounded-full transition-[width,background-color] duration-150 motion-reduce:transition-none ${
+                  index === currentImageIndex
+                    ? 'w-3.5 bg-[#ba8d3d]'
+                    : isDark ? 'w-1.5 bg-white/35 hover:bg-white/70' : 'w-1.5 bg-black/35 hover:bg-black/70'
+                }`} />
+              </button>
             ))}
           </div>
         )}
@@ -170,17 +156,17 @@ export default function ProductCard({ theme = 'dark', product, onSelect }: Produ
       {/* 4. Product Info & Deluxe Readable Price Aligned Nicely */}
       <div className="flex justify-between items-start gap-2 pt-2 border-t border-slate-100/10 dark:border-white/[0.04]">
         <div className="flex flex-col items-start text-right">
-          <h4 className={`text-sm font-bold tracking-tight transition-colors duration-300 ${
-            isDark ? 'text-white' : 'text-slate-900'
-          }`}>
-            {product.name}
-          </h4>
+          <h3 className="text-sm font-bold tracking-tight">
+            <button type="button" onClick={(event) => { event.stopPropagation(); onSelect(product); }} className={`rounded-sm text-right transition-colors duration-150 hover:text-[var(--text-accent)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[var(--focus-ring)] ${isDark ? 'text-white' : 'text-slate-900'}`}>
+              {product.name}
+            </button>
+          </h3>
         </div>
 
         {/* Fully Readable Prominent Price Aligned Left */}
         <div className="flex flex-col items-end min-w-[85px] shrink-0">
           <span className={`font-mono text-lg md:text-xl font-black tracking-tight leading-none ${
-            isDark ? 'text-[#eed29d]' : 'text-[#ba8d3d]'
+            isDark ? 'text-[#eed29d]' : 'text-[var(--text-accent)]'
           }`}>
             {formattedPrice}
           </span>

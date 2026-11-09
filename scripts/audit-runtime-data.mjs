@@ -8,10 +8,11 @@ const ignoredPathParts = new Set(['node_modules', 'tests', '__tests__', 'migrati
 const forbidden = [
   ['Admin fixture repository', /\b(?:useAdminRepository|AdminRepository|generateMockShippingLabel)\b/],
   ['demo clock or reset controls', /\b(?:demoClock|DEMO_CLOCK|Reset Demo Data|DemoModeNoticeBar|resetToFixtures|resetToDefaults)\b/i],
-  ['synthetic review or social-proof data', /\b(?:ReviewScrollTicker|InstagramFeed|reviewsCount|reviewCount|ratingScore|originalPriceTomans|discountPercent|isPopular)\b/],
+  ['synthetic review or social-proof data', /\b(?:ReviewScrollTicker|InstagramFeed|reviewsCount|reviewCount|ratingScore|isPopular)\b/],
   ['placeholder stock imagery', /https:\/\/(?:picsum\.photos|images\.unsplash\.com)/i],
 ];
 const businessStorageKey = /(?:cart|order|product|inventory|analytics|design|production|payment|support|shipping|review|staff|customer|admin_db|admin_repo)/i;
+const hardCodedDiscountFixture = /(?:^|[{,])\s*['"]?(?:originalPriceTomans|discountPercent)['"]?\s*:\s*(?:\d+(?:\.\d+)?|['"]\d+(?:\.\d+)?['"])\s*(?=[,}\]])/m;
 
 async function collect(directory) {
   const entries = await readdir(directory, { withFileTypes: true });
@@ -29,7 +30,9 @@ const findings = [];
 for (const scanRoot of scanRoots) {
   for (const absolute of await collect(path.join(root, scanRoot))) {
     const relative = path.relative(root, absolute).replaceAll(path.sep, '/');
-    const lines = (await readFile(absolute, 'utf8')).split(/\r?\n/);
+    const source = await readFile(absolute, 'utf8');
+    const lines = source.split(/\r?\n/);
+    if (hardCodedDiscountFixture.test(source)) findings.push(`${relative}: hard-coded synthetic discount data`);
     lines.forEach((line, index) => {
       for (const [label, pattern] of forbidden) {
         if (pattern.test(line)) findings.push(`${relative}:${index + 1}: ${label}`);
@@ -97,5 +100,5 @@ if (findings.length) {
   for (const finding of findings) console.error(`- ${finding}`);
   process.exitCode = 1;
 } else {
-  console.log('Runtime data audit passed: no admin fixtures, synthetic reviews/promotions, placeholder imagery URLs, business-data localStorage writes, or forbidden prototype modules in the production bundle.');
+  console.log('Runtime data audit passed: no admin fixtures, synthetic reviews/social proof, hard-coded discounts, placeholder imagery URLs, business-data localStorage writes, or forbidden prototype modules in the production bundle.');
 }

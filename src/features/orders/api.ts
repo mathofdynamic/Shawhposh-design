@@ -20,7 +20,6 @@ export interface CheckoutQuoteItem {
   cartItemId: string;
   productId: string;
   variantId: string;
-  sku: string;
   productName: string;
   colorName: string;
   colorHex: string;
@@ -28,10 +27,9 @@ export interface CheckoutQuoteItem {
   quantity: number;
   unitPriceTomans: number;
   lineTotalTomans: number;
-  availableQuantity: number;
 }
 
-export type CheckoutQuoteItemSnapshot = Omit<CheckoutQuoteItem, 'availableQuantity'>;
+export type CheckoutQuoteItemSnapshot = CheckoutQuoteItem;
 
 export interface CheckoutQuote {
   items: CheckoutQuoteItem[];

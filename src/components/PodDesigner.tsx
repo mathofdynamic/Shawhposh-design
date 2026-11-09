@@ -24,7 +24,7 @@ export default function PodDesigner({ theme = 'dark', products, initialProduct }
   const variant = useMemo(() => product?.variants?.find((item) =>
     item.colorHex === (activeColor?.hex ?? '') && item.size === activeSize
   ), [activeColor?.hex, activeSize, product?.variants]);
-  const available = variant?.available ?? 0;
+  const available = variant?.inStock ?? false;
 
   const panel = isDark ? 'border-white/10 bg-[#141312]' : 'border-slate-200 bg-white';
   const text = isDark ? 'text-stone-100' : 'text-slate-900';
@@ -66,7 +66,7 @@ export default function PodDesigner({ theme = 'dark', products, initialProduct }
             </label>
             {product && <>
               <div><p className={`mb-2 text-sm font-medium ${text}`}>رنگ‌های ثبت‌شده</p><div className="flex flex-wrap gap-2">{colors.map((color) => <button key={color.hex} type="button" onClick={() => setSelectedColor(color.hex)} aria-label={color.name} aria-pressed={(activeColor?.hex ?? '') === color.hex} title={color.name} className={`h-9 w-9 rounded-full border-2 ${activeColor?.hex === color.hex ? 'border-[#ba8d3d] ring-2 ring-[#ba8d3d]/30' : 'border-white/20'}`} style={{ backgroundColor: color.hex }}/>)}</div><p className={`mt-2 text-xs ${muted}`}>{activeColor?.name ?? '—'}</p></div>
-              <div><p className={`mb-2 text-sm font-medium ${text}`}>سایزهای ثبت‌شده</p><div className="flex flex-wrap gap-2">{sizes.map((size) => <button key={size} type="button" aria-pressed={activeSize === size} onClick={() => setSelectedSize(size)} className={`rounded-lg border px-3 py-2 text-xs ${activeSize === size ? 'border-[#ba8d3d] text-[#eed29d]' : 'border-white/10 text-stone-300'}`}>{size}</button>)}</div><p className={`mt-2 text-xs ${available > 0 ? 'text-emerald-300' : 'text-amber-300'}`}>{variant ? `موجودی قابل فروش ثبت‌شده: ${available.toLocaleString('fa-IR')}` : 'این ترکیب رنگ و سایز در کاتالوگ ثبت نشده است.'}</p></div>
+              <div><p className={`mb-2 text-sm font-medium ${text}`}>اندازه‌های ثبت‌شده</p><div className="flex flex-wrap gap-2">{sizes.map((size) => <button key={size} type="button" aria-pressed={activeSize === size} onClick={() => setSelectedSize(size)} className={`rounded-lg border px-3 py-2 text-xs ${activeSize === size ? 'border-[#ba8d3d] text-[#eed29d]' : 'border-white/10 text-stone-300'}`}>{size}</button>)}</div><p className={`mt-2 text-xs ${available ? 'text-emerald-300' : 'text-amber-300'}`}>{variant ? (available ? 'این ترکیب برای سفارش در دسترس است.' : 'این ترکیب اکنون موجود نیست.') : 'این ترکیب رنگ و اندازه در کاتالوگ ثبت نشده است.'}</p></div>
             </>}
           </section>
 

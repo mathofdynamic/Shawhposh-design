@@ -1,5 +1,5 @@
 export class ApiClientError extends Error {
-  constructor(public status:number,public code:string,message:string){super(message);}
+  constructor(public status:number,public code:string,message:string,public fields?:Record<string,unknown>){super(message);}
 }
 export async function api<T>(path:string,options:RequestInit={}):Promise<T>{
   let response:Response;
@@ -10,7 +10,7 @@ export async function api<T>(path:string,options:RequestInit={}):Promise<T>{
   const body=await response.json().catch(()=>null);
   if(!response.ok){
     if(response.status===401 && path.startsWith('/v1/admin/') && !path.startsWith('/v1/admin/auth/'))window.dispatchEvent(new Event('shawhposh:staff-session-expired'));
-    throw new ApiClientError(response.status,body?.error?.code||'HTTP_ERROR',body?.error?.message||'درخواست انجام نشد.');
+    throw new ApiClientError(response.status,body?.error?.code||'HTTP_ERROR',body?.error?.message||'درخواست انجام نشد.',body?.error?.fields);
   }
   if(!body)throw new ApiClientError(response.status,'INVALID_RESPONSE','پاسخ سرور معتبر نیست.');
   return body as T;

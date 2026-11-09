@@ -1,7 +1,7 @@
-import { useState } from 'react';
+import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import { ShoppingBag, Shirt, Sparkles, Menu, X, Sliders, Info, Sun, Moon, User, LogOut, Shield } from 'lucide-react';
 import { CartItem, User as UserType } from '../types';
-import { motion, AnimatePresence } from 'motion/react';
+import { motion, AnimatePresence, useReducedMotion } from 'motion/react';
 
 interface NavbarProps {
   activeTab: string;
@@ -34,6 +34,12 @@ export default function Navbar({
 }: NavbarProps) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
+  const userMenuId = useId();
+  const mobileMenuRef = useRef<HTMLElement | null>(null);
+  const mobileMenuToggleRef = useRef<HTMLButtonElement | null>(null);
+  const userMenuToggleRef = useRef<HTMLButtonElement | null>(null);
+  const restoreMobileMenuFocus = useRef(true);
+  const prefersReducedMotion = useReducedMotion();
   const totalItems = cart.reduce((acc, item) => acc + item.quantity, 0);
   const isDark = theme === 'dark';
 
@@ -44,38 +50,106 @@ export default function Navbar({
     { id: 'about', label: 'اصالت و داستان برند', icon: Info },
   ];
 
+  useEffect(() => {
+    if (!mobileMenuOpen) return;
+    const menu = mobileMenuRef.current;
+    if (!menu) return;
+
+    const toggle = mobileMenuToggleRef.current;
+    const previousOverflow = document.body.style.overflow;
+    const getFocusableItems = () => Array.from(menu.querySelectorAll(
+      'button:not([disabled]), a[href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+    )) as HTMLElement[];
+    document.body.style.overflow = 'hidden';
+    getFocusableItems()[0]?.focus();
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        setMobileMenuOpen(false);
+        return;
+      }
+      if (event.key !== 'Tab') return;
+
+      const items = getFocusableItems();
+      const first = items[0];
+      const last = items[items.length - 1];
+      if (!first || !last) {
+        event.preventDefault();
+      } else if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+      document.body.style.overflow = previousOverflow;
+      if (restoreMobileMenuFocus.current) requestAnimationFrame(() => toggle?.focus());
+      restoreMobileMenuFocus.current = true;
+    };
+  }, [mobileMenuOpen]);
+
+  useLayoutEffect(() => {
+    const menu = mobileMenuRef.current;
+    if (!menu) return;
+
+    menu.inert = !mobileMenuOpen;
+    menu.setAttribute('aria-hidden', String(!mobileMenuOpen));
+    if (mobileMenuOpen) menu.setAttribute('aria-modal', 'true');
+    else menu.removeAttribute('aria-modal');
+  }, [mobileMenuOpen]);
+
+  useEffect(() => {
+    if (!userMenuOpen) return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      event.preventDefault();
+      setUserMenuOpen(false);
+      requestAnimationFrame(() => userMenuToggleRef.current?.focus());
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [userMenuOpen]);
+
   return (
-    <nav className={`${isCheckout ? 'relative' : 'fixed'} top-0 left-0 right-0 z-50 px-4 md:px-8 pt-4 md:pt-6 pointer-events-none`}>
-      <div className={`max-w-7xl mx-auto h-16 md:h-18 flex items-center justify-between border backdrop-blur-md rounded-full px-6 pointer-events-auto transition-all duration-300 ${
+    <nav className={`${isCheckout ? 'relative' : 'fixed'} top-0 left-0 right-0 z-50 px-2 sm:px-4 md:px-8 pt-4 md:pt-6 pointer-events-none`}>
+      <div className={`max-w-7xl mx-auto h-16 md:h-18 flex items-center justify-between border backdrop-blur-md rounded-full px-4 sm:px-6 pointer-events-auto transition-all duration-300 ${
         isDark 
           ? 'bg-[#131211]/80 border-white/5 shadow-[0_20px_40px_-15px_rgba(0,0,0,0.5)]' 
           : 'bg-white/90 border-[#ba8d3d]/15 shadow-[0_20px_45px_-12px_rgba(186,141,61,0.08)]'
       }`}>
         
         {/* Brand Logo & Name */}
-        <div 
+        <button
+          type="button"
+          aria-label="صفحه اصلی شهپوش"
           onClick={() => {
             setActiveTab('home');
             setMobileMenuOpen(false);
           }} 
-          className="flex items-center gap-3 cursor-pointer group shrink-0"
+          className="flex shrink-0 cursor-pointer items-center gap-3 border-0 bg-transparent p-0 text-inherit group focus-visible:rounded-xl"
         >
-          <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-[#ba8d3d] to-[#eed29d] flex items-center justify-center shadow-[0_4px_12px_rgba(186,141,61,0.15)] group-hover:scale-105 transition-all duration-500 shrink-0">
+          <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-[#ba8d3d] to-[#eed29d] flex items-center justify-center shadow-[0_4px_12px_rgba(186,141,61,0.15)] group-hover:scale-105 transition-transform duration-200 shrink-0">
             <span className="font-display text-lg text-[#0e0d0c] font-black">ش</span>
           </div>
           <div className="flex flex-col text-right">
-            <span className={`font-display text-base tracking-tight group-hover:text-[#ba8d3d] transition-colors duration-300 leading-tight ${
+            <span className={`font-display text-base tracking-tight group-hover:text-[var(--text-accent)] transition-colors duration-300 leading-tight ${
               isDark ? 'text-white' : 'text-slate-900'
             }`}>
               شهپوش
             </span>
-            <span className={`text-[8px] uppercase tracking-[0.05em] hidden lg:inline leading-none mt-0.5 ${
-              isDark ? 'text-[#eed29d]/70' : 'text-[#ba8d3d]'
+            <span className={`text-xs uppercase tracking-[0.05em] hidden lg:inline leading-none mt-0.5 ${
+              isDark ? 'text-[#eed29d]/70' : 'text-[var(--text-accent)]'
             }`}>
               پلتفرم انحصاری پوشاک پارسی
             </span>
           </div>
-        </div>
+        </button>
 
         {/* Desktop Navigation Links (Switched md: to lg: layout to prevent crowding) */}
         <div className="hidden lg:flex items-center gap-2 h-full">
@@ -86,9 +160,10 @@ export default function Navbar({
               <button
                 key={link.id}
                 onClick={() => setActiveTab(link.id)}
+                aria-current={isActive ? 'page' : undefined}
                 className={`relative px-4 py-2 rounded-full text-[12.5px] font-sans font-medium flex items-center gap-2 transition-all duration-305 cursor-pointer whitespace-nowrap active:scale-95 group ${
                   isActive 
-                    ? 'text-[#ba8d3d] font-bold' 
+                    ? 'text-[var(--text-accent)] font-bold'
                     : isDark 
                       ? 'text-gray-400 hover:text-white' 
                       : 'text-slate-500 hover:text-slate-900'
@@ -96,22 +171,22 @@ export default function Navbar({
               >
                 {isActive && (
                   <motion.div
-                    layoutId="desktopNavActive"
+                    layoutId={prefersReducedMotion ? undefined : 'desktopNavActive'}
                     className={`absolute inset-0 rounded-full -z-10 ${
                       isDark 
                         ? 'bg-white/5 border border-white/5' 
                         : 'bg-[#ba8d3d]/8 border border-[#ba8d3d]/15 shadow-[0_2px_8px_rgba(186,141,61,0.02)]'
                     }`}
-                    transition={{ type: 'spring', stiffness: 380, damping: 30 }}
+                    transition={prefersReducedMotion ? { duration: 0 } : { type: 'spring', stiffness: 380, damping: 30 }}
                   />
                 )}
                 <Icon size={14} className={`transition-transform duration-300 group-hover:scale-110 ${isActive ? 'stroke-[2px]' : 'stroke-1.5'}`} />
                 <span>{link.label}</span>
                 {isActive && (
                   <motion.span 
-                    layoutId="activeDesktopDot"
-                    className="absolute bottom-1 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-[#ba8d3d] shadow-[0_0_6px_rgba(186,141,61,0.8)]"
-                    transition={{ type: 'spring', stiffness: 380, damping: 30 }}
+                    layoutId={prefersReducedMotion ? undefined : 'activeDesktopDot'}
+                    className="absolute bottom-1 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-[var(--text-accent)] shadow-[0_0_6px_rgba(186,141,61,0.8)]"
+                    transition={prefersReducedMotion ? { duration: 0 } : { type: 'spring', stiffness: 380, damping: 30 }}
                   />
                 )}
               </button>
@@ -126,12 +201,12 @@ export default function Navbar({
             {onAdminClick && (
               <button
                 onClick={onAdminClick}
-                className={`p-2.5 rounded-xl transition-all duration-300 flex items-center justify-center relative cursor-pointer active:scale-90 ${
+                className={`hidden min-h-11 min-w-11 p-2.5 rounded-xl transition-all duration-300 items-center justify-center relative cursor-pointer active:scale-90 sm:flex ${
                   isDark 
                     ? 'hover:bg-white/5 text-gray-400 hover:text-[#eed29d]' 
-                    : 'hover:bg-black/5 text-slate-600 hover:text-[#ba8d3d]'
+                    : 'hover:bg-black/5 text-slate-600 hover:text-[var(--text-accent)]'
                 }`}
-                title="ورود به پنل مدیریت کارگاه شاه‌پوش"
+                title="ورود به پنل مدیریت کارگاه شهپوش"
                 aria-label="میز مدیریت کارگاه"
               >
                 <Shield size={17} className="stroke-1.5" />
@@ -141,10 +216,10 @@ export default function Navbar({
             {/* Theme Toggle Button */}
             <button
               onClick={onToggleTheme}
-              className={`p-2.5 rounded-xl transition-all duration-300 flex items-center justify-center relative cursor-pointer active:scale-90 ${
+              className={`min-h-11 min-w-11 p-2.5 rounded-xl transition-all duration-300 flex items-center justify-center relative cursor-pointer active:scale-90 ${
                 isDark 
                   ? 'hover:bg-white/5 text-gray-400 hover:text-[#eed29d]' 
-                  : 'hover:bg-black/5 text-slate-600 hover:text-[#ba8d3d]'
+                    : 'hover:bg-black/5 text-slate-600 hover:text-[var(--text-accent)]'
               }`}
               title={isDark ? 'تغییر به پوسته روشن' : 'تغییر به پوسته تاریک'}
               aria-label="تغییر پوسته"
@@ -159,16 +234,16 @@ export default function Navbar({
             {/* Cart Icon Widget */}
             <button
               onClick={() => setCartOpen(true)}
-              className={`p-2.5 rounded-xl transition-all duration-300 relative cursor-pointer active:scale-90 ${
+              className={`min-h-11 min-w-11 p-2.5 rounded-xl transition-all duration-300 relative cursor-pointer active:scale-90 ${
                 isDark 
                   ? 'hover:bg-white/5 text-gray-400 hover:text-[#eed29d]' 
-                  : 'hover:bg-black/5 text-slate-600 hover:text-[#ba8d3d]'
+                    : 'hover:bg-black/5 text-slate-600 hover:text-[var(--text-accent)]'
               }`}
               aria-label="سبد خرید"
             >
               <ShoppingBag size={17} className="stroke-1.5" />
               {totalItems > 0 && (
-                <span className={`absolute top-1 right-1 w-4 h-4 font-mono text-[9px] font-bold flex items-center justify-center rounded-full animate-bounce ${
+                  <span className={`absolute top-1 right-1 w-4 h-4 font-mono text-[9px] font-bold flex items-center justify-center rounded-full ${
                   isDark 
                     ? 'bg-[#ba8d3d] text-[#0e0d0c] shadow-[0_2px_8px_rgba(186,141,61,0.4)]' 
                     : 'bg-[#ba8d3d] text-white shadow-[0_2px_8px_rgba(186,141,61,0.3)]'
@@ -184,7 +259,10 @@ export default function Navbar({
             {user ? (
               <div className="relative">
                 <button
-                  aria-label={user.name}
+                  ref={userMenuToggleRef}
+                  aria-label={`حساب کاربری ${user.name}`}
+                  aria-expanded={userMenuOpen}
+                  aria-controls={userMenuId}
                   onClick={() => setUserMenuOpen(!userMenuOpen)}
                   className={`flex items-center gap-2 pr-3.5 pl-1 py-1 rounded-full text-xs font-semibold cursor-pointer hover:scale-[1.02] active:scale-[0.98] transition-all duration-300 group whitespace-nowrap shrink-0 border ${
                     isDark 
@@ -199,7 +277,7 @@ export default function Navbar({
                     <img src={user.avatarUrl} alt={user.name} referrerPolicy="no-referrer" className="w-6.5 h-6.5 rounded-full object-cover shrink-0" />
                   ) : (
                     <span className={`w-6.5 h-6.5 rounded-full flex items-center justify-center font-bold text-[10px] shrink-0 ${
-                      isDark ? 'bg-[#ba8d3d]/20 text-[#eed29d]' : 'bg-[#ba8d3d]/15 text-[#ba8d3d]'
+                      isDark ? 'bg-[#ba8d3d]/20 text-[#eed29d]' : 'bg-[#ba8d3d]/15 text-[var(--text-accent)]'
                     }`}>
                       {user.name.charAt(0)}
                     </span>
@@ -208,9 +286,21 @@ export default function Navbar({
                 
                 {/* Dropdown Menu */}
                 {userMenuOpen && (
-                  <>
-                    <div className="fixed inset-0 z-10" onClick={() => setUserMenuOpen(false)} />
-                    <div className={`absolute left-0 mt-3.5 w-52 rounded-2xl border p-1.5 z-20 shadow-[0_15px_30px_rgba(186,141,61,0.08)] animate-fade-in ${
+                  <div
+                    aria-hidden="true"
+                    className="fixed inset-0 z-10"
+                    onClick={() => {
+                      setUserMenuOpen(false);
+                      requestAnimationFrame(() => userMenuToggleRef.current?.focus());
+                    }}
+                  />
+                )}
+                <div
+                  id={userMenuId}
+                  role="group"
+                  aria-label="منوی حساب کاربری"
+                  hidden={!userMenuOpen}
+                  className={`absolute left-0 mt-3.5 w-52 rounded-2xl border p-1.5 z-20 shadow-[0_15px_30px_rgba(186,141,61,0.08)] animate-fade-in ${
                       isDark 
                         ? 'bg-[#131211] border-white/5 text-white' 
                         : 'bg-white border-slate-100 text-slate-800'
@@ -221,7 +311,7 @@ export default function Navbar({
                       </div>
                       <button
                         onClick={() => { onAccountClick(); setUserMenuOpen(false); }}
-                        className="w-full flex items-center justify-between text-right px-4 py-2.5 text-xs font-semibold rounded-xl hover:bg-[#ba8d3d]/10 hover:text-[#eed29d] transition-colors duration-200 cursor-pointer mt-1"
+                        className={`w-full flex items-center justify-between text-right px-4 py-2.5 text-xs font-semibold rounded-xl hover:bg-[#ba8d3d]/10 transition-colors duration-200 cursor-pointer mt-1 ${isDark ? 'hover:text-[#eed29d]' : 'hover:text-[var(--text-accent)]'}`}
                       >
                         <span>حساب کاربری و سفارش‌ها</span>
                         <User size={12} />
@@ -236,9 +326,7 @@ export default function Navbar({
                         <span>خروج از حساب</span>
                         <LogOut size={12} className="stroke-[2.5px]" />
                       </button>
-                    </div>
-                  </>
-                )}
+                </div>
               </div>
             ) : (
               <button
@@ -259,13 +347,16 @@ export default function Navbar({
 
           {/* Mobile Menu Toggle */}
           <button
+            ref={mobileMenuToggleRef}
             onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-            className={`p-2.5 rounded-xl lg:hidden cursor-pointer transition-colors duration-300 ${
+            aria-expanded={mobileMenuOpen}
+            aria-controls="mobile-navigation-menu"
+            className={`min-h-11 min-w-11 p-2.5 rounded-xl lg:hidden cursor-pointer transition-colors duration-300 ${mobileMenuOpen ? 'invisible pointer-events-none' : ''} ${
               isDark 
                 ? 'hover:bg-white/5 text-gray-400 hover:text-white' 
                 : 'hover:bg-black/5 text-slate-600 hover:text-slate-950'
             }`}
-            aria-label="منو"
+            aria-label={mobileMenuOpen ? 'بستن منو' : 'باز کردن منو'}
           >
             {mobileMenuOpen ? <X size={20} /> : <Menu size={20} />}
           </button>
@@ -275,24 +366,42 @@ export default function Navbar({
       {/* Mobile Menu Backdrop & Panel */}
       <AnimatePresence>
         {mobileMenuOpen && (
-          <motion.div 
-            initial={{ opacity: 0, y: -10 }}
+          <motion.nav
+            ref={mobileMenuRef}
+            role="dialog"
+            aria-modal="true"
+            aria-hidden={!mobileMenuOpen}
+            inert={!mobileMenuOpen}
+            id="mobile-navigation-menu"
+            aria-label="منوی اصلی"
+            initial={prefersReducedMotion ? false : { opacity: 0, y: -10 }}
             animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -10 }}
-            transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
+            exit={prefersReducedMotion ? { opacity: 0, transition: { duration: 0 } } : { opacity: 0, y: -6, transition: { duration: 0.12 } }}
+            transition={prefersReducedMotion ? { duration: 0 } : { duration: 0.25, ease: [0.16, 1, 0.3, 1] }}
+            onClick={event => {
+              if (event.target === event.currentTarget) setMobileMenuOpen(false);
+            }}
             className={`fixed inset-0 top-[76px] left-0 right-0 z-40 p-6 flex flex-col gap-4 pointer-events-auto lg:hidden ${
-              isDark ? 'bg-black/95 backdrop-blur-2xl' : 'bg-white/95 backdrop-blur-2xl border-t border-slate-200'
+              isDark ? 'bg-black/95 backdrop-blur-sm' : 'bg-white/95 backdrop-blur-sm border-t border-slate-200'
             }`}
           >
+            <button
+              type="button"
+              aria-label="بستن منو"
+              onClick={() => setMobileMenuOpen(false)}
+              className={`inline-flex min-h-11 min-w-11 self-start items-center justify-center rounded-xl ${isDark ? 'text-stone-300 hover:bg-white/5' : 'text-slate-700 hover:bg-black/5'}`}
+            >
+              <X size={18} />
+            </button>
             <motion.div 
-              initial="hidden"
+              initial={prefersReducedMotion ? false : 'hidden'}
               animate="visible"
               variants={{
                 hidden: { opacity: 0 },
                 visible: {
                   opacity: 1,
                   transition: {
-                    staggerChildren: 0.08
+                    staggerChildren: prefersReducedMotion ? 0 : 0.06
                   }
                 }
               }}
@@ -303,11 +412,12 @@ export default function Navbar({
                 const isActive = activeTab === link.id;
                 return (
                   <motion.button
+                    aria-current={isActive ? 'page' : undefined}
                     variants={{
                       hidden: { opacity: 0, x: 15 },
                       visible: { opacity: 1, x: 0 }
                     }}
-                    transition={{ type: 'spring', stiffness: 350, damping: 28 }}
+                    transition={prefersReducedMotion ? { duration: 0 } : { type: 'spring', stiffness: 350, damping: 28 }}
                     key={link.id}
                     onClick={() => {
                       setActiveTab(link.id);
@@ -315,7 +425,7 @@ export default function Navbar({
                     }}
                     className={`px-5 py-4 rounded-2xl flex items-center justify-between text-sm font-semibold transition-all duration-300 relative overflow-hidden group ${
                       isActive 
-                        ? 'text-[#ba8d3d]' 
+                        ? 'text-[var(--text-accent)]'
                         : isDark ? 'text-gray-300 hover:text-white' : 'text-slate-700 hover:text-slate-950'
                     }`}
                   >
@@ -326,8 +436,8 @@ export default function Navbar({
                     {isActive && (
                       <motion.div 
                         layoutId="activeMobileIndicator"
-                        className="w-1.5 h-1.5 rounded-full bg-[#ba8d3d]"
-                        transition={{ type: 'spring', stiffness: 350, damping: 28 }}
+                        className="w-1.5 h-1.5 rounded-full bg-[var(--text-accent)]"
+                        transition={prefersReducedMotion ? { duration: 0 } : { type: 'spring', stiffness: 350, damping: 28 }}
                       />
                     )}
                     {isActive && (
@@ -336,7 +446,7 @@ export default function Navbar({
                         className={`absolute inset-0 rounded-2xl -z-10 ${
                           isDark ? 'bg-white/5' : 'bg-[#ba8d3d]/8'
                         }`}
-                        transition={{ type: 'spring', stiffness: 350, damping: 28 }}
+                        transition={prefersReducedMotion ? { duration: 0 } : { type: 'spring', stiffness: 350, damping: 28 }}
                       />
                     )}
                   </motion.button>
@@ -345,9 +455,9 @@ export default function Navbar({
             </motion.div>
             
             <motion.div 
-              initial={{ opacity: 0, y: 10 }}
+              initial={prefersReducedMotion ? false : { opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.28, duration: 0.35 }}
+              transition={prefersReducedMotion ? { duration: 0 } : { delay: 0.22, duration: 0.25 }}
               className="mt-4 flex flex-col gap-3.5 border-t pt-4 border-dashed" 
               style={{ borderColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.06)' }}
             >
@@ -357,7 +467,7 @@ export default function Navbar({
                     {user.avatarUrl ? (
                       <img src={user.avatarUrl} alt={user.name} referrerPolicy="no-referrer" className="w-10 h-10 rounded-full object-cover border border-[#ba8d3d]/20" />
                     ) : (
-                      <div className="w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm bg-[#ba8d3d]/15 text-[#ba8d3d]">
+                      <div className="w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm bg-[#ba8d3d]/15 text-[var(--text-accent)]">
                         {user.name.charAt(0)}
                       </div>
                     )}
@@ -369,7 +479,7 @@ export default function Navbar({
                   <div className="flex gap-2">
                     <button
                       onClick={() => { onAccountClick(); setMobileMenuOpen(false); }}
-                      className="flex-1 rounded-xl border border-[#ba8d3d]/20 bg-[#ba8d3d]/10 px-4 py-3 text-xs font-bold text-[#eed29d]"
+                      className={`flex-1 rounded-xl border border-[#ba8d3d]/20 bg-[#ba8d3d]/10 px-4 py-3 text-xs font-bold ${isDark ? 'text-[#eed29d]' : 'text-[var(--text-accent)]'}`}
                     >حساب کاربری و سفارش‌ها</button>
                     <button
                       onClick={() => { onLogout(); setMobileMenuOpen(false); }}
@@ -381,6 +491,7 @@ export default function Navbar({
               ) : (
                 <button
                   onClick={() => {
+                    restoreMobileMenuFocus.current = false;
                     onLoginClick();
                     setMobileMenuOpen(false);
                   }}
@@ -403,7 +514,7 @@ export default function Navbar({
                 className={`px-6 py-4.5 rounded-2xl text-center text-sm font-bold shadow-lg cursor-pointer ${
                   isDark 
                     ? 'bg-white/5 border border-white/5 text-[#eed29d]' 
-                    : 'bg-[#fcf8f2] border border-[#ba8d3d]/15 text-[#ba8d3d]'
+                    : 'bg-[#fcf8f2] border border-[#ba8d3d]/15 text-[var(--text-accent)]'
                 }`}
               >
                 کارگاه طراحی شخصی تیشرت
@@ -415,14 +526,14 @@ export default function Navbar({
                     onAdminClick();
                     setMobileMenuOpen(false);
                   }}
-                  className="w-full py-3.5 rounded-2xl text-center text-xs font-bold border border-white/10 flex items-center justify-center gap-2 cursor-pointer text-stone-400 hover:text-white bg-white/5"
+                  className={`w-full py-3.5 rounded-2xl text-center text-xs font-bold border flex items-center justify-center gap-2 cursor-pointer ${isDark ? 'border-white/10 text-stone-400 hover:text-white bg-white/5' : 'border-slate-200 text-slate-600 hover:text-slate-900 hover:bg-slate-100 bg-white'}`}
                 >
-                  <Shield size={14} className="text-[#ba8d3d]" />
+                  <Shield size={14} className="text-[var(--text-accent)]" />
                   <span>ورود به میز مدیریت کارگاه</span>
                 </button>
               )}
             </motion.div>
-          </motion.div>
+          </motion.nav>
         )}
       </AnimatePresence>
     </nav>

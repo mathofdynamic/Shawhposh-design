@@ -21,6 +21,10 @@ export default function Cart({ isOpen, onClose, cart, onUpdateQuantity, onRemove
     if (!isOpen) return;
 
     const previouslyFocused = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const previousBodyOverflow = document.body.style.overflow;
+    const previousRootOverflow = document.documentElement.style.overflow;
+    document.body.style.overflow = 'hidden';
+    document.documentElement.style.overflow = 'hidden';
     closeButtonRef.current?.focus();
 
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -54,6 +58,8 @@ export default function Cart({ isOpen, onClose, cart, onUpdateQuantity, onRemove
     document.addEventListener('keydown', handleKeyDown);
     return () => {
       document.removeEventListener('keydown', handleKeyDown);
+      document.body.style.overflow = previousBodyOverflow;
+      document.documentElement.style.overflow = previousRootOverflow;
       previouslyFocused?.focus();
     };
   }, [isOpen, onClose]);
@@ -169,7 +175,7 @@ export default function Cart({ isOpen, onClose, cart, onUpdateQuantity, onRemove
 
                       {item.availabilityCode && (
                         <p role="status" className="mt-2 text-[10px] font-medium text-amber-300">
-                          {item.availableQuantity === 0 ? 'این سایز دیگر موجود نیست.' : `فقط ${item.availableQuantity?.toLocaleString('fa-IR')} عدد باقی مانده است.`}
+                          {item.availabilityCode === 'OUT_OF_STOCK' ? 'این اندازه دیگر موجود نیست.' : 'موجودی این کالا برای تعداد انتخاب‌شده کافی نیست؛ تعداد را کاهش دهید یا کالا را حذف کنید.'}
                         </p>
                       )}
 
@@ -191,8 +197,8 @@ export default function Cart({ isOpen, onClose, cart, onUpdateQuantity, onRemove
                           </span>
                           <button
                             aria-label="افزایش تعداد"
-                            disabled={item.availableQuantity !== undefined && item.quantity >= item.availableQuantity}
-                            onClick={() => onUpdateQuantity(item.id, item.quantity + 1)}
+                            disabled={item.quantity >= 20}
+                            onClick={() => onUpdateQuantity(item.id, Math.min(20, item.quantity + 1))}
                             className="w-11 h-11 rounded bg-white/5 hover:bg-white/10 text-gray-400 text-xs flex items-center justify-center cursor-pointer disabled:cursor-not-allowed disabled:opacity-30"
                           >
                             +

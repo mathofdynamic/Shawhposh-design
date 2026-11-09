@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import request from 'supertest';
 import Database from 'better-sqlite3';
+import sharp from 'sharp';
 const dir=mkdtempSync(join(tmpdir(),'shawhposh-test-'));
 process.env.DATABASE_PATH=join(dir,'test.sqlite');process.env.APP_ORIGIN='http://localhost:3000';process.env.NODE_ENV='test';
 const {db,sqlite}=await import('../db/connection');
@@ -75,5 +76,54 @@ test('variant override prices, initial stock and reserved stock are validated at
  assert.equal((await staff.post('/api/v1/admin/inventory/TEST-SKU/adjustments').set('Origin',origin).send({newQuantity:2,reason:'Invalid reserved reduction'})).status,409);
  assert.equal((await staff.patch('/api/v1/admin/variants/'+variant.id).set('Origin','https://evil.example').send({priceTomans:1})).status,403);
  const reader=new Database(join(dir,'test.sqlite'),{readonly:true});assert.equal((reader.prepare('select name from products where slug=?').get('test-product') as {name:string}).name,'Changed');reader.close();
+});
+test('apparel catalog supports automatic IDs, private stock, product images, offline customers and purchase accounting',async()=>{
+ const ownerAgent=request.agent(app);
+ await ownerAgent.post('/api/v1/admin/auth/login').set('Origin',origin).send({identifier:'owner@example.invalid',password}).expect(200);
+ const createdProduct=await ownerAgent.post('/api/v1/admin/products').set('Origin',origin).send({name:'لباس تخفیف‌دار',category:'test',garmentType:'hoodie',discountPercent:25,basePriceTomans:1000,status:'active'}).expect(201);
+ const product=createdProduct.body.item as {id:string;slug:string};
+ assert.match(product.slug,/^apparel-[a-f0-9]{12}$/);
+ const createdVariant=await ownerAgent.post('/api/v1/admin/variants').set('Origin',origin).send({productId:product.id,colorName:'مشکی',size:'XS',fit:'boxy',weightGrams:420,onHandStock:4,inventoryReason:'شمارش اولیه موجودی'}).expect(201);
+ const variant=catalogSnapshot().variants.find(item=>item.id===createdVariant.body.item.id)!;
+ assert.match(variant.sku,/^SH-XS-[A-F0-9]{8}$/);
+ assert.equal(variant.weightGrams,420);
+ assert.equal(variant.onHandStock,4);
+ const publicProduct=(await request(app).get(`/api/v1/products/${product.slug}`).expect(200)).body.product;
+ assert.equal(publicProduct.price,750);
+ assert.equal(publicProduct.originalPriceTomans,1000);
+ assert.equal(publicProduct.discountPercent,25);
+ assert.equal(publicProduct.variants[0].inStock,true);
+ assert.equal(Object.hasOwn(publicProduct.variants[0],'available'),false);
+ assert.equal(Object.hasOwn(publicProduct.variants[0],'sku'),false);
+
+ const offline=await ownerAgent.post('/api/v1/admin/customers').set('Origin',origin).send({name:'خریدار حضوری',phone:'09121234570',email:'offline@example.invalid',notes:'خرید حضوری'}).expect(201);
+ assert.equal(offline.body.customer.source,'offline');
+ const detail=await ownerAgent.get(`/api/v1/admin/customers/${offline.body.customer.id}`).expect(200);
+ assert.equal(detail.body.customer.notes,'خرید حضوری');
+ assert.equal(detail.body.orders.length,0);
+ const directory=await ownerAgent.get('/api/v1/admin/customers?search=offline%40example.invalid').expect(200);
+ assert.equal(directory.body.pagination.total,1);
+ assert.equal(directory.body.customers[0].source,'offline');
+
+ const invoice=await ownerAgent.post('/api/v1/admin/purchase-invoices').set('Origin',origin).send({supplierName:'کارگاه نمونه',productId:product.id,quantity:3,purchaseUnitPriceTomans:2000,saleUnitPriceTomans:5000,deliveryCostTomans:300,printingCostTomans:200,invoiceDate:'2026-11-03T12:00:00.000Z',notes:'فاکتور آزمون'}).expect(201);
+ assert.equal(invoice.body.invoice.netProfitTomans,8500);
+ const invoiceList=await ownerAgent.get('/api/v1/admin/purchase-invoices').expect(200);
+ assert.equal(invoiceList.body.summary.projectedProfitTomans,8500);
+
+ const png=await sharp({create:{width:2,height:2,channels:3,background:'#ba8d3d'}}).png().toBuffer();
+ const upload=await ownerAgent.post(`/api/v1/admin/products/${product.id}/images`).set('Origin',origin).field('altText','نمای محصول').attach('image',png,{filename:'apparel.png',contentType:'image/png'}).expect(201);
+ const imageResponse=await request(app).get(upload.body.image.url).expect(200);
+ assert.match(imageResponse.headers['content-type'],/image\/webp/);
+});
+
+test('legacy Persian garment names resolve category filters without rewriting product presentation',()=>{
+ const names=[['تیشرت پیشین','tshirt'],['تی‌شرت پیشین','tshirt'],['هودی پیشین','hoodie'],['نیم‌زیپ پیشین','halfzip']] as const;
+ for(const [index,[name,garmentType]] of names.entries()){
+  const product=saveProduct({name,slug:`legacy-garment-${index}`,category:'test',basePriceTomans:1000,status:'active'});
+  const listed=catalogSnapshot().products.find(item=>item.id===product.id)!;
+  assert.equal(listed.garmentType,garmentType);
+  const stored=sqlite.prepare('select presentation from products where id=?').get(product.id) as {presentation:string};
+  assert.equal(JSON.parse(stored.presentation).garmentType,undefined);
+ }
 });
 after(()=>{sqlite.close();rmSync(dir,{recursive:true,force:true});});

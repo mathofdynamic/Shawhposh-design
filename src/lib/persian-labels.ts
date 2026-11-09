@@ -64,6 +64,7 @@ const sizeLabels: Record<string, string> = {
   L: 'بزرگ',
   XL: 'خیلی بزرگ',
   XXL: 'دو ایکس‌بزرگ',
+  XXXL: 'سه ایکس‌بزرگ',
   '2XL': 'دو ایکس‌بزرگ',
   '3XL': 'سه ایکس‌بزرگ',
   '4XL': 'چهار ایکس‌بزرگ',
@@ -79,6 +80,7 @@ const fitLabels: Record<string, string> = {
   oversized: 'لش',
   regular: 'معمولی',
   crop: 'کوتاه',
+  boxy: 'باکسی',
 };
 
 function labelFrom(labels: Record<string, string>, value: string | null | undefined): string {

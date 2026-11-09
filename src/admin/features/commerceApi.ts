@@ -61,6 +61,8 @@ export interface AdminCustomer {
   createdAt: string;
   orderCount: number;
   lifetimeSpendTomans: number;
+  source: 'registered' | 'offline';
+  notes?: string;
 }
 
 export interface AdminCustomerSummary {
@@ -68,12 +70,17 @@ export interface AdminCustomerSummary {
   activeCount: number;
   customersWithOrdersCount: number;
   paidSpendTomans: number;
+  offlineCount: number;
 }
 
 export function listAdminCustomers(query: URLSearchParams) {
   return api<{ customers: AdminCustomer[]; summary: AdminCustomerSummary; pagination: CommercePage<AdminCustomer>['pagination'] }>(`/v1/admin/customers?${query.toString()}`);
 }
 
+export function createOfflineCustomer(input: { name: string; phone: string; email?: string; notes: string }) {
+  return post<{ customer: AdminCustomer & { updatedAt: string } }>('/v1/admin/customers', input);
+}
+
 export function getAdminCustomer(id: string) {
-  return api<{ customer: AdminCustomer & { updatedAt: string }; addresses: Array<AdminOrder['shippingAddress'] & { id: string; title: string | null; isDefault: boolean }>; orders: AdminOrder[]; supportHistoryAvailable: boolean }>(`/v1/admin/customers/${encodeURIComponent(id)}`);
+  return api<{ customer: AdminCustomer & { updatedAt: string; notes?: string }; addresses: Array<AdminOrder['shippingAddress'] & { id: string; title: string | null; isDefault: boolean }>; orders: AdminOrder[]; supportHistoryAvailable: boolean }>(`/v1/admin/customers/${encodeURIComponent(id)}`);
 }

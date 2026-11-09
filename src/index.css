@@ -1,12 +1,5 @@
 @import "tailwindcss";
 
-.product-media-source {
-  background-image: url('/product-image-unavailable.svg');
-  background-position: center;
-  background-repeat: no-repeat;
-  background-size: contain;
-}
-
 /* ========================================================================= */
 /* YEKAN BAKH (STANDARD - PERSIAN & LATIN GLYPHS)                            */
 /* ========================================================================= */
@@ -292,6 +285,8 @@ input, button, textarea, select {
   --text-primary: #f5f2eb;
   --text-display: #ffffff;
   --text-muted: #9e9a93;
+  --text-accent: #ba8d3d;
+  --focus-ring: #ba8d3d;
   --border-light: rgba(245, 242, 235, 0.05);
   --border-medium: rgba(245, 242, 235, 0.1);
   --double-bezel-bg: rgba(26, 25, 23, 0.4);
@@ -316,6 +311,8 @@ input, button, textarea, select {
   --text-primary: #171513; /* Rich organic coal */
   --text-display: #12100e; /* Obsidian dark display text */
   --text-muted: #6e675c; /* Sophisticated warm stone */
+  --text-accent: #8b5a00;
+  --focus-ring: #8b5a00;
   --border-light: rgba(23, 21, 19, 0.08);
   --border-medium: rgba(23, 21, 19, 0.15);
   --double-bezel-bg: rgba(255, 255, 255, 0.8);
@@ -399,12 +396,14 @@ input, button, textarea, select {
   border: 1px solid var(--double-bezel-outer-border);
   padding: 6px;
   border-radius: 24px;
-  transition: all 400ms cubic-bezier(0.16, 1, 0.3, 1);
+  transition: background-color 200ms ease-out, border-color 200ms ease-out;
 }
 
-.double-bezel-outer:hover {
-  border-color: rgba(186, 141, 61, 0.2);
-  background: rgba(186, 141, 61, 0.02);
+@media (hover: hover) and (pointer: fine) {
+  .double-bezel-outer:hover {
+    border-color: rgba(186, 141, 61, 0.2);
+    background: rgba(186, 141, 61, 0.02);
+  }
 }
 
 /* Typography styles */
@@ -571,7 +570,7 @@ html.light .bg-\[\#2d2925\] * {
 /* ========================================================================= */
 
 :focus-visible {
-  outline: 2px solid #ba8d3d;
+  outline: 2px solid var(--focus-ring);
   outline-offset: 2px;
 }
 

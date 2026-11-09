@@ -59,7 +59,7 @@ export const ProductsPage: React.FC = () => {
   // Search & Filters
   const [search, setSearch] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('all');
-  const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [statusFilter, setStatusFilter] = useState<string>('active');
   const [typeFilter, setTypeFilter] = useState<string>('all');
   const [lowStockOnly, setLowStockOnly] = useState(false);
   const [sortBy, setSortBy] = useState<'updated' | 'priceAsc' | 'priceDesc' | 'stockAsc' | 'stockDesc' | 'name'>('updated');
@@ -159,22 +159,22 @@ export const ProductsPage: React.FC = () => {
 
   const handleBulkStatus = async (newStatus: 'active' | 'draft' | 'archived') => {
     if (selectedProductIds.length === 0) return;
-    const res = await bulkUpdateProductStatus(selectedProductIds, newStatus);
-    setBulkActionNotice(
-      `وضعیت ${toFaDigits(res.updatedCount)} محصول با موفقیت به «${
-        newStatus === 'active' ? 'عرضه فعال' : newStatus === 'draft' ? 'پیش‌نویس' : 'بایگانی'
-      }» تغییر یافت.`
-    );
-    setSelectedProductIds([]);
+    const selected = [...selectedProductIds];
+    const res = await bulkUpdateProductStatus(selected, newStatus);
+    const statusLabel = newStatus === 'active' ? 'عرضه فعال' : newStatus === 'draft' ? 'پیش‌نویس' : 'بایگانی';
+    setBulkActionNotice(res.success
+      ? `وضعیت هر ${toFaDigits(res.updatedCount)} محصول به «${statusLabel}» تغییر کرد.`
+      : `${toFaDigits(res.updatedCount)} مورد از ${toFaDigits(selected.length)} مورد تغییر کرد؛ بقیه تغییر نکردند. علت: ${res.error || 'خطای نامشخص'}`);
+    setSelectedProductIds(res.success ? [] : selected.slice(res.updatedCount));
     setTimeout(() => setBulkActionNotice(null), 3000);
   };
 
   // Delete handler
   const handleDeleteProduct = async (p: AdminProduct) => {
     const confirmed = await confirmDialog({
-      title: 'حذف محصول',
-      description: `آیا از حذف محصول «${p.name}» (${p.id}) اطمینان دارید؟ در صورت ثبت سفارش با این محصول، حذف به منظور حفظ یکپارچگی سوابق مالی ممنوع است.`,
-      confirmLabel: 'حذف محصول',
+      title: 'بایگانی محصول',
+      description: `محصول «${p.name}» از فروشگاه پنهان می‌شود و برای حفظ سوابق سفارش و انبار باقی می‌ماند.`,
+      confirmLabel: 'بایگانی محصول',
       cancelLabel: 'انصراف',
       isDestructive: true,
     });
@@ -183,14 +183,14 @@ export const ProductsPage: React.FC = () => {
     const res = await deleteProduct(p.id);
     if (!res.success) {
       addToast({
-        title: 'خطا در حذف محصول',
-        description: res.error || 'امکان حذف این محصول وجود ندارد.',
+        title: 'بایگانی محصول انجام نشد',
+        description: res.error || 'امکان بایگانی این محصول وجود ندارد.',
         type: 'error',
       });
     } else {
       addToast({
-        title: 'محصول حذف شد',
-        description: `محصول «${p.name}» با موفقیت از کاتالوگ حذف گردید.`,
+        title: 'محصول بایگانی شد',
+        description: `محصول «${p.name}» از فروشگاه پنهان شد و سوابق آن باقی ماند.`,
         type: 'success',
       });
     }
@@ -272,7 +272,7 @@ export const ProductsPage: React.FC = () => {
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.setAttribute('href', url);
-    link.setAttribute('download', `محصولات-شاهپوش-${new Date().toISOString().slice(0, 10)}.csv`);
+    link.setAttribute('download', `محصولات-شهپوش-${new Date().toISOString().slice(0, 10)}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -463,7 +463,7 @@ export const ProductsPage: React.FC = () => {
           <button
             onClick={() => handleDeleteProduct(row)}
             className="p-1.5 text-stone-400 hover:text-red-400 bg-white/5 hover:bg-red-500/10 rounded-lg transition-colors"
-            title="حذف محصول"
+            title="بایگانی محصول"
           >
             <Trash2 size={13} />
           </button>
@@ -476,7 +476,7 @@ export const ProductsPage: React.FC = () => {
     <div className="space-y-6">
       <AdminPageHeader
         title="محصولات پایه و فرم‌های لباس"
-        description="مدیریت الگوهای خام تیشرت سوپرپنبه، اورسایز ۲۴۰ گرم، هودی‌های سنگین ۳۸۰ گرم و فرم‌های آماده کاتالوگ."
+        description="محصولات، تنوع‌ها، تصویرها و وضعیت فروش کاتالوگ را مدیریت کنید."
         actions={
           <div className="flex items-center gap-2">
             <Button variant="outline" size="sm" onClick={() => setIsImportModalOpen(true)}>

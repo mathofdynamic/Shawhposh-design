@@ -135,7 +135,7 @@ export default function Checkout({ cart, configuration, onBackToShop, onSubmitOr
   }, [paymentAttempt?.id, paymentAttempt?.status]);
 
   const selectedAddress = addresses.find(item => item.id === selectedAddressId);
-  const unavailable = cart.some(item => item.availabilityCode || (item.availableQuantity !== undefined && item.quantity > item.availableQuantity));
+  const unavailable = cart.some(item => item.availabilityCode);
   const quoteInput = useMemo(() => {
     if (addressLoading) return null;
     if (selectedAddress) return { addressId: selectedAddress.id };
@@ -189,7 +189,7 @@ export default function Checkout({ cart, configuration, onBackToShop, onSubmitOr
       subtotalTomans: quote.subtotalTomans,
       discountTomans: quote.discountTomans,
       shippingMethod: selectedShippingMethod,
-      items: quote.items.map(({ availableQuantity: _availableQuantity, ...item }) => item),
+      items: quote.items,
     };
     const payload: CheckoutOrderInput = selectedAddress ? { addressId: selectedAddress.id, shippingMethodId: selectedShippingMethod.id, expectedQuote, ...(customerNote.trim() ? { customerNote: customerNote.trim() } : {}) } : {
       shippingAddress: { recipientName, phone, province, city, addressLine, postalCode },
@@ -398,7 +398,7 @@ export default function Checkout({ cart, configuration, onBackToShop, onSubmitOr
             <div className="max-h-[340px] space-y-3 overflow-y-auto">
               {quote?.items.map(item => <div key={item.cartItemId} className="flex items-center justify-between gap-3 rounded-xl border border-white/5 bg-[#0e0d0c]/50 p-3">
                 <span className="shrink-0 text-left"><strong className="block font-mono text-xs font-bold text-[#eed29d]">{item.lineTotalTomans.toLocaleString('fa-IR')} تومان</strong><span className="mt-1 block text-[10px] text-stone-500">{item.unitPriceTomans.toLocaleString('fa-IR')} تومان × {item.quantity}</span></span>
-                <div className="min-w-0 text-right"><span className="block truncate text-xs font-medium text-white">{item.productName}</span><span className="mt-1 block text-[10px] text-gray-500">{item.colorName} · {persianSize(item.size)} · تعداد {item.quantity}</span><span className="mt-1 block text-[10px] text-gray-500">موجودی فعلی: {item.availableQuantity.toLocaleString('fa-IR')}</span></div>
+                <div className="min-w-0 text-right"><span className="block truncate text-xs font-medium text-white">{item.productName}</span><span className="mt-1 block text-[10px] text-gray-500">{item.colorName} · {persianSize(item.size)} · تعداد {item.quantity}</span></div>
               </div>)}
               {cart.length === 0 && <p className="py-8 text-center text-sm text-stone-400">سبد خرید خالی است.</p>}
               {cart.length > 0 && !quote && <p role="status" className="py-5 text-center text-xs leading-6 text-stone-400">{quoteLoading ? 'در حال دریافت قیمت و موجودی به‌روز…' : 'قیمت و موجودی به‌روز دریافت نشده است.'}</p>}

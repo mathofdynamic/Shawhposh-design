@@ -1,4 +1,4 @@
-export function resolveLegacyCartVariant<T extends { id: string; sku: string }>(
+export function resolveLegacyCartVariant<T extends { id: string; sku?: string }>(
   products: readonly { id: string; variants?: readonly T[] }[],
   item: { productId?: string; variantId?: string; sku?: string },
 ): T | undefined {

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useId, useState } from 'react';
 import { TrendingUp, TrendingDown, Minus, Info } from 'lucide-react';
 import { toFaDigits } from '../../utils/formatters';
 
@@ -26,6 +26,8 @@ export const KPICard: React.FC<KPICardProps> = ({
   icon,
   isLoading = false,
 }) => {
+  const [definitionOpen, setDefinitionOpen] = useState(false);
+  const definitionId = useId();
   const isPositive = changePercent !== undefined && changePercent > 0;
   const isNegative = changePercent !== undefined && changePercent < 0;
   const isNeutral = changePercent === 0;
@@ -37,13 +39,17 @@ export const KPICard: React.FC<KPICardProps> = ({
         <div className="flex items-center gap-1.5 min-w-0">
           <span className="text-xs sm:text-[13px] font-semibold text-stone-300 truncate">{title}</span>
           {definition && (
-            <span
+            <button
+              type="button"
               title={definition}
-              className="text-stone-500 hover:text-stone-300 cursor-help shrink-0"
-              aria-label={definition}
+              aria-label={definitionOpen ? 'بستن تعریف شاخص' : `نمایش تعریف ${title}`}
+              aria-expanded={definitionOpen}
+              aria-controls={definitionId}
+              onClick={() => setDefinitionOpen(open => !open)}
+              className="flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-lg text-stone-400 transition hover:bg-white/5 hover:text-stone-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#eed29d]"
             >
               <Info size={13} />
-            </span>
+            </button>
           )}
         </div>
         {icon && (
@@ -52,6 +58,8 @@ export const KPICard: React.FC<KPICardProps> = ({
           </div>
         )}
       </div>
+
+      {definition && <p id={definitionId} className={definitionOpen ? 'mb-1 text-[10px] leading-5 text-stone-400' : 'hidden'}>{definition}</p>}
 
       {/* Main Metric Value & Unit */}
       <div className="my-1">

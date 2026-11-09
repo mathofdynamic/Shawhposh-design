@@ -1,8 +1,8 @@
 import { useState, useEffect, useRef } from 'react';
-import { Search, Sliders, Filter, Phone, MapPin, Eye, ArrowLeft, CheckCircle, Shirt, Settings } from 'lucide-react';
+import { Search, Sliders, Filter, Eye, ArrowLeft, CheckCircle, Shirt, Settings, LoaderCircle } from 'lucide-react';
 import Navbar from './components/Navbar';
-import Hero from './components/Hero';
-import BentoShowcase from './components/BentoShowcase';
+import { DiscountedShowcase } from './components/DiscountedShowcase';
+import { GarmentCategoryNavigation } from './components/GarmentCategoryNavigation';
 import ProductCard from './components/ProductCard';
 import ProductDetail from './components/ProductDetail';
 import PodDesigner from './components/PodDesigner';
@@ -29,12 +29,18 @@ function readLegacyCart(): CartItem[] {
     const raw = localStorage.getItem('shahpoosh_cart');
     const value: unknown = raw ? JSON.parse(raw) : [];
     if (!Array.isArray(value)) return [];
-    return value.filter((item): item is CartItem => Boolean(item && typeof item === 'object'
+    const validItems = value.filter((item): item is CartItem => Boolean(item && typeof item === 'object'
       && typeof item.productId === 'string' && typeof item.productName === 'string'
       && typeof item.id === 'string' && typeof item.price === 'number' && Number.isFinite(item.price)
       && Number.isInteger(item.quantity) && item.quantity > 0
       && item.color && typeof item.color.name === 'string' && typeof item.color.hex === 'string'
       && typeof item.size === 'string' && typeof item.image === 'string'));
+    return validItems.map(item => ({
+      id: item.id, productId: item.productId, variantId: item.variantId, sku: item.sku,
+      productName: item.productName, price: item.price, quantity: item.quantity,
+      color: item.color, size: item.size, image: item.image,
+      availabilityCode: item.availabilityCode ?? null, isCustom: item.isCustom,
+    }));
   } catch {
     return [];
   }
@@ -67,7 +73,7 @@ export default function App() {
       (window.location.pathname.startsWith('/admin') ||
         window.location.hash.startsWith('#admin')));
 
-  const { products: PRODUCTS, categories:catalogCategories, loading: catalogLoading, error: catalogError } = useCatalog(!isAdminView);
+  const { products: PRODUCTS, categories:catalogCategories, loading: catalogLoading, error: catalogError, retry: retryCatalog } = useCatalog(!isAdminView);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   useEffect(() => {
     setSelectedProduct(current => current ? PRODUCTS.find(p => p.id === current.id) || null : null);
@@ -250,6 +256,8 @@ export default function App() {
 
   // Shop state toggling
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
+  const [selectedGarmentType, setSelectedGarmentType] = useState<string>('all');
+  const focusShopHeadingOnMount = useRef(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [sortBy, setSortBy] = useState<'default' | 'price-asc' | 'price-desc'>('default');
 
@@ -260,9 +268,9 @@ export default function App() {
       return;
     }
     const product = PRODUCTS.find(item => item.id === newItem.productId);
-    const variant = product?.variants?.find(item => item.id === newItem.variantId && item.sku === newItem.sku);
-    if (!product || !variant || newItem.quantity < 1 || newItem.quantity > variant.available) {
-      setCartError('این اندازه یا تعداد دیگر موجود نیست. موجودی فعلی را بررسی کنید.');
+    const variant = product?.variants?.find(item => item.id === newItem.variantId);
+    if (!product || !variant || newItem.quantity < 1 || newItem.quantity > 20 || !variant.inStock) {
+      setCartError('این اندازه در حال حاضر برای سفارش در دسترس نیست؛ محصول دیگری انتخاب کنید یا بعداً دوباره تلاش کنید.');
       return;
     }
     if (user) {
@@ -275,12 +283,12 @@ export default function App() {
       });
       return;
     }
-    const guestItem = { ...newItem, price: variant.priceTomans ?? product.price, availableQuantity: variant.available, availabilityCode: null };
+    const guestItem = { ...newItem, price: variant.priceTomans ?? product.price, availabilityCode: null };
     setLocalCart(previous => {
       const existing = previous.find(item => item.variantId === variant.id);
       const quantity = (existing?.quantity ?? 0) + newItem.quantity;
-      if (quantity > variant.available) {
-        setCartError(`فقط ${variant.available.toLocaleString('fa-IR')} عدد از این اندازه موجود است.`);
+      if (quantity > 20) {
+        setCartError('برای هر محصول حداکثر ۲۰ عدد می‌توانید به سبد خرید اضافه کنید.');
         return previous;
       }
       if (existing) return previous.map(item => item.variantId === variant.id ? { ...item, quantity } : item);
@@ -293,7 +301,7 @@ export default function App() {
       void updateCartQuantity(id, newQty).then(result => setServerCart(result.cart)).catch(failure => setCartError(failure instanceof Error ? failure.message : 'تعداد به‌روزرسانی نشد.'));
       return;
     }
-    setLocalCart(previous => previous.map(item => item.id === id ? { ...item, quantity: Math.min(newQty, item.availableQuantity ?? newQty) } : item));
+    setLocalCart(previous => previous.map(item => item.id === id ? { ...item, quantity: Math.max(1, Math.min(newQty, 20)) } : item));
   };
 
   const handleRemoveItem = (id: string) => {
@@ -326,7 +334,7 @@ export default function App() {
       return;
     }
     setActiveTab('checkout');
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    window.scrollTo({ top: 0, behavior: prefersReducedMotion ? 'auto' : 'smooth' });
   };
 
   const refreshServerCart = async () => {
@@ -344,15 +352,16 @@ export default function App() {
   const handleSelectProduct = (product: Product) => {
     setSelectedProduct(product);
     setActiveTab('detail');
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    window.scrollTo({ top: 0, behavior: prefersReducedMotion ? 'auto' : 'smooth' });
   };
 
   // Filter products
   const filteredProducts = PRODUCTS.filter((product) => {
     const isCategoryMatch = selectedCategory === 'all' || product.category === selectedCategory;
+    const isGarmentTypeMatch = selectedGarmentType === 'all' || product.garmentType === selectedGarmentType;
     const isSearchMatch = product.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
                           product.description.toLowerCase().includes(searchQuery.toLowerCase());
-    return isCategoryMatch && isSearchMatch;
+    return isCategoryMatch && isGarmentTypeMatch && isSearchMatch;
   });
 
   // Sort products
@@ -361,6 +370,23 @@ export default function App() {
     if (sortBy === 'price-desc') return b.price - a.price;
     return 0; // default
   });
+
+  const garmentLabelByType: Record<string, string> = {
+    hoodie: 'هودی',
+    dors: 'دورس',
+    tshirt: 'تیشرت',
+    sweatshirt: 'سویشرت',
+    halfzip: 'نیم‌زیپ',
+    pants: 'شلوار',
+  };
+  const garmentCatalogTitleByType: Record<string, string> = {
+    hoodie: 'هودی‌های آماده',
+    dors: 'دورس‌های آماده',
+    tshirt: 'تیشرت‌های آماده',
+    sweatshirt: 'سویشرت‌های آماده',
+    halfzip: 'نیم‌زیپ‌های آماده',
+    pants: 'شلوارهای آماده',
+  };
 
   // Isolated Admin Environment Gate
   if (isAdminView) {
@@ -371,7 +397,7 @@ export default function App() {
             setActiveTab('home');
             window.history.pushState({}, '', '/');
             window.location.hash = '';
-            window.scrollTo({ top: 0, behavior: 'smooth' });
+            window.scrollTo({ top: 0, behavior: prefersReducedMotion ? 'auto' : 'smooth' });
           }}
         >
           <StaffAuth><CatalogProvider><AdminLayout /></CatalogProvider></StaffAuth>
@@ -381,12 +407,11 @@ export default function App() {
   }
 
   return (
-    <main className={`min-h-screen flex flex-col antialiased overflow-x-hidden w-full max-w-full transition-colors duration-300 ${
+    <div className={`min-h-screen flex flex-col antialiased overflow-x-hidden w-full max-w-full transition-colors duration-300 ${
       theme === 'dark' ? 'bg-[#0e0d0c] text-[#f5f2eb]' : 'bg-[#fafafa] text-[#1a1917]'
     }`}>
+      <a href="#main-content" className="sr-only z-[100] rounded-lg bg-[#ba8d3d] px-4 py-3 font-bold text-black focus:not-sr-only focus:fixed focus:left-4 focus:top-4">رفتن به محتوای اصلی</a>
       {/* Floating Header */}
-      {catalogLoading && <div role="status" className="fixed bottom-4 left-4 z-40 rounded-xl bg-black/90 p-3 text-stone-200">در حال دریافت محصولات…</div>}
-      {catalogError && <div role="alert" className="fixed bottom-4 left-4 z-40 rounded-xl bg-black/90 p-3 text-red-300">{catalogError}</div>}
       {authError && <div role="alert" className="fixed bottom-4 right-4 z-50 rounded-xl bg-black/90 p-3 text-red-300">{authError}<button onClick={()=>void handleLogout()} className="mr-3 underline">تلاش دوباره</button></div>}
       {cartLoading && <div role="status" className="fixed bottom-4 right-4 z-40 rounded-xl bg-black/90 p-3 text-stone-200">در حال دریافت سبد خرید…</div>}
       {cartError && <div role="alert" className="fixed bottom-4 right-4 z-50 max-w-sm rounded-xl border border-red-400/20 bg-black/95 p-3 text-xs text-red-200">{cartError}{user && <button onClick={() => setCartRefreshToken(value => value + 1)} className="mr-3 underline">تلاش دوباره</button>}</div>}
@@ -396,7 +421,7 @@ export default function App() {
         setActiveTab={(tab) => {
           setActiveTab(tab);
           setSelectedProduct(null);
-          window.scrollTo({ top: 0, behavior: 'smooth' });
+          window.scrollTo({ top: 0, behavior: prefersReducedMotion ? 'auto' : 'smooth' });
         }} 
         cart={cart}
         setCartOpen={setCartOpen}
@@ -405,125 +430,49 @@ export default function App() {
         user={user}
         onLoginClick={() => setAuthPage('login')}
         onLogout={handleLogout}
-        onAccountClick={() => { setActiveTab('account'); window.scrollTo({ top: 0, behavior: 'smooth' }); }}
+        onAccountClick={() => { setActiveTab('account'); window.scrollTo({ top: 0, behavior: prefersReducedMotion ? 'auto' : 'smooth' }); }}
         onAdminClick={() => {
           setActiveTab('admin');
           window.history.pushState({}, '', '/admin/overview/dashboard');
-          window.scrollTo({ top: 0, behavior: 'smooth' });
+          window.scrollTo({ top: 0, behavior: prefersReducedMotion ? 'auto' : 'smooth' });
         }}
       />
       {cartNotice && <div role="status" className="mx-auto mt-24 w-[calc(100%-2rem)] max-w-5xl rounded-xl border border-[#ba8d3d]/20 bg-black/95 p-3 text-xs text-[#eed29d]">{cartNotice}<button onClick={() => setCartNotice('')} className="mr-3 underline">بستن</button></div>}
 
       {/* Primary Page views */}
-      <div className="flex-1 w-full relative">
+      <main id="main-content" className="flex-1 w-full relative">
         <AnimatePresence mode="wait">
           <motion.div
             key={activeTab}
             initial={prefersReducedMotion ? false : { opacity: 0, y: 12 }}
             animate={{ opacity: 1, y: 0 }}
             exit={prefersReducedMotion ? { opacity: 0 } : { opacity: 0, y: -12 }}
-            transition={prefersReducedMotion ? { duration: 0 } : { duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
+            transition={prefersReducedMotion ? { duration: 0 } : { duration: 0.12, ease: [0.16, 1, 0.3, 1] }}
             className="w-full"
           >
             {activeTab === 'home' && (
-              <div className="animate-fade-in animate-duration-500">
-            <Hero 
-              theme={theme}
-              products={PRODUCTS}
-              onStartDesign={() => setActiveTab('designer')} 
-              onExploreProducts={() => setActiveTab('shop')} 
-            />
-            <BentoShowcase 
-              theme={theme}
-              categories={catalogCategories}
-              productCount={PRODUCTS.length}
-              onStartDesign={() => setActiveTab('designer')}
-              onSelectCategory={(cat) => {
-                if (cat !== 'pod') {
-                  setSelectedCategory(cat as any);
+              <>
+                <GarmentCategoryNavigation isDark={isDark} onSelect={category => {
+                  setSelectedGarmentType(category);
+                  setSelectedCategory('all');
+                  focusShopHeadingOnMount.current = true;
                   setActiveTab('shop');
-                } else {
-                  setActiveTab('designer');
-                }
-                window.scrollTo({ top: 0, behavior: 'smooth' });
-              }}
-            />
-            
-            {/* Quick pre-selected designs view */}
-            <section className="py-24 px-6 md:px-12 bg-grid-lines">
-              <div className="max-w-7xl mx-auto">
-                <motion.div 
-                  initial={{ opacity: 0, y: 20, filter: 'blur(4px)' }}
-                  whileInView={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
-                  viewport={{ once: true, margin: "-100px" }}
-                  transition={{ duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
-                  className="flex flex-col md:flex-row justify-between items-end mb-16"
-                >
-                  <div className="text-right">
-                    <span className="text-[10px] text-gray-500 font-mono">پوشاک اصیل برگزیده</span>
-                    <h2 className={`text-2xl md:text-4xl font-display font-black tracking-tight mt-1 ${isDark ? 'text-white' : 'text-slate-900'}`}>
-                      تیشرت‌های آماده طلایی شهپوش
-                    </h2>
-                  </div>
-                  <button 
-                    onClick={() => setActiveTab('shop')}
-                    className={`mt-4 md:mt-0 text-xs font-semibold border-b pb-1 transition-all cursor-pointer ${
-                      isDark ? 'text-[#eed29d] border-[#ba8d3d]/40 hover:text-[#ba8d3d]' : 'text-[#ba8d3d] border-[#ba8d3d]/30 hover:text-[#a0742d]'
-                    }`}
-                  >
-                    گشت و گذار در تمام طرح‌ها ←
-                  </button>
-                </motion.div>
-
-                <motion.div 
-                  initial="hidden"
-                  whileInView="visible"
-                  viewport={{ once: true, margin: "-100px" }}
-                  variants={{
-                    hidden: { opacity: 0 },
-                    visible: {
-                      opacity: 1,
-                      transition: {
-                        staggerChildren: 0.08,
-                      }
-                    }
-                  }}
-                  className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 md:gap-8 text-right"
-                >
-                  {PRODUCTS.map((product) => (
-                    <motion.div
-                      key={product.id}
-                      variants={{
-                        hidden: { opacity: 0, y: 20, filter: 'blur(4px)' },
-                        visible: { opacity: 1, y: 0, filter: 'blur(0px)', transition: { duration: 0.5, ease: [0.16, 1, 0.3, 1] } }
-                      }}
-                    >
-                      <ProductCard 
-                        theme={theme}
-                        product={product}
-                        onSelect={handleSelectProduct}
-                      />
-                    </motion.div>
-                  ))}
-                </motion.div>
-              </div>
-            </section>
-
-          </div>
-        )}
-
+                  window.scrollTo({ top: 0, behavior: prefersReducedMotion ? 'auto' : 'smooth' });
+                }} />
+                <DiscountedShowcase products={PRODUCTS.filter(product => (product.discountPercent ?? 0) > 0)} isDark={isDark} isLoading={catalogLoading} error={catalogError} onSelect={handleSelectProduct} onRetry={retryCatalog} onBrowseCatalog={() => setActiveTab('shop')} />
+              </>
+            )}
         {activeTab === 'shop' && (
           <section className="pt-32 pb-24 px-6 md:px-12">
             <motion.div 
-              initial="hidden"
+              initial={prefersReducedMotion ? false : 'hidden'}
               animate="visible"
               variants={{
-                hidden: { opacity: 0 },
+                hidden: { opacity: prefersReducedMotion ? 1 : 0 },
                 visible: {
                   opacity: 1,
                   transition: {
-                    staggerChildren: 0.08,
-                    delayChildren: 0.05
+                    staggerChildren: prefersReducedMotion ? 0 : 0.035
                   }
                 }
               }}
@@ -532,29 +481,39 @@ export default function App() {
               {/* Showcase Banner */}
               <motion.div 
                 variants={{
-                  hidden: { opacity: 0, y: 24, filter: 'blur(8px)' },
-                  visible: { opacity: 1, y: 0, filter: 'blur(0px)', transition: { duration: 0.65, ease: [0.16, 1, 0.3, 1] } }
+                  hidden: prefersReducedMotion ? { opacity: 1, y: 0 } : { opacity: 0, y: 10 },
+                  visible: { opacity: 1, y: 0, transition: { duration: prefersReducedMotion ? 0 : 0.18, ease: [0.16, 1, 0.3, 1] } }
                 }}
                 className="mb-12 text-right"
               >
-                <span className="text-[10px] text-gray-500 font-mono">کاتالوگ اینترنتی شاه‌پوش</span>
-                <h1 className={`text-3xl md:text-5xl font-display font-medium tracking-tight mt-1 ${
+                <span className="text-[10px] text-gray-500 font-mono">کاتالوگ اینترنتی شهپوش</span>
+                <h1
+                  ref={element => {
+                    if (!element || !focusShopHeadingOnMount.current) return;
+                    focusShopHeadingOnMount.current = false;
+                    requestAnimationFrame(() => {
+                      if (element.isConnected) element.focus({ preventScroll: true });
+                    });
+                  }}
+                  tabIndex={-1}
+                  data-page-heading="shop"
+                  className={`text-xl leading-relaxed sm:text-3xl md:text-5xl font-display font-medium tracking-tight mt-1 ${
                   isDark ? 'text-white' : 'text-slate-900'
                 }`}>
-                  کاتالوگ تیشرت‌های آماده شهپوش
+                  <span className="whitespace-nowrap">کاتالوگ{selectedGarmentType === 'all' ? ' پوشاک' : ''}</span>{' '}<span className="whitespace-nowrap">{selectedGarmentType === 'all' ? 'آماده' : garmentCatalogTitleByType[selectedGarmentType] ?? 'پوشاک'} شهپوش</span>
                 </h1>
                 <p className={`text-xs mt-2 max-w-2xl leading-relaxed ${
                   isDark ? 'text-gray-400' : 'text-slate-600'
                 }`}>
-                  تیشرت‌های نخی درجه یک، دوخته شده با وسواس کارگاه‌های بافندگی ما، با طراحی‌های چشم‌گیر الهام گرفته شده از غنای ادبی و نمادهای مینیاتور ایران زمین.
+                  محصولات را بر پایه نوع پوشاک یا سبک طرح پیدا کنید.
                 </p>
               </motion.div>
 
               {/* Filtering Controls */}
               <motion.div 
                 variants={{
-                  hidden: { opacity: 0, y: 20, filter: 'blur(6px)' },
-                  visible: { opacity: 1, y: 0, filter: 'blur(0px)', transition: { duration: 0.65, ease: [0.16, 1, 0.3, 1] } }
+                  hidden: prefersReducedMotion ? { opacity: 1, y: 0 } : { opacity: 0, y: 8 },
+                  visible: { opacity: 1, y: 0, transition: { duration: prefersReducedMotion ? 0 : 0.18, ease: [0.16, 1, 0.3, 1] } }
                 }}
                 className={`border rounded-[2rem] p-6 mb-12 flex flex-col md:flex-row gap-6 justify-between items-center text-right transition-colors duration-300 ${
                   isDark ? 'bg-[#141211] border-white/5' : 'bg-white border-slate-200/60 shadow-[0_15px_35px_rgba(0,0,0,0.02)]'
@@ -566,46 +525,43 @@ export default function App() {
                   isDark ? 'bg-[#0e0d0c] border-white/5' : 'bg-[#faf8f5] border-slate-200/60'
                 }`}>
                   <Search size={16} className="text-gray-500 shrink-0" />
+                  <label htmlFor="catalog-search" className="sr-only">جست‌وجوی محصولات</label>
                   <input
+                    id="catalog-search"
                     type="text"
                     dir="rtl"
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
-                    placeholder="جستجو در بین آثار..."
+                    placeholder="نام محصول، کد یا طرح"
                     className={`w-full bg-transparent px-3 py-3.5 text-xs outline-none text-right ${
-                      isDark ? 'text-white placeholder:text-gray-600' : 'text-slate-900 placeholder:text-slate-400'
+                      isDark ? 'text-white placeholder:text-stone-400' : 'text-slate-900 placeholder:text-slate-600'
                     }`}
                   />
                 </div>
 
-                {/* Category Switches */}
-                <div className="flex flex-wrap gap-2.5">
-                  {[
-                    { id: 'all', label: 'همه البسه' },
-                    ...catalogCategories.map(c=>({id:c.slug,label:({calligraphy:'کالیگرافی و نستعلیق',graphic:'بین‌المللی و کلاژ',minimalist:'مینیمال ایرانی'} as Record<string,string>)[c.slug]||c.nameFa}))
-                  ].map((cat) => (
-                    <button
-                      key={cat.id}
-                      onClick={() => setSelectedCategory(cat.id as any)}
-                      className={`px-4 py-2.5 rounded-xl text-xs font-semibold cursor-pointer transition-all duration-300 ${
-                        selectedCategory === cat.id 
-                          ? 'bg-[#ba8d3d] text-[#0e0d0c] font-bold shadow-md' 
-                          : isDark 
-                            ? 'bg-white/5 border border-white/5 text-gray-400 hover:text-white' 
-                            : 'bg-slate-50 border border-slate-200 text-slate-600 hover:text-slate-900 hover:bg-slate-100'
-                      }`}
-                    >
-                      {cat.label}
-                    </button>
-                  ))}
+                <div className="flex flex-1 flex-col gap-3">
+                  <div><p className="mb-2 text-[10px] text-stone-500">نوع پوشاک</p><div className="flex flex-wrap gap-2">
+                    {[
+                      { id: 'all', label: 'همه پوشاک' }, { id: 'hoodie', label: 'هودی' }, { id: 'dors', label: 'دورس' },
+                      { id: 'tshirt', label: 'تیشرت' }, { id: 'sweatshirt', label: 'سویشرت' }, { id: 'halfzip', label: 'نیم‌زیپ' }, { id: 'pants', label: 'شلوار' },
+                    ].map(category => <button key={category.id} type="button" aria-pressed={selectedGarmentType === category.id} onClick={() => setSelectedGarmentType(category.id)} className={`inline-flex min-h-[44px] items-center justify-center rounded-lg px-3 py-2 text-[10px] font-semibold transition ${selectedGarmentType === category.id ? 'bg-[#ba8d3d] text-[#0e0d0c]' : isDark ? 'border border-white/5 bg-white/[0.03] text-stone-400 hover:text-white' : 'border border-slate-200 bg-white text-slate-600 hover:text-slate-900'}`}>{category.label}</button>)}
+                  </div></div>
+                  <div><p className="mb-2 text-[10px] text-stone-500">سبک طرح</p><div className="flex flex-wrap gap-2">
+                    {[
+                      { id: 'all', label: 'همه طرح‌ها' },
+                      ...catalogCategories.map(category => ({ id: category.slug, label: ({ calligraphy: 'کالیگرافی و نستعلیق', graphic: 'طرح‌های گرافیکی', minimalist: 'مینیمال ایرانی' } as Record<string, string>)[category.slug] || category.nameFa })),
+                    ].map(category => <button key={category.id} type="button" aria-pressed={selectedCategory === category.id} onClick={() => setSelectedCategory(category.id)} className={`inline-flex min-h-[44px] items-center justify-center rounded-lg px-3 py-2 text-[10px] font-semibold transition ${selectedCategory === category.id ? 'bg-[#ba8d3d] text-[#0e0d0c]' : isDark ? 'border border-white/5 bg-white/[0.03] text-stone-400 hover:text-white' : 'border border-slate-200 bg-white text-slate-600 hover:text-slate-900'}`}>{category.label}</button>)}
+                  </div></div>
                 </div>
 
                 {/* Sorting options */}
                 <div className={`flex items-center gap-2 border rounded-2xl p-1.5 shrink-0 self-start md:self-center transition-colors duration-300 ${
                   isDark ? 'bg-[#0e0d0c] border-white/5' : 'bg-[#faf8f5] border-slate-200/60'
                 }`}>
-                  <Filter size={12} className="text-[#ba8d3d] mr-2" />
+                  <Filter size={12} className="text-[var(--text-accent)] mr-2" />
+                  <label className="sr-only" htmlFor="catalog-sort">مرتب‌سازی محصولات</label>
                   <select
+                    id="catalog-sort"
                     value={sortBy}
                     onChange={(e) => setSortBy(e.target.value as any)}
                     className={`bg-transparent text-xs py-1.5 px-3.5 border-none outline-none text-right cursor-pointer min-w-[150px] ${
@@ -620,16 +576,34 @@ export default function App() {
 
               </motion.div>
 
-              {/* Product Grid output */}
-              {sortedProducts.length === 0 ? (
+              {catalogError && PRODUCTS.length > 0 && <div role="status" className={`mb-6 flex flex-wrap items-center justify-between gap-3 rounded-xl border px-4 py-3 text-sm ${isDark ? 'border-amber-200/20 bg-amber-200/5 text-stone-200' : 'border-amber-800/20 bg-amber-50 text-slate-800'}`}>
+                <span>اتصال به فهرست محصولات برقرار نشد؛ آخرین اطلاعات در حال نمایش است.</span>
+                <button type="button" onClick={retryCatalog} className="min-h-11 rounded-lg px-3 font-semibold underline underline-offset-4 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--focus-ring)]">تلاش دوباره</button>
+              </div>}
+
+              <section aria-labelledby="catalog-products-heading">
+              <h2 id="catalog-products-heading" className="sr-only">محصولات کاتالوگ</h2>
+              {catalogLoading && PRODUCTS.length === 0 ? (
+                <div role="status" className={`flex min-h-48 flex-col items-center justify-center rounded-3xl border px-6 text-center ${isDark ? 'border-white/10 bg-[#141211]/50 text-stone-300' : 'border-slate-200 bg-white text-slate-700'}`}>
+                  <LoaderCircle aria-hidden="true" className="animate-spin motion-reduce:animate-none text-[var(--text-accent)]" size={28}/>
+                  <p className="mt-4 text-sm">در حال دریافت محصولات…</p>
+                </div>
+              ) : catalogError && PRODUCTS.length === 0 ? (
+                <div role="alert" className={`rounded-3xl border px-6 py-12 text-center ${isDark ? 'border-rose-200/15 bg-[#141211]/50 text-stone-200' : 'border-rose-800/20 bg-rose-50 text-slate-800'}`}>
+                  <h3 className="text-base font-bold">دریافت محصولات انجام نشد</h3>
+                  <p className={`mx-auto mt-2 max-w-sm text-sm leading-6 ${isDark ? 'text-stone-400' : 'text-slate-600'}`}>اتصال را بررسی کنید و دوباره تلاش کنید.</p>
+                  <button type="button" onClick={retryCatalog} className="mt-5 min-h-11 rounded-full bg-[#ba8d3d] px-5 font-bold text-[#17130c] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--focus-ring)]">تلاش دوباره</button>
+                </div>
+              ) : sortedProducts.length === 0 ? (
                 <motion.div 
-                  initial={{ opacity: 0, scale: 0.95 }}
-                  animate={{ opacity: 1, scale: 1 }}
+                  initial={prefersReducedMotion ? false : { opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  transition={{ duration: prefersReducedMotion ? 0 : 0.18 }}
                   className="py-20 text-center bg-[#141211]/50 border border-white/5 rounded-3xl"
                 >
                   <Shirt className="mx-auto text-gray-500 stroke-1 mb-4" size={32} />
-                  <h3 className="text-white text-base font-bold mb-1">هیچ تیشرتی مطابق فیلتر یافت نشد</h3>
-                  <p className="text-gray-500 text-xs max-w-sm mx-auto leading-relaxed">کلمات جستجوی خود را تغییر داده یا دسته‌بندی تیشرت فرعی دیگری را آزمایش کنید.</p>
+                  <h3 className="text-white text-base font-bold mb-1">{PRODUCTS.length === 0 ? 'هنوز محصولی در کاتالوگ ثبت نشده است' : selectedGarmentType === 'all' ? 'محصولی مطابق فیلترها پیدا نشد' : `محصولی از گروه «${garmentLabelByType[selectedGarmentType] ?? 'پوشاک'}» پیدا نشد`}</h3>
+                  <p className="text-gray-500 text-xs max-w-sm mx-auto leading-relaxed">عبارت جستجو، دسته پوشاک یا سبک طرح را تغییر دهید.</p>
                 </motion.div>
               ) : (
                 <motion.div 
@@ -637,9 +611,7 @@ export default function App() {
                     hidden: { opacity: 0 },
                     visible: {
                       opacity: 1,
-                      transition: {
-                        staggerChildren: 0.05
-                      }
+                      transition: { staggerChildren: 0 }
                     }
                   }}
                   className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8"
@@ -648,8 +620,8 @@ export default function App() {
                     <motion.div
                       key={product.id}
                       variants={{
-                        hidden: { opacity: 0, y: 24, filter: 'blur(4px)' },
-                        visible: { opacity: 1, y: 0, filter: 'blur(0px)', transition: { duration: 0.55, ease: [0.16, 1, 0.3, 1] } }
+                        hidden: prefersReducedMotion ? { opacity: 1, y: 0 } : { opacity: 0, y: 8 },
+                        visible: { opacity: 1, y: 0, transition: { duration: prefersReducedMotion ? 0 : 0.18, ease: [0.16, 1, 0.3, 1] } }
                       }}
                     >
                       <ProductCard
@@ -661,14 +633,14 @@ export default function App() {
                   ))}
                 </motion.div>
               )}
+              </section>
 
             </motion.div>
           </section>
         )}
 
         {activeTab === 'detail' && selectedProduct && (
-          <div className="animate-fade-in animate-duration-500">
-            <ProductDetail
+          <ProductDetail
               theme={theme}
               product={selectedProduct}
               onBack={() => {
@@ -677,8 +649,7 @@ export default function App() {
               }}
               onAddToCart={handleAddToCart}
               onCustomize={handleCustomizeProduct}
-            />
-          </div>
+          />
         )}
 
         {activeTab==='detail'&&!selectedProduct&&<div role="status" className="p-12 text-center">این محصول دیگر در ویترین فعال نیست.<button onClick={()=>setActiveTab('shop')} className="block mx-auto mt-4 underline">بازگشت به محصولات</button></div>}
@@ -695,8 +666,8 @@ export default function App() {
         {activeTab === 'about' && (
           <section className="min-h-[70vh] px-6 pb-24 pt-32 md:px-12">
             <div className="mx-auto max-w-7xl text-right">
-              <span className="text-xs uppercase tracking-[0.18em] text-[#ba8d3d]">درباره شاه‌پوش</span>
-              <h1 className={`mt-3 text-3xl font-semibold md:text-5xl ${isDark ? 'text-white' : 'text-slate-900'}`}>فروشگاه شاه‌پوش</h1>
+              <span className="text-xs uppercase tracking-[0.18em] text-[var(--text-accent)]">درباره شهپوش</span>
+              <h1 className={`mt-3 text-3xl font-semibold md:text-5xl ${isDark ? 'text-white' : 'text-slate-900'}`}>فروشگاه شهپوش</h1>
               <p className={`mt-5 max-w-3xl text-sm leading-7 ${isDark ? 'text-stone-400' : 'text-slate-600'}`}>اطلاعات این صفحه از کاتالوگ ثبت‌شده در پایگاه داده فروشگاه می‌آید. تصویر محصول، جزئیات تولید و خدمات عملیاتی فقط پس از ثبت و تأیید نمایش داده می‌شوند.</p>
               <div className="mt-10 grid gap-4 md:grid-cols-3">
                 <article className="rounded-2xl border border-white/10 bg-[#141211] p-6"><h2 className="font-semibold text-[#eed29d]">کاتالوگ</h2><p className="mt-3 text-sm leading-6 text-stone-400">نام، تنوع، قیمت و موجودی از کاتالوگ فعلی بارگذاری می‌شود.</p></article>
@@ -733,7 +704,7 @@ export default function App() {
         )}
           </motion.div>
         </AnimatePresence>
-      </div>
+      </main>
 
       {/* Persistent Shopping Cart Sidebar Drawer */}
       <Cart
@@ -752,10 +723,10 @@ export default function App() {
         {/* Subtle decorative grid background in footer */}
         <div className="absolute inset-0 bg-[linear-gradient(to_right,#8080800a_1px,transparent_1px),linear-gradient(to_bottom,#8080800a_1px,transparent_1px)] bg-[size:14px_24px] pointer-events-none opacity-40"></div>
 
-        <div className="max-w-7xl mx-auto grid grid-cols-1 md:grid-cols-12 gap-12 relative z-10">
+        <div className="max-w-7xl mx-auto grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-8 sm:gap-x-12 sm:gap-y-8 lg:gap-12 relative z-10">
           
           {/* Logo brand intro Column - Span 5 */}
-          <div className="md:col-span-5 space-y-6">
+          <div className="sm:col-span-2 lg:col-span-5 space-y-6">
             <div className="flex items-center gap-4">
               <div className="relative group/footlogo">
                 <div className="absolute -inset-1 rounded-full bg-gradient-to-r from-[#ba8d3d] to-[#eed29d] opacity-25 group-hover/footlogo:opacity-100 blur-sm transition-opacity duration-500"></div>
@@ -769,7 +740,7 @@ export default function App() {
                 }`}>
                   پلتفرم ملبوسات فاخر شهپوش
                 </span>
-                <span className="text-[10px] text-[#ba8d3d]/90 font-medium tracking-wide">آتلیه طراحی و دوخت کژوال ایرانی</span>
+                <span className="text-xs text-[var(--text-accent)] font-medium tracking-wide">آتلیه طراحی و دوخت کژوال ایرانی</span>
               </div>
             </div>
             
@@ -779,52 +750,32 @@ export default function App() {
               شهپوش خانه ایرانی تیشرت‌های گرافیکی اصیل و آتلیه شخصی‌سازی شماست. ما با پیوند میان نقوش خطاطی، کالیگرافی اصیل و هندسه خیابانی مدرن، جامه‌ای درخور اصالت شما می‌آفرینیم.
             </p>
             
-            <div className="flex flex-col gap-3 pt-2">
-              <div className={`flex items-center gap-3 text-xs transition-colors ${isDark ? 'text-gray-450 text-gray-400' : 'text-slate-600'}`}>
-                <div className="w-6 h-6 rounded-lg bg-[#ba8d3d]/10 flex items-center justify-center">
-                  <Phone size={11} className="text-[#ba8d3d]" />
-                </div>
-                <div>
-                  <span className="text-gray-400 dark:text-gray-500 ml-1 text-[10px]">تماس با واحد پشتیبانی:</span>
-                  <span className="font-mono font-medium tracking-wide">۰۲۱-۸۸۹۹۲۲۰</span>
-                </div>
-              </div>
-              <div className={`flex items-center gap-3 text-xs transition-colors ${isDark ? 'text-gray-450 text-gray-400' : 'text-slate-600'}`}>
-                <div className="w-6 h-6 rounded-lg bg-[#ba8d3d]/10 flex items-center justify-center">
-                  <MapPin size={11} className="text-[#ba8d3d]" />
-                </div>
-                <div>
-                  <span className="text-gray-400 dark:text-gray-500 ml-1 text-[10px]">کارگاه مرکزی:</span>
-                  <span className="font-sans">تهران، خیابان هنرستان غربی، کوی چاپخانه شهپوش</span>
-                </div>
-              </div>
-            </div>
           </div>
 
           {/* Catalog switches Columns 2 */}
-          <div className="md:col-span-2 space-y-4">
-            <h4 className="text-[11px] font-black tracking-wider text-[#ba8d3d] border-r-2 border-[#ba8d3d]/40 pr-2">بایگانی مجموعه‌ها</h4>
-            <ul className={`space-y-3 text-xs transition-colors ${isDark ? 'text-gray-400' : 'text-slate-600'}`}>
+          <div className="lg:col-span-2 space-y-4">
+            <h4 className="text-xs font-black tracking-wider text-[var(--text-accent)] border-r-2 border-[#ba8d3d]/40 pr-2">بایگانی مجموعه‌ها</h4>
+            <ul className={`space-y-1 text-xs transition-colors [&_button]:min-h-11 [&_button]:w-full [&_button]:justify-start ${isDark ? 'text-gray-400' : 'text-slate-600'}`}>
               <li>
-                <button onClick={() => { setSelectedCategory('calligraphy'); setActiveTab('shop'); }} className={`transition-colors duration-300 cursor-pointer flex items-center gap-1.5 hover:translate-x-[-4px] ${isDark ? 'hover:text-white' : 'hover:text-[#ba8d3d]'}`}>
+                <button onClick={() => { setSelectedCategory('calligraphy'); setActiveTab('shop'); }} className={`transition-colors duration-300 cursor-pointer flex items-center gap-1.5 hover:translate-x-[-4px] ${isDark ? 'hover:text-white' : 'hover:text-[var(--text-accent)]'}`}>
                   <span className="w-1 h-1 rounded-full bg-[#ba8d3d]/60"></span>
                   تیشرت‌های خوشنویسی
                 </button>
               </li>
               <li>
-                <button onClick={() => { setSelectedCategory('graphic'); setActiveTab('shop'); }} className={`transition-colors duration-300 cursor-pointer flex items-center gap-1.5 hover:translate-x-[-4px] ${isDark ? 'hover:text-white' : 'hover:text-[#ba8d3d]'}`}>
+                <button onClick={() => { setSelectedCategory('graphic'); setActiveTab('shop'); }} className={`transition-colors duration-300 cursor-pointer flex items-center gap-1.5 hover:translate-x-[-4px] ${isDark ? 'hover:text-white' : 'hover:text-[var(--text-accent)]'}`}>
                   <span className="w-1 h-1 rounded-full bg-[#ba8d3d]/60"></span>
-                  تصویرسازی‌های تاریخی
+                  طرح‌های گرافیکی
                 </button>
               </li>
               <li>
-                <button onClick={() => { setSelectedCategory('minimalist'); setActiveTab('shop'); }} className={`transition-colors duration-300 cursor-pointer flex items-center gap-1.5 hover:translate-x-[-4px] ${isDark ? 'hover:text-white' : 'hover:text-[#ba8d3d]'}`}>
+                <button onClick={() => { setSelectedCategory('minimalist'); setActiveTab('shop'); }} className={`transition-colors duration-300 cursor-pointer flex items-center gap-1.5 hover:translate-x-[-4px] ${isDark ? 'hover:text-white' : 'hover:text-[var(--text-accent)]'}`}>
                   <span className="w-1 h-1 rounded-full bg-[#ba8d3d]/60"></span>
                   تیشرت‌های منقش کوفی
                 </button>
               </li>
               <li>
-                <button onClick={() => { setActiveTab('designer'); }} className={`transition-colors duration-300 cursor-pointer flex items-center gap-1.5 hover:translate-x-[-4px] ${isDark ? 'hover:text-white' : 'hover:text-[#ba8d3d]'}`}>
+                <button onClick={() => { setActiveTab('designer'); }} className={`transition-colors duration-300 cursor-pointer flex items-center gap-1.5 hover:translate-x-[-4px] ${isDark ? 'hover:text-white' : 'hover:text-[var(--text-accent)]'}`}>
                   <span className="w-1 h-1 rounded-full bg-[#ba8d3d]/60"></span>
                   طراحی اختصاصی با هوش مصنوعی
                 </button>
@@ -833,29 +784,29 @@ export default function App() {
           </div>
 
           {/* Quick links Columns 2 */}
-          <div className="md:col-span-2 space-y-4">
-            <h4 className="text-[11px] font-black tracking-wider text-[#ba8d3d] border-r-2 border-[#ba8d3d]/40 pr-2">نقشه راهبری سایت</h4>
-            <ul className={`space-y-3 text-xs transition-colors ${isDark ? 'text-gray-400' : 'text-slate-600'}`}>
+          <div className="lg:col-span-2 space-y-4">
+            <h4 className="text-xs font-black tracking-wider text-[var(--text-accent)] border-r-2 border-[#ba8d3d]/40 pr-2">نقشه راهبری سایت</h4>
+            <ul className={`space-y-1 text-xs transition-colors [&_button]:min-h-11 [&_button]:w-full [&_button]:justify-start ${isDark ? 'text-gray-400' : 'text-slate-600'}`}>
               <li>
-                <button onClick={() => setActiveTab('home')} className={`transition-colors duration-300 cursor-pointer flex items-center gap-1.5 hover:translate-x-[-4px] ${isDark ? 'hover:text-white' : 'hover:text-[#ba8d3d]'}`}>
+                <button onClick={() => setActiveTab('home')} className={`transition-colors duration-300 cursor-pointer flex items-center gap-1.5 hover:translate-x-[-4px] ${isDark ? 'hover:text-white' : 'hover:text-[var(--text-accent)]'}`}>
                   <span className="w-1 h-1 rounded-full bg-slate-400/40"></span>
                   صفحه نخست
                 </button>
               </li>
               <li>
-                <button onClick={() => setActiveTab('shop')} className={`transition-colors duration-300 cursor-pointer flex items-center gap-1.5 hover:translate-x-[-4px] ${isDark ? 'hover:text-white' : 'hover:text-[#ba8d3d]'}`}>
+                <button onClick={() => setActiveTab('shop')} className={`transition-colors duration-300 cursor-pointer flex items-center gap-1.5 hover:translate-x-[-4px] ${isDark ? 'hover:text-white' : 'hover:text-[var(--text-accent)]'}`}>
                   <span className="w-1 h-1 rounded-full bg-slate-400/40"></span>
                   فروشگاه ملبوسات
                 </button>
               </li>
               <li>
-                <button onClick={() => setActiveTab('designer')} className={`transition-colors duration-300 cursor-pointer flex items-center gap-1.5 hover:translate-x-[-4px] ${isDark ? 'hover:text-white' : 'hover:text-[#ba8d3d]'}`}>
+                <button onClick={() => setActiveTab('designer')} className={`transition-colors duration-300 cursor-pointer flex items-center gap-1.5 hover:translate-x-[-4px] ${isDark ? 'hover:text-white' : 'hover:text-[var(--text-accent)]'}`}>
                   <span className="w-1 h-1 rounded-full bg-slate-400/40"></span>
                   آتلیه شخصی‌سازی لباس
                 </button>
               </li>
               <li>
-                <button onClick={() => setActiveTab('about')} className={`transition-colors duration-300 cursor-pointer flex items-center gap-1.5 hover:translate-x-[-4px] ${isDark ? 'hover:text-white' : 'hover:text-[#ba8d3d]'}`}>
+                <button onClick={() => setActiveTab('about')} className={`transition-colors duration-300 cursor-pointer flex items-center gap-1.5 hover:translate-x-[-4px] ${isDark ? 'hover:text-white' : 'hover:text-[var(--text-accent)]'}`}>
                   <span className="w-1 h-1 rounded-full bg-slate-400/40"></span>
                   درباره برند شهپوش
                 </button>
@@ -863,25 +814,25 @@ export default function App() {
             </ul>
           </div>
 
-          <div className="md:col-span-3 space-y-4">
-            <h4 className="text-[11px] font-black tracking-wider text-[#ba8d3d] border-r-2 border-[#ba8d3d]/40 pr-2">وضعیت فروشگاه</h4>
+          <div className="sm:col-span-2 lg:col-span-3 space-y-4">
+            <h4 className="text-xs font-black tracking-wider text-[var(--text-accent)] border-r-2 border-[#ba8d3d]/40 pr-2">وضعیت فروشگاه</h4>
             <div className="grid grid-cols-2 gap-3">
-              <div className={`p-4 rounded-2xl border flex flex-col items-center justify-center text-center gap-2 transition-all duration-300 hover:scale-[1.03] ${
-                isDark ? 'bg-[#151312] border-white/5 hover:border-[#ba8d3d]/20 shadow-lg' : 'bg-white border-slate-200/80 hover:border-[#ba8d3d]/30 shadow-sm text-slate-800'
+              <div className={`p-4 rounded-2xl border flex flex-col items-center justify-center text-center gap-2 ${
+                isDark ? 'bg-[#151312] border-white/5 shadow-lg' : 'bg-white border-slate-200/80 shadow-sm text-slate-800'
               }`}>
-                <div className="w-7 h-7 rounded-full bg-[#ba8d3d]/10 flex items-center justify-center text-[10px] text-[#ba8d3d] font-bold">ک</div>
-                <span className="text-[10px] text-[#eed29d] font-extrabold">کاتالوگ</span>
-                <span className={`text-[8px] leading-normal ${isDark ? 'text-gray-500' : 'text-slate-550'}`}>محصولات از پایگاه داده</span>
+                <div className="w-7 h-7 rounded-full bg-[#ba8d3d]/10 flex items-center justify-center text-[10px] text-[var(--text-accent)] font-bold">ک</div>
+                <span className={`text-xs font-extrabold ${isDark ? 'text-[#eed29d]' : 'text-[var(--text-accent)]'}`}>کاتالوگ</span>
+                <span className={`text-xs leading-normal ${isDark ? 'text-gray-500' : 'text-slate-550'}`}>محصولات از پایگاه داده</span>
               </div>
-              <div className={`p-4 rounded-2xl border flex flex-col items-center justify-center text-center gap-2 transition-all duration-300 hover:scale-[1.03] ${
-                isDark ? 'bg-[#151312] border-white/5 hover:border-[#ba8d3d]/20 shadow-lg' : 'bg-white border-slate-200/80 hover:border-[#ba8d3d]/30 shadow-sm text-slate-800'
+              <div className={`p-4 rounded-2xl border flex flex-col items-center justify-center text-center gap-2 ${
+                isDark ? 'bg-[#151312] border-white/5 shadow-lg' : 'bg-white border-slate-200/80 shadow-sm text-slate-800'
               }`}>
-                <div className="w-7 h-7 rounded-full bg-[#ba8d3d]/10 flex items-center justify-center text-[10px] text-[#ba8d3d] font-bold">پ</div>
-                <span className="text-[10px] text-[#eed29d] font-extrabold">روش‌های پرداخت</span>
-                <span className={`text-[8px] leading-normal ${isDark ? 'text-gray-500' : 'text-slate-550'}`}>پس از پیکربندی واقعی فعال می‌شوند</span>
+                <div className="w-7 h-7 rounded-full bg-[#ba8d3d]/10 flex items-center justify-center text-[10px] text-[var(--text-accent)] font-bold">پ</div>
+                <span className={`text-xs font-extrabold ${isDark ? 'text-[#eed29d]' : 'text-[var(--text-accent)]'}`}>روش‌های پرداخت</span>
+                <span className={`text-xs leading-normal ${isDark ? 'text-gray-500' : 'text-slate-550'}`}>پس از پیکربندی واقعی فعال می‌شوند</span>
               </div>
             </div>
-            <div className={`text-[9.5px] leading-relaxed transition-colors ${isDark ? 'text-gray-600' : 'text-slate-400'}`}>
+            <div className={`text-xs leading-relaxed transition-colors ${isDark ? 'text-gray-400' : 'text-slate-600'}`}>
               ثبت سفارش پس از تعیین هزینه ارسال و فعال‌سازی روش پرداخت در تنظیمات مدیریت در دسترس می‌شود.
             </div>
           </div>
@@ -889,22 +840,22 @@ export default function App() {
         </div>
 
         {/* Floating bottom credits */}
-        <div className={`max-w-7xl mx-auto mt-16 pt-8 border-t flex flex-col sm:flex-row justify-between items-center gap-4 text-[11px] transition-colors ${
+        <div className={`max-w-7xl mx-auto mt-16 pt-8 border-t flex flex-col sm:flex-row justify-between items-center gap-4 text-xs transition-colors ${
           isDark ? 'border-white/[0.05] text-gray-500' : 'border-slate-200 text-slate-500'
         }`}>
           <span>کپی‌رایت © تمام حقوق مادی و معنوی محصولات، تصاویر و الگوهای طراحی شده برای پلتفرم شهپوش محفوظ است.</span>
-          <div className="flex items-center gap-4">
-            <span className="tracking-wide">توسعه با عشق و افتخار در قطب فرهنگ و هنر پارس - ۱۴۰۵ خورشیدی</span>
+          <div className="flex flex-col sm:flex-row items-center gap-3 sm:gap-4">
+            <span className="tracking-wide text-center sm:text-right">توسعه با عشق و افتخار در قطب فرهنگ و هنر پارس - ۱۴۰۵ خورشیدی</span>
             <button
               onClick={() => {
                 setActiveTab('admin');
                 window.history.pushState({}, '', '/admin/overview/dashboard');
-                window.scrollTo({ top: 0, behavior: 'smooth' });
+                window.scrollTo({ top: 0, behavior: prefersReducedMotion ? 'auto' : 'smooth' });
               }}
-              className="hover:text-[#ba8d3d] transition-colors cursor-pointer inline-flex items-center gap-1.5 font-mono text-[10px] text-gray-400 bg-white/5 hover:bg-white/10 px-2.5 py-1 rounded-lg border border-white/5"
+              className={`min-h-11 min-w-max transition-colors cursor-pointer inline-flex items-center gap-1.5 font-mono text-xs px-3 py-2 rounded-lg border ${isDark ? 'text-gray-400 bg-white/5 hover:bg-white/10 hover:text-[#eed29d] border-white/5' : 'text-slate-700 bg-white hover:bg-slate-100 hover:text-[var(--text-accent)] border-slate-200'}`}
             >
-              <span>میز عملیات کارگاه</span>
-              <span className="bg-[#ba8d3d]/20 text-[#eed29d] px-1 rounded text-[8px] font-bold">مدیریت</span>
+              <span className="whitespace-nowrap">میز عملیات کارگاه</span>
+              <span className={`px-1 rounded text-xs font-bold ${isDark ? 'bg-[#ba8d3d]/20 text-[#eed29d]' : 'bg-[#ba8d3d]/10 text-[var(--text-accent)]'}`}>مدیریت</span>
             </button>
           </div>
         </div>
@@ -927,6 +878,6 @@ export default function App() {
           onNavigateToLogin={() => setAuthPage('login')}
         />
       )}
-    </main>
+    </div>
   );
 }

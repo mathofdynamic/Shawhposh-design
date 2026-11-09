@@ -40,9 +40,9 @@ export const AdminLayout: React.FC = () => {
         <aside className={`z-30 hidden shrink-0 flex-col border-l border-white/10 bg-[#110f0e] transition-all duration-200 lg:flex ${isCompact ? 'w-20' : 'w-64'}`}>
           <AdminSidebar currentRole={role} isCompact={isCompact} onToggleCompact={toggleCompact} />
         </aside>
-        <div ref={contentScrollRef} data-admin-scroll-root className="flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto">
+        <div ref={contentScrollRef} data-admin-scroll-root className="mb-[calc(3.5rem+env(safe-area-inset-bottom))] flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto lg:mb-0">
           <AdminHeader onOpenMobileMenu={() => setIsMobileDrawerOpen(true)} />
-          <main className={`mx-auto w-full flex-1 p-4 pb-24 sm:p-6 lg:p-8 lg:pb-8 ${width}`}>
+          <main className={`mx-auto w-full flex-1 p-4 pb-6 sm:p-6 sm:pb-6 lg:p-8 lg:pb-8 ${width}`}>
             <AdminPageDispatcher />
           </main>
         </div>

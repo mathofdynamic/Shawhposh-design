@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { db } from '../../db/connection';
 import { cartItems, cartMigrations, carts, inventory, productMedia, productVariants, products } from '../../db/schema';
 import { ApiError } from '../../lib/errors';
+import { applyProductDiscount } from '../catalog/pricing';
 
 export const addCartItemSchema = z.object({ variantId: z.string().uuid(), quantity: z.number().int().min(1).max(20) });
 export const setCartQuantitySchema = z.object({ quantity: z.number().int().min(1).max(20) });
@@ -32,7 +33,8 @@ export function cartView(userId: string) {
     .leftJoin(inventory, eq(productVariants.id, inventory.variantId))
     .where(eq(cartItems.cartId, cart.id)).orderBy(asc(cartItems.createdAt)).all();
   const items = rows.map(({ item, variant, product, stock }) => {
-    const unitPriceTomans = variant.priceTomans ?? product.basePriceTomans;
+    const unitPriceTomans = applyProductDiscount(variant.priceTomans ?? product.basePriceTomans,
+      typeof product.presentation.discountPercent === 'number' ? product.presentation.discountPercent : 0);
     const availableQuantity = product.status === 'active' && variant.status === 'active'
       ? Math.max(0, (stock?.onHand ?? 0) - (stock?.reserved ?? 0)) : 0;
     const availabilityCode = product.status !== 'active' ? 'PRODUCT_INACTIVE'
@@ -42,9 +44,9 @@ export function cartView(userId: string) {
       .where(eq(productMedia.productId, product.id)).orderBy(asc(productMedia.displayOrder)).get()?.url ?? '';
     return {
       id: item.id, productId: product.id, productName: product.name, image,
-      variantId: variant.id, sku: variant.sku, color: { name: variant.colorName, hex: variant.colorHex }, size: variant.size,
+      variantId: variant.id, color: { name: variant.colorName, hex: variant.colorHex }, size: variant.size,
       quantity: item.quantity, price: unitPriceTomans, unitPriceTomans, lineTotalTomans: unitPriceTomans * item.quantity,
-      availableQuantity, isAvailable: availabilityCode === null, availabilityCode,
+      isAvailable: availabilityCode === null, availabilityCode,
     };
   });
   const subtotalTomans = items.reduce((total, item) => total + item.lineTotalTomans, 0);
@@ -68,7 +70,7 @@ export function addCartItem(userId: string, input: unknown) {
     const { variant, available } = requirePurchasableVariant(body.variantId);
     const existing = tx.select().from(cartItems).where(and(eq(cartItems.cartId, cart.id), eq(cartItems.variantId, variant.id))).get();
     const quantity = (existing?.quantity ?? 0) + body.quantity;
-    if (quantity > available) throw new ApiError(409, 'OUT_OF_STOCK', available === 0 ? 'این اندازه دیگر موجود نیست.' : `فقط ${available} عدد از این اندازه موجود است.`, { availableQuantity: available });
+    if (quantity > available) throw new ApiError(409, 'OUT_OF_STOCK', available === 0 ? 'این اندازه دیگر موجود نیست.' : 'تعداد انتخاب‌شده از موجودی قابل فروش بیشتر است.');
     if (existing) tx.update(cartItems).set({ quantity, updatedAt: new Date() }).where(eq(cartItems.id, existing.id)).run();
     else tx.insert(cartItems).values({ cartId: cart.id, variantId: variant.id, quantity }).run();
     tx.update(carts).set({ updatedAt: new Date() }).where(eq(carts.id, cart.id)).run();
@@ -133,7 +135,7 @@ export function updateCartItem(userId: string, itemId: string, input: unknown) {
     const current = tx.select().from(cartItems).where(and(eq(cartItems.id, itemId), eq(cartItems.cartId, cart.id))).get();
     if (!current) throw new ApiError(404, 'NOT_FOUND', 'سبد خرید تغییر کرده است.');
     const { available } = requirePurchasableVariant(current.variantId);
-    if (quantity > available) throw new ApiError(409, 'OUT_OF_STOCK', available === 0 ? 'این اندازه دیگر موجود نیست.' : `فقط ${available} عدد از این اندازه موجود است.`, { availableQuantity: available });
+    if (quantity > available) throw new ApiError(409, 'OUT_OF_STOCK', available === 0 ? 'این اندازه دیگر موجود نیست.' : 'تعداد انتخاب‌شده از موجودی قابل فروش بیشتر است.');
     tx.update(cartItems).set({ quantity, updatedAt: new Date() }).where(eq(cartItems.id, itemId)).run();
     tx.update(carts).set({ updatedAt: new Date() }).where(eq(carts.id, cart.id)).run();
   }, { behavior: 'immediate' });

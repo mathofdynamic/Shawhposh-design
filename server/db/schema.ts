@@ -10,6 +10,11 @@ const timestamps = () => ({ createdAt: timestamp('created_at', { withTimezone: t
 export const users = sqliteTable('users', {
   id: uuid().primaryKey().$defaultFn(() => randomUUID()), email: text().unique(), phone: text().unique(), passwordHash: text('password_hash').notNull(), fullName: text('full_name').notNull(), status: text().default('active').notNull(), emailVerifiedAt: timestamp('email_verified_at', { withTimezone: true }), phoneVerifiedAt: timestamp('phone_verified_at', { withTimezone: true }), ...timestamps(),
 }, t => [check('user_identity', sql`${t.email} is not null or ${t.phone} is not null`)]);
+export const manualCustomers = sqliteTable('manual_customers', {
+  id: uuid().primaryKey().$defaultFn(() => randomUUID()),
+  name: text().notNull(), phone: text().unique().notNull(), email: text().unique(), notes: text().default('').notNull(),
+  status: text().default('active').notNull(), ...timestamps(),
+}, t => [check('manual_customer_name', sql`length(trim(${t.name})) > 0`), check('manual_customer_status', sql`${t.status} in ('active','inactive')`)]);
 export const staffUsers = sqliteTable('staff_users', {
   id: uuid().primaryKey().$defaultFn(() => randomUUID()), email: text().unique().notNull(), passwordHash: text('password_hash').notNull(), fullName: text('full_name').notNull(), role: text().notNull(), status: text().default('active').notNull(), ...timestamps(),
 }, t => [check('staff_role', sql`${t.role} in ('owner','store_manager','finance','production','inventory','support')`)]);
@@ -34,6 +39,27 @@ export const inventory = sqliteTable('inventory', {
 export const stockMovements = sqliteTable('stock_movements', {
   id: uuid().primaryKey().$defaultFn(() => randomUUID()), variantId: uuid('variant_id').references(() => productVariants.id).notNull(), movementType: text('movement_type').notNull(), quantityDelta: integer('quantity_delta').notNull(), onHandBefore: integer('on_hand_before').notNull(), onHandAfter: integer('on_hand_after').notNull(), referenceType: text('reference_type'), referenceId: text('reference_id'), reason: text().notNull(), actorStaffId: uuid('actor_staff_id').references(() => staffUsers.id), createdAt: timestamp('created_at', { withTimezone: true }).$defaultFn(() => new Date()).notNull(),
 });
+export const purchaseInvoices = sqliteTable('purchase_invoices', {
+  id: uuid().primaryKey().$defaultFn(() => randomUUID()),
+  supplierName: text('supplier_name').notNull(),
+  productId: uuid('product_id').references(() => products.id, { onDelete: 'set null' }),
+  productNameSnapshot: text('product_name_snapshot').notNull(),
+  quantity: integer().notNull(),
+  purchaseUnitPriceTomans: integer('purchase_unit_price_tomans').notNull(),
+  saleUnitPriceTomans: integer('sale_unit_price_tomans').notNull(),
+  deliveryCostTomans: integer('delivery_cost_tomans').default(0).notNull(),
+  printingCostTomans: integer('printing_cost_tomans').default(0).notNull(),
+  netProfitTomans: integer('net_profit_tomans').notNull(),
+  invoiceDate: timestamp('invoice_date', { withTimezone: true }).$defaultFn(() => new Date()).notNull(),
+  notes: text().default('').notNull(),
+  createdByStaffId: uuid('created_by_staff_id').references(() => staffUsers.id, { onDelete: 'set null' }),
+  ...timestamps(),
+}, t => [
+  check('purchase_invoice_quantity', sql`${t.quantity} > 0`),
+  check('purchase_invoice_amounts', sql`${t.purchaseUnitPriceTomans} >= 0 and ${t.saleUnitPriceTomans} >= 0 and ${t.deliveryCostTomans} >= 0 and ${t.printingCostTomans} >= 0`),
+  index('purchase_invoice_date_idx').on(t.invoiceDate),
+  index('purchase_invoice_supplier_idx').on(t.supplierName),
+]);
 
 export const customerAddresses = sqliteTable('customer_addresses', {
   id: uuid().primaryKey().$defaultFn(() => randomUUID()),

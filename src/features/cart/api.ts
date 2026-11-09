@@ -4,7 +4,6 @@ import type { CartItem } from '../../types';
 export interface ServerCartItem extends CartItem {
   unitPriceTomans: number;
   lineTotalTomans: number;
-  availableQuantity: number;
   availabilityCode: string | null;
 }
 

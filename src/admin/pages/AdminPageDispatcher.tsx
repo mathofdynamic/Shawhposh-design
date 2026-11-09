@@ -4,6 +4,7 @@ import { DashboardPage } from './overview/DashboardPage';
 import { OrdersPage } from './sales/OrdersPage';
 import { OrderDetailPage } from './sales/OrderDetailPage';
 import { PaymentsPage } from './sales/PaymentsPage';
+import { AccountingPage } from './sales/AccountingPage';
 import { PaymentDetailPage } from './sales/PaymentDetailPage';
 import { ProductsPage } from './catalog/ProductsPage';
 import { ProductEditor } from './catalog/ProductEditor';
@@ -24,6 +25,7 @@ export const AdminPageDispatcher: React.FC = () => {
     case 'orders': return <OrdersPage />;
     case 'order-detail': return <OrderDetailPage orderIdProp={params.id} />;
     case 'payments': return <PaymentsPage />;
+    case 'accounting': return <AccountingPage />;
     case 'payment-detail': return <PaymentDetailPage paymentId={params.id} />;
     case 'products': return <ProductsPage />;
     case 'product-create': return <ProductEditor productId="new" />;
