@@ -412,7 +412,7 @@ def _run_migration(sha: str, release: Path, stage_root: Path) -> None:
         "--property=RestrictSUIDSGID=yes",
         "--property=LockPersonality=yes",
         "--property=ReadWritePaths=/var/lib/shawhposh",
-        "--property=InaccessiblePaths=/home/ubuntu /var/backups/shawhposh /opt/shawhposh /var/www/shawhposh",
+        "--property=InaccessiblePaths=/home/ubuntu /var/backups/shawhposh /var/www/shawhposh",
         "--property=MemoryMax=160M",
         "--property=TasksMax=64",
         "--property=RuntimeMaxSec=300",
