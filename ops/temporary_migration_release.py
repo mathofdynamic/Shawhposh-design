@@ -59,8 +59,8 @@ EXPECTED_CHANGED_FILE_SHA256 = {
     "server/db/migrations/0006_simple_black_panther.sql": "ac889edc0ded0bc8ce0368aeab393ba111e05fabb33bef4f2c0fec26fb2b004f",
     "server/db/migrations/0007_correct_persian_catalog_copy.sql": "dd2bac8b7693182f2ad8d5dce97b585a836a5cdfcde13aab4ccfd8d6dec8ed2b",
     "server/db/migrations/meta/0006_snapshot.json": "fe3b465d214e6fd1508701bd860976bcae73b1d9974587dafb048cf0a320c545",
-    "server/db/migrations/meta/0007_snapshot.json": "0a6f5759a7361c1e35cedbac9997e94f54aaddba18a3c8f101c4558ce222f365",
-    "server/db/migrations/meta/_journal.json": "a03b8361d49ccedf4a60c56343eb11f8db91b7ec367206d9681ffeafd750571a",
+    "server/db/migrations/meta/0007_snapshot.json": "e4d8251e907fa669147cea0b4acb0e39b8acc232812c126cfdb2ff44b0eb1b12",
+    "server/db/migrations/meta/_journal.json": "99c204b8b5e9b8449048e75b0704429f53dba29a3503ff83723f4b43f2ae4fe1",
 }
 
 EXPECTED_MIGRATION_TREE = frozenset(
