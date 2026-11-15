@@ -53,10 +53,26 @@ export function Table<T>({
   ariaLabel = 'جدول داده‌های سامانه',
   mobileScrollHint = false,
 }: TableProps<T>) {
+  const scrollContainerRef = React.useRef<HTMLDivElement>(null);
   const safeColumns = columns || [];
   const safeData = data || [];
   const isAllSelected = selectedIds && safeData.length > 0 && safeData.every((row, i) => selectedIds.includes(keyExtractor(row, i)));
   const isIndeterminate = selectedIds && selectedIds.length > 0 && !isAllSelected;
+
+  React.useLayoutEffect(() => {
+    const container = scrollContainerRef.current;
+    if (!mobileScrollHint || !container) return;
+
+    const alignToRightEdge = () => {
+      container.scrollLeft = container.scrollWidth;
+    };
+
+    alignToRightEdge();
+    const observer = new ResizeObserver(alignToRightEdge);
+    observer.observe(container);
+    if (container.firstElementChild) observer.observe(container.firstElementChild);
+    return () => observer.disconnect();
+  }, [data, mobileScrollHint]);
 
   const rowPadding =
     density === 'compact'
@@ -69,15 +85,17 @@ export function Table<T>({
 
   return (
     <div className="w-full min-w-0 overflow-hidden border border-white/10 rounded-xl bg-[#131211] shadow-sm">
-      {mobileScrollHint && <p className="border-b border-white/5 bg-white/[0.015] px-3 py-2 text-right text-[10px] text-stone-400 sm:hidden">برای مشاهده همه ستون‌ها، جدول را افقی بکشید.</p>}
+      {mobileScrollHint && <p className="border-b border-white/5 bg-white/[0.015] px-3 py-2 text-right text-[10px] text-stone-400">برای مشاهده همه ستون‌ها، جدول را به‌صورت افقی پیمایش کنید.</p>}
       <div
+        ref={scrollContainerRef}
         className="overflow-x-auto scrollbar-thin scrollbar-thumb-white/25 scrollbar-track-white/5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#ba8d3d]"
+        dir={mobileScrollHint ? 'ltr' : undefined}
         role={mobileScrollHint ? 'region' : undefined}
         tabIndex={mobileScrollHint ? 0 : undefined}
-        aria-label={mobileScrollHint ? `${ariaLabel}. برای مشاهده همه ستون‌ها در موبایل افقی پیمایش کنید.` : undefined}
+        aria-label={mobileScrollHint ? `${ariaLabel}. برای مشاهده همه ستون‌ها، افقی پیمایش کنید.` : undefined}
         style={maxHeight ? { maxHeight, overflowY: 'auto' } : undefined}
       >
-        <table className="w-full text-right border-collapse select-text" aria-label={ariaLabel}>
+        <table dir={mobileScrollHint ? 'rtl' : undefined} className="w-full text-right border-collapse select-text" aria-label={ariaLabel}>
           <thead className={stickyHeader ? 'sticky top-0 z-10 bg-[#161413] shadow-sm' : 'bg-[#161413]'}>
             <tr className="border-b border-white/10">
               {onSelectAll && (
@@ -186,13 +204,15 @@ export function Table<T>({
                         className={`text-center ${rowPadding}`}
                         onClick={(e) => e.stopPropagation()}
                       >
-                        <input
-                          type="checkbox"
-                          checked={isSelected}
-                          onChange={() => onSelectRow(rowKey)}
-                          aria-label={`انتخاب ردیف ${rowKey}`}
-                          className="w-4 h-4 rounded bg-white/5 border-white/20 text-[#ba8d3d] focus:ring-[#ba8d3d] cursor-pointer"
-                        />
+                        <label className="inline-flex min-h-11 min-w-11 cursor-pointer items-center justify-center" aria-label={`انتخاب ردیف ${rowKey}`}>
+                          <input
+                            type="checkbox"
+                            checked={isSelected}
+                            onChange={() => onSelectRow(rowKey)}
+                            aria-label={`انتخاب ردیف ${rowKey}`}
+                            className="h-4 w-4 cursor-pointer rounded border-white/20 bg-white/5 text-[#ba8d3d] focus:ring-[#ba8d3d]"
+                          />
+                        </label>
                       </td>
                     )}
                     {safeColumns.map((col) => {

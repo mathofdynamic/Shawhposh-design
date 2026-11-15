@@ -4,25 +4,16 @@ import { AdminPageHeader } from '../../components/shell/AdminPageHeader';
 import { Button, useAppDialog, useToast } from '../../components/ui';
 import { useCatalogAdmin } from '../../features/CatalogProvider';
 import { useAdminRouter } from '../../router';
-import type { AdminProduct, GarmentType } from '../../domain/types';
+import type { AdminProduct } from '../../domain/types';
 
 interface ProductEditorProps { productId?: string; onBack?: () => void }
 
 type FormState = Pick<AdminProduct, 'name' | 'category' | 'description' | 'basePriceTomans' | 'status' | 'isCustomizable' | 'featured'> & {
-  garmentType: GarmentType;
   discountPercent: string;
 };
 
-const garmentOptions: Array<{ value: GarmentType; label: string }> = [
-  { value: 'hoodie', label: 'هودی' },
-  { value: 'dors', label: 'دورس' },
-  { value: 'tshirt', label: 'تیشرت' },
-  { value: 'sweatshirt', label: 'سویشرت' },
-  { value: 'halfzip', label: 'نیم‌زیپ' },
-  { value: 'pants', label: 'شلوار' },
-];
-
 const fieldClass = 'mt-1 block min-h-11 w-full rounded-lg border border-white/35 bg-[#10100f] px-3 py-2.5 text-sm text-stone-100 outline-none transition focus:border-[#ba8d3d] focus:ring-2 focus:ring-[#ba8d3d]/20';
+const garmentCategorySlugs = new Set(['tshirt', 'hoodie', 'dors', 'sweatshirt', 'halfzip', 'pants']);
 
 export const ProductEditor: React.FC<ProductEditorProps> = ({ productId, onBack }) => {
   const { navigate } = useAdminRouter();
@@ -31,11 +22,15 @@ export const ProductEditor: React.FC<ProductEditorProps> = ({ productId, onBack 
   const { state, getProductById, createProduct, updateProduct, deleteProduct, uploadProductImage, reload } = useCatalogAdmin();
   const isNew = !productId || productId === 'new';
   const current = useMemo(() => isNew ? undefined : getProductById(productId), [getProductById, isNew, productId]);
+  const garmentCategories = state.categories.filter(category => category.status === 'active' && garmentCategorySlugs.has(category.slug));
+  const currentCategory = current ? state.categories.find(category => category.slug === current.category) : undefined;
+  const productCategoryChoices = currentCategory && !garmentCategories.some(category => category.id === currentCategory.id)
+    ? [currentCategory, ...garmentCategories]
+    : garmentCategories;
   const [savedId, setSavedId] = useState('');
   const [form, setForm] = useState<FormState>(() => current ? {
     name: current.name,
     category: current.category,
-    garmentType: current.garmentType ?? 'tshirt',
     description: current.description,
     basePriceTomans: current.basePriceTomans,
     discountPercent: current.discountPercent ? String(current.discountPercent) : '',
@@ -43,8 +38,8 @@ export const ProductEditor: React.FC<ProductEditorProps> = ({ productId, onBack 
     isCustomizable: current.isCustomizable,
     featured: current.featured,
   } : {
-    name: '', category: state.categories.find((item) => item.status === 'active')?.slug ?? '', garmentType: 'tshirt',
-    description: '', basePriceTomans: 0, discountPercent: '', status: 'draft', isCustomizable: false, featured: false,
+    name: '', category: garmentCategories[0]?.slug ?? '',
+    description: '', basePriceTomans: 0, discountPercent: '', status: 'active', isCustomizable: false, featured: false,
   });
   const [keptImages, setKeptImages] = useState<string[]>(current?.images ?? []);
   const [imagesChanged, setImagesChanged] = useState(false);
@@ -149,8 +144,7 @@ export const ProductEditor: React.FC<ProductEditorProps> = ({ productId, onBack 
     {!current && !isNew ? <div role="alert" className="rounded-xl border border-amber-500/30 bg-amber-500/5 p-5 text-amber-200">این محصول در فهرست فعلی وجود ندارد.</div> : <form onSubmit={(event) => void save(event)} className="space-y-6 rounded-2xl border border-white/10 bg-[#141211] p-5 md:p-7">
       <div className="grid gap-3 md:grid-cols-2 md:gap-4">
         <label className="text-sm">نام محصول<input required maxLength={200} disabled={saving} value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} className={fieldClass}/></label>
-        <label className="text-sm">نوع پوشاک<select required disabled={saving} value={form.garmentType} onChange={(event) => setForm({ ...form, garmentType: event.target.value as GarmentType })} className={fieldClass}>{garmentOptions.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label>
-        <label className="text-sm">سبک طرح<select required disabled={saving} value={form.category} onChange={(event) => setForm({ ...form, category: event.target.value })} className={fieldClass}>{state.categories.filter((category) => category.status === 'active').map((category) => <option key={category.id} value={category.slug}>{category.nameFa}</option>)}</select></label>
+        <label className="text-sm">دسته‌بندی پوشاک<select required disabled={saving} value={form.category} onChange={(event) => setForm({ ...form, category: event.target.value })} className={fieldClass}>{productCategoryChoices.map((category) => <option key={category.id} value={category.slug}>{category.nameFa}{category.status !== 'active' ? ' (بایگانی‌شده)' : !garmentCategorySlugs.has(category.slug) ? ' (فقط برای این محصول)' : ''}</option>)}</select></label>
         <label className="text-sm">قیمت پایه (تومان)<input required disabled={saving} type="number" min="0" max="2000000000" step="1" value={form.basePriceTomans} onChange={(event) => setForm({ ...form, basePriceTomans: Number(event.target.value) })} className={fieldClass}/></label>
         <label className="text-sm">تخفیف (درصد)<input disabled={saving} type="number" min="1" max="90" step="1" inputMode="numeric" value={form.discountPercent} onChange={(event) => setForm({ ...form, discountPercent: event.target.value })} placeholder="بدون تخفیف" className={fieldClass}/><span className="mt-1 block text-xs text-stone-400">قیمت نهایی در فروشگاه به‌صورت خودکار محاسبه می‌شود.</span></label>
         <label className="text-sm">وضعیت فروش<select disabled={saving} value={form.status} onChange={(event) => setForm({ ...form, status: event.target.value as FormState['status'] })} className={fieldClass}><option value="draft">پیش‌نویس</option><option value="active">فعال</option><option value="archived">بایگانی‌شده</option></select></label>
@@ -196,7 +190,7 @@ export const ProductEditor: React.FC<ProductEditorProps> = ({ productId, onBack 
         </label>
       </div>
       {error && <p role="alert" aria-live="polite" className="rounded-lg border border-rose-400/20 bg-rose-500/10 px-3 py-2 text-sm leading-6 text-rose-200">{error}</p>}
-      <div className="flex justify-end gap-2 border-t border-white/10 pt-4">{current && <Button type="button" variant="ghost" disabled={saving} onClick={() => void archive()}><Archive size={15}/> بایگانی</Button>}<Button variant="brass" type="submit" disabled={saving || !state.categories.some((category) => category.status === 'active')}><Save size={15}/>{saving ? 'در حال ذخیره…' : 'ذخیره محصول'}</Button></div>
+      <div className="flex justify-end gap-2 border-t border-white/10 pt-4">{current && <Button type="button" variant="ghost" disabled={saving} onClick={() => void archive()}><Archive size={15}/> بایگانی</Button>}<Button variant="brass" type="submit" disabled={saving || !garmentCategories.length && !currentCategory}><Save size={15}/>{saving ? 'در حال ذخیره…' : 'ذخیره محصول'}</Button></div>
     </form>}
   </div>;
 };

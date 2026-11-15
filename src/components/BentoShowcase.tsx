@@ -7,7 +7,7 @@ interface BentoShowcaseProps {
   categories: { slug: string; nameFa: string }[];
   productCount: number;
   onStartDesign: () => void;
-  onSelectCategory: (category: 'all' | 'minimalist' | 'calligraphy' | 'graphic' | 'pod') => void;
+  onSelectCategory: (category: string) => void;
 }
 
 export default function BentoShowcase({ theme = 'dark', categories, productCount, onStartDesign, onSelectCategory }: BentoShowcaseProps) {
@@ -15,7 +15,7 @@ export default function BentoShowcase({ theme = 'dark', categories, productCount
   const panel = isDark ? 'border-white/10 bg-[#141211]' : 'border-slate-200 bg-white';
   const heading = isDark ? 'text-white' : 'text-slate-900';
   const muted = isDark ? 'text-stone-400' : 'text-slate-600';
-  const catalogGroups = categories.filter((category) => ['calligraphy', 'graphic', 'minimalist'].includes(category.slug));
+  const catalogGroups = categories.filter((category) => ['tshirt', 'hoodie', 'dors', 'sweatshirt', 'halfzip', 'pants'].includes(category.slug));
 
   return <section id="exhibition-story" className={`relative overflow-hidden px-5 py-20 md:px-12 md:py-28 ${isDark ? 'bg-[#0a0a09]' : 'bg-[#faf9f6]'}`}>
     <div className="mx-auto max-w-7xl">
@@ -29,7 +29,7 @@ export default function BentoShowcase({ theme = 'dark', categories, productCount
         <article className={`rounded-3xl border p-6 md:p-8 lg:col-span-7 ${panel}`}>
           <div className="flex items-start justify-between gap-4"><span className="rounded-2xl bg-[#ba8d3d]/10 p-3 text-[#eed29d]"><Layers3 size={22}/></span><span className={`text-xs ${muted}`}>{productCount.toLocaleString('fa-IR')} محصول ثبت‌شده</span></div>
           <h3 className={`mt-8 text-xl font-semibold ${heading}`}>دسته‌بندی محصولات</h3>
-          <div className="mt-5 flex flex-wrap gap-2">{catalogGroups.map((category) => <button key={category.slug} onClick={() => onSelectCategory(category.slug as 'calligraphy' | 'graphic' | 'minimalist')} className={`rounded-full border px-4 py-2 text-sm transition hover:border-[#ba8d3d] ${isDark ? 'border-white/10 text-stone-200' : 'border-slate-200 text-slate-700'}`}>{category.nameFa}</button>)}<button onClick={() => onSelectCategory('all')} className="rounded-full border border-[#ba8d3d]/40 px-4 py-2 text-sm text-[#ba8d3d]">همه محصولات</button></div>
+          <div className="mt-5 flex flex-wrap gap-2">{catalogGroups.map((category) => <button key={category.slug} onClick={() => onSelectCategory(category.slug)} className={`rounded-full border px-4 py-2 text-sm transition hover:border-[#ba8d3d] ${isDark ? 'border-white/10 text-stone-200' : 'border-slate-200 text-slate-700'}`}>{category.nameFa}</button>)}<button onClick={() => onSelectCategory('all')} className="rounded-full border border-[#ba8d3d]/40 px-4 py-2 text-sm text-[#ba8d3d]">همه محصولات</button></div>
           <p className={`mt-5 text-xs leading-6 ${muted}`}>موجودی و مشخصات هر تنوع از سامانه خوانده می‌شود؛ محصولی که تصویر ثبت‌شده ندارد با جایگزین عمومی نمایش داده می‌شود.</p>
         </article>
 

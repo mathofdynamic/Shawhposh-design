@@ -233,7 +233,7 @@ export default function ProductDetail({ theme = 'dark', product, onBack, onAddTo
             
             <motion.div variants={slideUpVariants} className="flex items-center gap-2 mb-4">
               <span className={`bg-[#ba8d3d]/10 border border-[#ba8d3d]/20 text-[9px] font-black px-3 py-1 rounded-full uppercase tracking-wider ${isDark ? 'text-[#eed29d]' : 'text-[var(--text-accent)]'}`}>
-                {product.category === 'calligraphy' ? 'کالکشن خوشنویسی' : product.category === 'graphic' ? 'طرح‌های گرافیکی' : 'طرح‌های مینیمال'}
+                {({ hoodie: 'هودی', dors: 'دورس', tshirt: 'تیشرت', sweatshirt: 'سویشرت', halfzip: 'نیم‌زیپ', pants: 'شلوار' } as Record<string, string>)[product.garmentType ?? ''] ?? 'پوشاک'}
               </span>
 
             </motion.div>

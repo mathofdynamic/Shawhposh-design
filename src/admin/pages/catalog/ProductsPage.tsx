@@ -51,7 +51,7 @@ export const ProductsPage: React.FC = () => {
   const { addToast } = useToast();
   const { confirm: confirmDialog } = useAppDialog();
 
-  const categories = getCategories();
+  const categories = getCategories().filter(category => category.status === 'active');
 
   // Navigation to editor
   const [editingProductId, setEditingProductId] = useState<string | null>(null);
@@ -59,7 +59,7 @@ export const ProductsPage: React.FC = () => {
   // Search & Filters
   const [search, setSearch] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('all');
-  const [statusFilter, setStatusFilter] = useState<string>('active');
+  const [statusFilter, setStatusFilter] = useState<string>('visible');
   const [typeFilter, setTypeFilter] = useState<string>('all');
   const [lowStockOnly, setLowStockOnly] = useState(false);
   const [sortBy, setSortBy] = useState<'updated' | 'priceAsc' | 'priceDesc' | 'stockAsc' | 'stockDesc' | 'name'>('updated');
@@ -91,7 +91,7 @@ export const ProductsPage: React.FC = () => {
         (p.tags && p.tags.some((t) => t.toLowerCase().includes(search.toLowerCase())));
 
       const matchCat = categoryFilter === 'all' || p.category === categoryFilter;
-      const matchStatus = statusFilter === 'all' || p.status === statusFilter;
+      const matchStatus = statusFilter === 'all' || (statusFilter === 'visible' ? p.status !== 'archived' : p.status === statusFilter);
       const matchType = typeFilter === 'all' || p.productType === typeFilter;
 
       const hasLowStock = p.variants.some(
@@ -352,10 +352,10 @@ export const ProductsPage: React.FC = () => {
           </div>
           <div>
             <div className="font-bold text-white text-xs">{row.name}</div>
-            <div className="flex items-center gap-2 mt-0.5">
-              <span className="font-mono text-[10px] text-[#eed29d]">{row.id}</span>
-              <span className="text-[10px] text-stone-500">•</span>
-              <span className="font-mono text-[10px] text-stone-400">{row.skuPrefix}</span>
+            <div className="flex w-max flex-nowrap items-center gap-2 mt-0.5 whitespace-nowrap">
+              <span className="shrink-0 font-mono text-[10px] text-[#eed29d]">{row.id}</span>
+              <span className="shrink-0 text-[10px] text-stone-500">•</span>
+              <span className="shrink-0 font-mono text-[10px] text-stone-400">{row.skuPrefix}</span>
             </div>
           </div>
         </div>
@@ -448,21 +448,24 @@ export const ProductsPage: React.FC = () => {
         <div className="flex items-center gap-1">
           <button
             onClick={() => setEditingProductId(row.id)}
-            className="p-1.5 text-stone-400 hover:text-[#eed29d] bg-white/5 hover:bg-white/10 rounded-lg transition-colors"
+            aria-label={`ویرایش ${row.name}`}
+            className="inline-flex h-11 w-11 items-center justify-center rounded-lg bg-white/5 text-stone-400 transition-colors hover:bg-white/10 hover:text-[#eed29d] sm:h-8 sm:w-8"
             title="ویرایش محصول"
           >
             <Edit size={13} />
           </button>
           <button
             onClick={() => handleDuplicateProduct(row)}
-            className="p-1.5 text-stone-400 hover:text-white bg-white/5 hover:bg-white/10 rounded-lg transition-colors"
+            aria-label={`ایجاد نسخه از ${row.name}`}
+            className="inline-flex h-11 w-11 items-center justify-center rounded-lg bg-white/5 text-stone-400 transition-colors hover:bg-white/10 hover:text-white sm:h-8 sm:w-8"
             title="ایجاد نسخهٔ جدید"
           >
             <Copy size={13} />
           </button>
           <button
             onClick={() => handleDeleteProduct(row)}
-            className="p-1.5 text-stone-400 hover:text-red-400 bg-white/5 hover:bg-red-500/10 rounded-lg transition-colors"
+            aria-label={`بایگانی ${row.name}`}
+            className="inline-flex h-11 w-11 items-center justify-center rounded-lg bg-white/5 text-stone-400 transition-colors hover:bg-red-500/10 hover:text-red-400 sm:h-8 sm:w-8"
             title="بایگانی محصول"
           >
             <Trash2 size={13} />
@@ -615,6 +618,7 @@ export const ProductsPage: React.FC = () => {
             }}
             className="bg-[#131211] border border-white/10 rounded-xl px-3 py-2 text-xs text-stone-300 focus:border-[#eed29d] focus:outline-none"
           >
+            <option value="visible">فعال و پیش‌نویس</option>
             <option value="all">همه وضعیت‌ها</option>
             <option value="active">عرضه فعال</option>
             <option value="draft">پیش‌نویس</option>
@@ -673,6 +677,7 @@ export const ProductsPage: React.FC = () => {
         data={paginatedProducts}
         columns={columns}
         keyExtractor={(p) => p.id}
+        mobileScrollHint
       />
 
       {/* Pagination Bar */}

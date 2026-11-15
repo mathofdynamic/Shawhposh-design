@@ -8,7 +8,9 @@ import { sql } from 'drizzle-orm';
 
 const timestamps = () => ({ createdAt: timestamp('created_at', { withTimezone: true }).$defaultFn(() => new Date()).notNull(), updatedAt: timestamp('updated_at', { withTimezone: true }).$defaultFn(() => new Date()).notNull() });
 export const users = sqliteTable('users', {
-  id: uuid().primaryKey().$defaultFn(() => randomUUID()), email: text().unique(), phone: text().unique(), passwordHash: text('password_hash').notNull(), fullName: text('full_name').notNull(), status: text().default('active').notNull(), emailVerifiedAt: timestamp('email_verified_at', { withTimezone: true }), phoneVerifiedAt: timestamp('phone_verified_at', { withTimezone: true }), ...timestamps(),
+  id: uuid().primaryKey().$defaultFn(() => randomUUID()), email: text().unique(), phone: text().unique(), passwordHash: text('password_hash').notNull(), fullName: text('full_name').notNull(),
+  gender: text().$type<'female' | 'male'>(), dateOfBirth: text('date_of_birth'), address: text(),
+  status: text().default('active').notNull(), emailVerifiedAt: timestamp('email_verified_at', { withTimezone: true }), phoneVerifiedAt: timestamp('phone_verified_at', { withTimezone: true }), ...timestamps(),
 }, t => [check('user_identity', sql`${t.email} is not null or ${t.phone} is not null`)]);
 export const manualCustomers = sqliteTable('manual_customers', {
   id: uuid().primaryKey().$defaultFn(() => randomUUID()),
@@ -25,7 +27,7 @@ export const categories = sqliteTable('categories', {
   id: uuid().primaryKey().$defaultFn(() => randomUUID()), name: text().notNull(), slug: text().unique().notNull(), description: text().default('').notNull(), status: text().default('active').notNull(), displayOrder: integer('display_order').default(0).notNull(), presentation: jsonb().$type<Record<string, unknown>>().default({}).notNull(), ...timestamps(),
 });
 export const products = sqliteTable('products', {
-  id: uuid().primaryKey().$defaultFn(() => randomUUID()), name: text().notNull(), slug: text().unique().notNull(), description: text().default('').notNull(), status: text().default('draft').notNull(), categoryId: uuid('category_id').references(() => categories.id).notNull(), basePriceTomans: integer('base_price_tomans').notNull(), customizable: boolean().default(false).notNull(), featured: boolean().default(false).notNull(), presentation: jsonb().$type<Record<string, unknown>>().default({}).notNull(), ...timestamps(),
+  id: uuid().primaryKey().$defaultFn(() => randomUUID()), name: text().notNull(), slug: text().unique().notNull(), description: text().default('').notNull(), status: text().default('draft').notNull(), categoryId: uuid('category_id').references(() => categories.id).notNull(), basePriceTomans: integer('base_price_tomans').notNull(), materialCostTomans: integer('material_cost_tomans'), customizable: boolean().default(false).notNull(), featured: boolean().default(false).notNull(), presentation: jsonb().$type<Record<string, unknown>>().default({}).notNull(), ...timestamps(),
 }, t => [check('product_price', sql`${t.basePriceTomans} >= 0`), check('product_status', sql`${t.status} in ('active','draft','archived')`)]);
 export const productMedia = sqliteTable('product_media', {
   id: uuid().primaryKey().$defaultFn(() => randomUUID()), productId: uuid('product_id').references(() => products.id).notNull(), url: text().notNull(), altText: text('alt_text').default('').notNull(), type: text().default('image').notNull(), displayOrder: integer('display_order').default(0).notNull(), createdAt: timestamp('created_at', { withTimezone: true }).$defaultFn(() => new Date()).notNull(),
@@ -50,6 +52,7 @@ export const purchaseInvoices = sqliteTable('purchase_invoices', {
   deliveryCostTomans: integer('delivery_cost_tomans').default(0).notNull(),
   printingCostTomans: integer('printing_cost_tomans').default(0).notNull(),
   netProfitTomans: integer('net_profit_tomans').notNull(),
+  invoiceImageStorageKey: text('invoice_image_storage_key'),
   invoiceDate: timestamp('invoice_date', { withTimezone: true }).$defaultFn(() => new Date()).notNull(),
   notes: text().default('').notNull(),
   createdByStaffId: uuid('created_by_staff_id').references(() => staffUsers.id, { onDelete: 'set null' }),
@@ -59,6 +62,20 @@ export const purchaseInvoices = sqliteTable('purchase_invoices', {
   check('purchase_invoice_amounts', sql`${t.purchaseUnitPriceTomans} >= 0 and ${t.saleUnitPriceTomans} >= 0 and ${t.deliveryCostTomans} >= 0 and ${t.printingCostTomans} >= 0`),
   index('purchase_invoice_date_idx').on(t.invoiceDate),
   index('purchase_invoice_supplier_idx').on(t.supplierName),
+]);
+
+export const otherExpenses = sqliteTable('other_expenses', {
+  id: uuid().primaryKey().$defaultFn(() => randomUUID()),
+  description: text().notNull(),
+  amountTomans: integer('amount_tomans').notNull(),
+  expenseDate: timestamp('expense_date', { withTimezone: true }).$defaultFn(() => new Date()).notNull(),
+  notes: text().default('').notNull(),
+  createdByStaffId: uuid('created_by_staff_id').references(() => staffUsers.id, { onDelete: 'set null' }),
+  ...timestamps(),
+}, t => [
+  check('other_expense_description', sql`length(trim(${t.description})) > 0`),
+  check('other_expense_amount', sql`${t.amountTomans} >= 0`),
+  index('other_expense_date_idx').on(t.expenseDate),
 ]);
 
 export const customerAddresses = sqliteTable('customer_addresses', {
@@ -130,7 +147,7 @@ export const orderItems = sqliteTable('order_items', {
   variantId: uuid('variant_id').references(() => productVariants.id, { onDelete: 'set null' }),
   skuSnapshot: text('sku_snapshot').notNull(), productNameSnapshot: text('product_name_snapshot').notNull(),
   variantSnapshot: jsonb('variant_snapshot').$type<Record<string, string>>().notNull(),
-  unitPriceTomans: integer('unit_price_tomans').notNull(), quantity: integer().notNull(), lineTotalTomans: integer('line_total_tomans').notNull(),
+  unitPriceTomans: integer('unit_price_tomans').notNull(), materialCostUnitTomans: integer('material_cost_unit_tomans'), quantity: integer().notNull(), lineTotalTomans: integer('line_total_tomans').notNull(),
   customDesignVersionId: uuid('custom_design_version_id'), createdAt: timestamp('created_at', { withTimezone: true }).$defaultFn(() => new Date()).notNull(),
 }, t => [check('order_item_amounts', sql`${t.unitPriceTomans} >= 0 and ${t.quantity} > 0 and ${t.lineTotalTomans} = ${t.unitPriceTomans} * ${t.quantity}`)]);
 

@@ -30,6 +30,9 @@ export interface CustomerProfile {
   name: string;
   email: string | null;
   phone: string | null;
+  gender: 'female' | 'male' | null;
+  dateOfBirth: string | null;
+  address: string | null;
   status: string;
   createdAt: string;
   updatedAt: string;
@@ -49,7 +52,7 @@ export async function loadAccount() {
   return api<{ user: CustomerProfile }>('/v1/account');
 }
 
-export async function updateAccount(input: { fullName?: string; phone?: string | null }) {
+export async function updateAccount(input: { fullName?: string; phone?: string | null; gender?: 'female' | 'male' | null; dateOfBirth?: string | null; address?: string | null }) {
   return patch<{ user: CustomerProfile }>('/v1/account', input);
 }
 

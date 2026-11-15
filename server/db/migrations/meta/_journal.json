@@ -57,6 +57,13 @@
       "when": 1793715179209,
       "tag": "0007_correct_persian_catalog_copy",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1794649574211,
+      "tag": "0008_steady_pyro",
+      "breakpoints": true
     }
   ]
 }

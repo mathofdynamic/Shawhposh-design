@@ -27,6 +27,9 @@ export default function CustomerAccount({ theme, user, onBack, onUserUpdated }: 
   const [orderPage, setOrderPage] = useState(1);
   const [fullName, setFullName] = useState(user.name);
   const [phone, setPhone] = useState(user.phone ?? '');
+  const [gender, setGender] = useState<'' | 'female' | 'male'>(user.gender ?? '');
+  const [dateOfBirth, setDateOfBirth] = useState(user.dateOfBirth ?? '');
+  const [profileAddress, setProfileAddress] = useState(user.address ?? '');
   const [addressForm, setAddressForm] = useState({ title: '', recipientName: user.name, phone: user.phone ?? '', province: '', city: '', addressLine: '', postalCode: '' });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -50,6 +53,9 @@ export default function CustomerAccount({ theme, user, onBack, onUserUpdated }: 
       setProfile(accountResult.value.user);
       setFullName(accountResult.value.user.name);
       setPhone(accountResult.value.user.phone ?? '');
+      setGender(accountResult.value.user.gender ?? '');
+      setDateOfBirth(accountResult.value.user.dateOfBirth ?? '');
+      setProfileAddress(accountResult.value.user.address ?? '');
     } else {
       setProfile(null);
       setProfileError(accountResult.reason instanceof ApiClientError ? accountResult.reason.message : '\u0627\u0637\u0644\u0627\u0639\u0627\u062a \u062d\u0633\u0627\u0628 \u0628\u0627\u0631\u06af\u0630\u0627\u0631\u06cc \u0646\u0634\u062f. \u062f\u0648\u0628\u0627\u0631\u0647 \u062a\u0644\u0627\u0634 \u06a9\u0646\u06cc\u062f.');
@@ -75,9 +81,16 @@ export default function CustomerAccount({ theme, user, onBack, onUserUpdated }: 
     event.preventDefault();
     setSaving(true); setError(''); setNotice('');
     try {
-      const result = await updateAccount({ fullName, phone: phone.trim() || null });
+      const result = await updateAccount({
+        fullName, phone: phone.trim() || null, gender: gender || null,
+        dateOfBirth: dateOfBirth || null, address: profileAddress.trim() || null,
+      });
       setProfile(result.user);
-      onUserUpdated({ ...user, name: result.user.name, phone: result.user.phone ?? undefined });
+      onUserUpdated({
+        ...user, name: result.user.name, phone: result.user.phone ?? undefined,
+        gender: result.user.gender ?? undefined, dateOfBirth: result.user.dateOfBirth ?? undefined,
+        address: result.user.address ?? undefined,
+      });
       setNotice('اطلاعات حساب ذخیره شد.');
     } catch (failure) {
       setError(failure instanceof ApiClientError ? failure.message : 'ذخیره اطلاعات حساب انجام نشد.');
@@ -129,6 +142,9 @@ export default function CustomerAccount({ theme, user, onBack, onUserUpdated }: 
                 <label className={fieldLabel}>نام و نام خانوادگی<input required minLength={2} maxLength={120} value={fullName} onChange={event => setFullName(event.target.value)} className={inputClass} /></label>
                 <label className={fieldLabel}>شماره همراه<input type="tel" inputMode="tel" value={phone} onChange={event => setPhone(event.target.value)} placeholder="0912…" className={inputClass} /></label>
                 <label className={fieldLabel}>ایمیل<input readOnly value={profile?.email ?? ''} className={`${inputClass} opacity-70`} /></label>
+                <label className={fieldLabel}>جنسیت<select value={gender} onChange={event => setGender(event.target.value as 'female' | 'male' | '')} className={inputClass}><option value="">انتخاب نشده</option><option value="female">خانم</option><option value="male">آقا</option></select></label>
+                <label className={fieldLabel}>تاریخ تولد<input type="date" max={new Date().toISOString().slice(0, 10)} value={dateOfBirth} onChange={event => setDateOfBirth(event.target.value)} className={inputClass} /></label>
+                <label className={`${fieldLabel} sm:col-span-2`}>نشانی (اختیاری)<textarea maxLength={500} rows={2} value={profileAddress} onChange={event => setProfileAddress(event.target.value)} className={`${inputClass} resize-y`} /></label>
               </div>
               <div className="mt-5 flex justify-end"><button disabled={saving} className="inline-flex items-center gap-2 rounded-full bg-[#ba8d3d] px-5 py-3 text-xs font-bold text-[#0e0d0c] transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"><Save size={14} /> ذخیره اطلاعات</button></div>
             </form> : <div className={panel}><p role="alert" className="text-right text-sm text-red-200">{profileError}<button onClick={() => void refresh()} className="mr-3 underline">{'\u0645\u062c\u062f\u062f \u062a\u0644\u0627\u0634 \u06a9\u0646\u06cc\u062f'}</button></p></div>}

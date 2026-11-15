@@ -24,7 +24,7 @@ adminCatalog.post('/catalog/import',catalogWrite,asyncRoute((req,res)=>{
       const name=(row.name||row['نام محصول']||row.title||'').trim();
       const rawPrice=row.basePriceTomans||row['قیمت پایه']||row.price||'';
       const slug=(row.slug||row.id||row['کد شناسایی']||'').trim();
-      const category=(row.category||row['دسته‌بندی']||'calligraphy').trim();
+      const category=(row.category||row['دسته‌بندی']||'tshirt').trim();
       saveProduct({name,slug,category,basePriceTomans:Number(rawPrice.replaceAll(',','')),status:'draft',description:row.description||row['توضیحات']||'',fabricSpecs:row.fabricSpecs||row['جنس پارچه']||'',skuPrefix:row.skuPrefix||row['پیش‌وند']||slug.toUpperCase()});
       importedCount++;
     } catch(error) {

@@ -12,18 +12,10 @@ const sizes = ['XS','S','M','L','XL','XXL','XXXL','2XL','3XL','4XL','FREE'] as c
 const fits = ['oversize','classic','slim','oversized','regular','crop','boxy'] as const;
 const garmentTypes = ['hoodie','dors','tshirt','sweatshirt','halfzip','pants'] as const;
 type GarmentType = typeof garmentTypes[number];
-const inferLegacyGarmentType = (name: string): GarmentType | undefined => {
-  const normalized = name.trim().replace(/[\s\u200c\u200f]/gu, '');
-  const prefixes: Array<[string, GarmentType]> = [
-    ['تیشرت', 'tshirt'], ['هودی', 'hoodie'], ['دورس', 'dors'],
-    ['سویشرت', 'sweatshirt'], ['سوئیشرت', 'sweatshirt'], ['نیمزیپ', 'halfzip'], ['شلوار', 'pants'],
-  ];
-  return prefixes.find(([prefix]) => normalized.startsWith(prefix))?.[1];
-};
 const garmentSlug = () => `apparel-${randomUUID().replaceAll('-', '').slice(0, 12)}`;
-export const categorySchema = z.object({ nameFa: z.string().trim().min(1).max(120), slug: z.string().trim().min(1).max(120).regex(/^[a-z0-9-]+$/), description: z.string().max(5000).default(''), nameEn: z.string().max(120).default(''), image: mediaUrl.optional(), displayOrder: z.number().int().min(0).default(0), isFeatured: z.boolean().default(false), status: z.enum(['active','archived']).default('active') });
+export const categorySchema = z.object({ nameFa: z.string().trim().min(1).max(120), slug: z.enum(garmentTypes), description: z.string().max(5000).default(''), nameEn: z.string().max(120).default(''), image: mediaUrl.optional(), displayOrder: z.number().int().min(0).default(0), isFeatured: z.boolean().default(false), status: z.enum(['active','archived']).default('active') });
 export const variantSchema = z.object({ productId: z.string().uuid(), sku: z.string().trim().min(1).max(100).regex(/^[A-Za-z0-9_-]+$/).optional(), colorName: z.string().trim().min(1).max(100), colorHex: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(), size: z.enum(sizes), priceTomans: money.nullable().optional(), minStockThreshold: z.number().int().min(0).max(100000).default(3), isEnabled: z.boolean().default(true), fit: z.enum(fits).default('oversize'), material:z.string().max(1000).optional(), warehouseLocation: z.string().max(200).optional(), priceAdjustmentTomans: z.number().int().min(-2000000000).max(2000000000).optional(), onHandStock:z.number().int().min(0).max(1000000).optional(), inventoryReason:z.string().trim().min(3).max(1000).optional(), weightGrams: z.number().int().min(0).max(100000).nullable().optional() });
-export const productSchema = z.object({ inventoryReason:z.string().trim().min(3).max(1000).optional(), name: z.string().trim().min(1).max(200), slug: z.string().trim().min(1).max(150).regex(/^[a-z0-9-]+$/).optional(), description: z.string().max(20000).default(''), category: z.string().min(1).max(120), garmentType: z.enum(garmentTypes).optional(), discountPercent: z.number().int().min(1).max(90).nullable().optional(), basePriceTomans: money, status: z.enum(['active','draft','archived']).default('draft'), isLive: z.boolean().optional(), isCustomizable: z.boolean().default(false), featured: z.boolean().default(false), primaryImage:mediaUrl.optional(), images: z.array(mediaUrl).max(30).optional(), imageAlts: z.record(z.string(),z.string().max(500)).default({}), skuPrefix: z.string().max(100).default(''), fabricSpecs: z.string().max(5000).default(''), tags: z.array(z.string().max(100)).max(50).default([]), details: z.array(z.string().max(5000)).max(30).optional(), productType: z.enum(['finished','customizable_blank']).default('finished'), printingMethod: z.string().max(200).optional(), careInstructions: z.string().max(5000).optional(), measurements: z.string().max(5000).optional(), cut: z.string().max(200).optional(), nameEn: z.string().max(200).optional(), seoTitle: z.string().max(200).optional(), seoMetaDescription: z.string().max(1000).optional(), permittedPrintAreas:z.array(z.string().max(50)).max(20).optional(), baseGarmentSku:z.string().max(100).optional(), printingTechnique:z.string().max(100).optional(), variants: z.array(variantSchema.omit({productId:true}).extend({ id: z.string().uuid().optional(), onHandStock:z.number().optional(), reservedStock:z.number().optional(), priceAdjustmentTomans:z.number().optional() })).max(200).optional() });
+export const productSchema = z.object({ inventoryReason:z.string().trim().min(3).max(1000).optional(), name: z.string().trim().min(1).max(200), slug: z.string().trim().min(1).max(150).regex(/^[a-z0-9-]+$/).optional(), description: z.string().max(20000).default(''), category: z.string().trim().min(1).max(100), discountPercent: z.number().int().min(1).max(90).nullable().optional(), basePriceTomans: money, status: z.enum(['active','draft','archived']).default('active'), isLive: z.boolean().optional(), isCustomizable: z.boolean().default(false), featured: z.boolean().default(false), primaryImage:mediaUrl.optional(), images: z.array(mediaUrl).max(30).optional(), imageAlts: z.record(z.string(),z.string().max(500)).default({}), skuPrefix: z.string().max(100).default(''), fabricSpecs: z.string().max(5000).default(''), tags: z.array(z.string().max(100)).max(50).default([]), details: z.array(z.string().max(5000)).optional(), productType: z.enum(['finished','customizable_blank']).default('finished'), printingMethod: z.string().max(200).optional(), careInstructions: z.string().max(5000).optional(), measurements: z.string().max(5000).optional(), cut: z.string().max(200).optional(), nameEn: z.string().max(200).optional(), seoTitle: z.string().max(200).optional(), seoMetaDescription: z.string().max(1000).optional(), permittedPrintAreas:z.array(z.string().max(50)).max(20).optional(), baseGarmentSku:z.string().max(100).optional(), printingTechnique:z.string().max(100).optional(), variants: z.array(variantSchema.omit({productId:true}).extend({ id: z.string().uuid().optional(), onHandStock:z.number().optional(), reservedStock:z.number().optional(), priceAdjustmentTomans:z.number().optional() })).max(200).optional() });
 
 export function catalogSnapshot(publicOnly = false) {
   const cats = db.select().from(categories).orderBy(asc(categories.displayOrder)).all();
@@ -35,13 +27,11 @@ export function catalogSnapshot(publicOnly = false) {
     return { ...v.presentation, id: v.id, sku:v.sku, productId:v.productId, colorName:v.colorName,colorHex:v.colorHex,size:v.size,priceTomans:v.priceTomans,weightGrams:v.weightGrams,priceAdjustmentTomans:v.priceTomans===null?0:v.priceTomans-(productRows.find(p=>p.id===v.productId)?.basePriceTomans||0),minStockThreshold:v.lowStockThreshold,isEnabled:v.status==='active',onHandStock:stock?.onHand||0,reservedStock:stock?.reserved||0,damaged:stock?.damaged||0,available:(stock?.onHand||0)-(stock?.reserved||0),fit:v.presentation.fit||'oversize',status:v.status };
   });
   const categoryDtos = cats.map(c => ({...c.presentation,id:c.id,nameFa:c.name,nameEn:c.presentation.nameEn||'',slug:c.slug,description:c.description,descriptionFa:c.description,displayOrder:c.displayOrder,isFeatured:!!c.presentation.isFeatured,status:c.status}));
-  const productDtos = productRows.filter(p => !publicOnly || (p.status==='active' && cats.some(c=>c.id===p.categoryId&&c.status==='active'))).map(p => {
+  const productDtos = productRows.filter(p => !publicOnly || p.status==='active').map(p => {
     const category=cats.find(c=>c.id===p.categoryId)!;
     const images=media.filter(m=>m.productId===p.id).map(m=>m.url);
     const pv=variants.filter(v=>v.productId===p.id&&(!publicOnly||v.isEnabled));
-    const garmentType = (garmentTypes as readonly string[]).includes(String(p.presentation.garmentType))
-      ? p.presentation.garmentType as GarmentType
-      : inferLegacyGarmentType(p.name);
+    const garmentType=garmentTypes.includes(category.slug as GarmentType)?category.slug as GarmentType:null;
     return {...p.presentation,id:p.id,name:p.name,slug:p.slug,description:p.description,category:category.slug,categoryId:category.id,basePriceTomans:p.basePriceTomans,status:p.status,isLive:p.status==='active',isCustomizable:p.customizable,featured:p.featured,images,imageAlts:Object.fromEntries(media.filter(m=>m.productId===p.id).map(m=>[m.url,m.altText])),primaryImage:images[0],variants:pv,createdAt:p.createdAt.toISOString(),updatedAt:p.updatedAt.toISOString(),tags:p.presentation.tags||[],fabricSpecs:p.presentation.fabricSpecs||'',skuPrefix:p.presentation.skuPrefix||'',garmentType,discountPercent:p.presentation.discountPercent??null};
   });
   const staffNames = new Map(db.select().from(staffUsers).all().map(staff => [staff.id, staff.fullName]));
@@ -93,13 +83,18 @@ export function saveVariant(input:unknown,id?:string,actorId?:string) {
   });
 }
 export function saveProduct(input:unknown,id?:string,actorId?:string) {
-  const data=productSchema.parse(input);const category=db.select().from(categories).where(eq(categories.slug,data.category)).get()||db.select().from(categories).where(eq(categories.id,data.category)).get();
+  const data=productSchema.parse(input);
+  const previous=id?db.select().from(products).where(eq(products.id,id)).get():undefined;
+  if(id&&!previous)throw new ApiError(404,'NOT_FOUND','محصول یافت نشد.');
+  const category=db.select().from(categories).where(eq(categories.slug,data.category)).get()||db.select().from(categories).where(eq(categories.id,data.category)).get();
   if(!category)throw new ApiError(422,'VALIDATION_ERROR','دسته معتبر انتخاب کنید.');
+  const isGarmentCategory=garmentTypes.some(slug=>slug===category.slug);
+  const preservesCurrentCategory=previous?.categoryId===category.id;
+  if(!isGarmentCategory&&!preservesCurrentCategory)throw new ApiError(422,'VALIDATION_ERROR','برای محصول جدید یک نوع پوشاک انتخاب کنید.');
+  if(category.status!=='active'&&!preservesCurrentCategory)throw new ApiError(422,'VALIDATION_ERROR','برای محصول جدید یک نوع پوشاک فعال انتخاب کنید.');
   return db.transaction(()=>{
     const {variants,images,imageAlts,...presentation}=data;
-    const previous=id?db.select().from(products).where(eq(products.id,id)).get():undefined;
-    if(id&&!previous)throw new ApiError(404,'NOT_FOUND','محصول یافت نشد.');
-    const values={name:data.name,slug:data.slug??previous?.slug??garmentSlug(),description:data.description,status:data.status,categoryId:category.id,basePriceTomans:data.basePriceTomans,customizable:data.isCustomizable,featured:data.featured,presentation:{...previous?.presentation,...presentation},updatedAt:new Date()};
+    const values={name:data.name,slug:data.slug??previous?.slug??garmentSlug(),description:data.description,status:data.status,categoryId:category.id,basePriceTomans:data.basePriceTomans,materialCostTomans:previous?.materialCostTomans??null,customizable:data.isCustomizable,featured:data.featured,presentation:{...previous?.presentation,...presentation,garmentType:category.slug},updatedAt:new Date()};
     const row=id?db.update(products).set(values).where(eq(products.id,id)).returning().get():db.insert(products).values(values).returning().get();
     if(!row)throw new ApiError(404,'NOT_FOUND','محصول یافت نشد.');
     if(images){

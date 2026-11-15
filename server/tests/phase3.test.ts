@@ -26,7 +26,7 @@ migrate(db, { migrationsFolder: 'server/db/migrations' });
 const { app } = await import('../app');
 const { staffUsers, paymentAttempts, orders, inventoryReservations } = await import('../db/schema');
 const { hashPassword } = await import('../modules/auth/service');
-const { saveCategory, saveProduct, catalogSnapshot } = await import('../modules/catalog/service');
+const { saveProduct, catalogSnapshot } = await import('../modules/catalog/service');
 const { expireReservations } = await import('../modules/orders/service');
 const { claimWebhookUpdate, expirePaymentAttempt, finishWebhookUpdate, getBaleReverificationContext, updateBalePaymentSettings } = await import('../modules/payments/service');
 const { configureBaleWebhook, processBaleWebhookUpdate, reverifyBalePayment } = await import('../modules/payments/bale');
@@ -40,8 +40,7 @@ const supportEmail = 'phase3-support@example.invalid';
 const owner = await db.insert(staffUsers).values({ email: ownerEmail, fullName: 'Phase 3 Owner', passwordHash: await hashPassword(password), role: 'owner' }).returning().then(rows => rows[0]);
 await db.insert(staffUsers).values({ email: financeEmail, fullName: 'Phase 3 Finance', passwordHash: await hashPassword(password), role: 'finance' }).run();
 await db.insert(staffUsers).values({ email: supportEmail, fullName: 'Phase 3 Support', passwordHash: await hashPassword(password), role: 'support' }).run();
-saveCategory({ nameFa: 'گروه پرداخت آزمون', slug: 'phase3-test' });
-saveProduct({ name: 'پیراهن پرداخت آزمون', slug: 'phase3-test-tee', category: 'phase3-test', basePriceTomans: 125000, status: 'active', variants: [{ sku: 'P3-TEST-M-BLK', colorName: 'مشکی', colorHex: '#111111', size: 'M' }] });
+saveProduct({ name: 'پیراهن پرداخت آزمون', slug: 'phase3-test-tee', category: 'tshirt', basePriceTomans: 125000, status: 'active', variants: [{ sku: 'P3-TEST-M-BLK', colorName: 'مشکی', colorHex: '#111111', size: 'M' }] });
 
 const ownerAgent = request.agent(app);
 const financeAgent = request.agent(app);
@@ -52,8 +51,8 @@ await supportAgent.post('/api/v1/admin/auth/login').set('Origin', origin).send({
 
 const customer = request.agent(app);
 const otherCustomer = request.agent(app);
-await customer.post('/api/v1/auth/register').set('Origin', origin).send({ fullName: 'Phase 3 Customer', email: 'phase3-customer@example.invalid', phone: '09121234561', password }).expect(201);
-await otherCustomer.post('/api/v1/auth/register').set('Origin', origin).send({ fullName: 'Phase 3 Other Customer', email: 'phase3-other@example.invalid', phone: '09121234562', password }).expect(201);
+await customer.post('/api/v1/auth/register').set('Origin', origin).send({ fullName: 'Phase 3 Customer', email: 'phase3-customer@example.invalid', phone: '09121234561', gender: 'female', password }).expect(201);
+await otherCustomer.post('/api/v1/auth/register').set('Origin', origin).send({ fullName: 'Phase 3 Other Customer', email: 'phase3-other@example.invalid', phone: '09121234562', gender: 'male', password }).expect(201);
 const address = await customer.post('/api/v1/account/addresses').set('Origin', origin).send({ title: 'Test', recipientName: 'Test Recipient', phone: '09121234561', province: 'Tehran', city: 'Tehran', addressLine: 'Phase three payment test address', postalCode: '1234567890', isDefault: true }).expect(201);
 const shipping = await ownerAgent.post('/api/v1/admin/shipping/methods').set('Origin', origin).send({ code: 'phase3-test-shipping', name: 'ارسال آزمون', fixedPriceTomans: 10000, freeShippingThresholdTomans: null, estimatedMinDays: 2, estimatedMaxDays: 4, active: true, displayOrder: 0 }).expect(201);
 const variant = catalogSnapshot().variants.find(item => item.sku === 'P3-TEST-M-BLK')!;

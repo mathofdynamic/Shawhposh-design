@@ -38,5 +38,8 @@ export interface User {
   email: string;
   avatarUrl?: string;
   phone?: string;
+  gender?: 'female' | 'male';
+  dateOfBirth?: string;
+  address?: string;
 }
 

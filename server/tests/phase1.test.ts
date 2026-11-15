@@ -14,17 +14,16 @@ migrate(db,{migrationsFolder:'server/db/migrations'});
 const {app}=await import('../app');
 const {staffUsers}=await import('../db/schema');
 const {hashPassword}=await import('../modules/auth/service');
-const {saveCategory,saveProduct,catalogSnapshot}=await import('../modules/catalog/service');
+const {saveProduct,catalogSnapshot}=await import('../modules/catalog/service');
 const origin='http://localhost:3000';const password='Test-only-password-12345';
 const owner=await db.insert(staffUsers).values({email:'owner@example.invalid',fullName:'Test owner',passwordHash:await hashPassword(password),role:'owner'}).returning();
 await db.insert(staffUsers).values({email:'support@example.invalid',fullName:'Test support',passwordHash:await hashPassword(password),role:'support'});
 await db.insert(staffUsers).values({email:'inventory@example.invalid',fullName:'Test inventory',passwordHash:await hashPassword(password),role:'inventory'});
-saveCategory({nameFa:'Test category',slug:'test'});
-saveProduct({name:'Test product',slug:'test-product',category:'test',basePriceTomans:100,status:'active',variants:[{sku:'TEST-SKU',colorName:'Black',colorHex:'#000000',size:'M'}]});
+saveProduct({name:'Test product',slug:'test-product',category:'tshirt',basePriceTomans:100,status:'active',variants:[{sku:'TEST-SKU',colorName:'Black',colorHex:'#000000',size:'M'}]});
 const staff=request.agent(app);const customer=request.agent(app);
 test('customer registration, normalization, duplicate rejection, login, logout and session revocation',async()=>{
- let res=await customer.post('/api/v1/auth/register').set('Origin',origin).send({fullName:'Test customer',email:' Customer@Example.invalid ',phone:'09121234567',password});assert.equal(res.status,201);assert.equal(res.body.user.email,'customer@example.invalid');assert.equal(res.body.user.phone,'+989121234567');assert.equal(res.body.user.passwordHash,undefined);assert.match(res.headers['set-cookie'][0],/HttpOnly/);
- assert.equal((await customer.post('/api/v1/auth/register').set('Origin',origin).send({fullName:'Duplicate',email:'customer@example.invalid',password})).status,409);
+ let res=await customer.post('/api/v1/auth/register').set('Origin',origin).send({fullName:'Test customer',email:' Customer@Example.invalid ',phone:'09121234567',gender:'female',password});assert.equal(res.status,201);assert.equal(res.body.user.email,'customer@example.invalid');assert.equal(res.body.user.phone,'+989121234567');assert.equal(res.body.user.gender,'female');assert.equal(res.body.user.passwordHash,undefined);assert.match(res.headers['set-cookie'][0],/HttpOnly/);
+ assert.equal((await customer.post('/api/v1/auth/register').set('Origin',origin).send({fullName:'Duplicate',email:'customer@example.invalid',gender:'male',password})).status,409);
  assert.equal((await customer.get('/api/v1/auth/me')).body.user.name,'Test customer');
  const cookie=res.headers['set-cookie'][0].split(';')[0];await customer.post('/api/v1/auth/logout').set('Origin',origin).send({});assert.equal((await request(app).get('/api/v1/auth/me').set('Cookie',cookie)).body.user,null);
  assert.equal((await customer.post('/api/v1/auth/login').set('Origin',origin).send({identifier:'customer@example.invalid',password:'incorrect'})).status,401);
@@ -44,7 +43,7 @@ test('admin authentication, CSRF, role authorization and catalog persistence',as
  assert.equal((await staff.patch('/api/v1/admin/products/'+product.id).set('Origin',origin).send({name:'Changed',basePriceTomans:250})).status,200);
  const publicProduct=(await request(app).get('/api/v1/products/test-product')).body.product;
  assert.equal(publicProduct.price,250);
- for (const key of ['rating','ratingScore','reviewCount','reviewsCount','originalPrice','originalPriceTomans','discountPercent','isPopular']) {
+ for (const key of ['rating','ratingScore','reviewCount','reviewsCount','originalPrice','originalPriceTomans','discountPercent','isPopular','materialCostTomans']) {
   assert.equal(Object.hasOwn(publicProduct,key),false,`public catalog must not claim ${key}`);
  }
  await staff.patch('/api/v1/admin/products/'+product.id).set('Origin',origin).send({status:'archived'});assert.equal((await request(app).get('/api/v1/products/test-product')).status,404);
@@ -80,7 +79,7 @@ test('variant override prices, initial stock and reserved stock are validated at
 test('apparel catalog supports automatic IDs, private stock, product images, offline customers and purchase accounting',async()=>{
  const ownerAgent=request.agent(app);
  await ownerAgent.post('/api/v1/admin/auth/login').set('Origin',origin).send({identifier:'owner@example.invalid',password}).expect(200);
- const createdProduct=await ownerAgent.post('/api/v1/admin/products').set('Origin',origin).send({name:'لباس تخفیف‌دار',category:'test',garmentType:'hoodie',discountPercent:25,basePriceTomans:1000,status:'active'}).expect(201);
+ const createdProduct=await ownerAgent.post('/api/v1/admin/products').set('Origin',origin).send({name:'لباس تخفیف‌دار',category:'hoodie',garmentType:'hoodie',discountPercent:25,basePriceTomans:1000,status:'active'}).expect(201);
  const product=createdProduct.body.item as {id:string;slug:string};
  assert.match(product.slug,/^apparel-[a-f0-9]{12}$/);
  const createdVariant=await ownerAgent.post('/api/v1/admin/variants').set('Origin',origin).send({productId:product.id,colorName:'مشکی',size:'XS',fit:'boxy',weightGrams:420,onHandStock:4,inventoryReason:'شمارش اولیه موجودی'}).expect(201);
@@ -105,10 +104,12 @@ test('apparel catalog supports automatic IDs, private stock, product images, off
  assert.equal(directory.body.pagination.total,1);
  assert.equal(directory.body.customers[0].source,'offline');
 
- const invoice=await ownerAgent.post('/api/v1/admin/purchase-invoices').set('Origin',origin).send({supplierName:'کارگاه نمونه',productId:product.id,quantity:3,purchaseUnitPriceTomans:2000,saleUnitPriceTomans:5000,deliveryCostTomans:300,printingCostTomans:200,invoiceDate:'2026-11-03T12:00:00.000Z',notes:'فاکتور آزمون'}).expect(201);
- assert.equal(invoice.body.invoice.netProfitTomans,8500);
+ const invoice=await ownerAgent.post('/api/v1/admin/purchase-invoices').set('Origin',origin).send({supplierName:'کارگاه نمونه',productId:product.id,quantity:3,purchaseUnitPriceTomans:2000,deliveryCostTomans:300,printingCostTomans:200,invoiceDate:'2026-11-03',notes:'فاکتور آزمون'}).expect(201);
+ assert.equal(invoice.body.invoice.purchaseUnitPriceTomans,2000);
+ assert.equal(Object.hasOwn(invoice.body.invoice,'netProfitTomans'),false);
  const invoiceList=await ownerAgent.get('/api/v1/admin/purchase-invoices').expect(200);
- assert.equal(invoiceList.body.summary.projectedProfitTomans,8500);
+ assert.equal(invoiceList.body.summary.purchaseCostTomans,6500);
+ assert.equal(Object.hasOwn(invoiceList.body.summary,'projectedProfitTomans'),false);
 
  const png=await sharp({create:{width:2,height:2,channels:3,background:'#ba8d3d'}}).png().toBuffer();
  const upload=await ownerAgent.post(`/api/v1/admin/products/${product.id}/images`).set('Origin',origin).field('altText','نمای محصول').attach('image',png,{filename:'apparel.png',contentType:'image/png'}).expect(201);
@@ -116,14 +117,14 @@ test('apparel catalog supports automatic IDs, private stock, product images, off
  assert.match(imageResponse.headers['content-type'],/image\/webp/);
 });
 
-test('legacy Persian garment names resolve category filters without rewriting product presentation',()=>{
+test('selected garment categories control filters for legacy product names',()=>{
  const names=[['تیشرت پیشین','tshirt'],['تی‌شرت پیشین','tshirt'],['هودی پیشین','hoodie'],['نیم‌زیپ پیشین','halfzip']] as const;
  for(const [index,[name,garmentType]] of names.entries()){
-  const product=saveProduct({name,slug:`legacy-garment-${index}`,category:'test',basePriceTomans:1000,status:'active'});
+  const product=saveProduct({name,slug:`legacy-garment-${index}`,category:garmentType,basePriceTomans:1000,status:'active'});
   const listed=catalogSnapshot().products.find(item=>item.id===product.id)!;
   assert.equal(listed.garmentType,garmentType);
   const stored=sqlite.prepare('select presentation from products where id=?').get(product.id) as {presentation:string};
-  assert.equal(JSON.parse(stored.presentation).garmentType,undefined);
+  assert.equal(JSON.parse(stored.presentation).garmentType,garmentType);
  }
 });
 after(()=>{sqlite.close();rmSync(dir,{recursive:true,force:true});});

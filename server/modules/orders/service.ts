@@ -169,7 +169,8 @@ export function createCheckoutOrder(userId: string, idempotencyKeyInput: unknown
       tx.insert(orderItems).values({ orderId: order.id, productId: line.product.id, variantId: line.variant.id,
         skuSnapshot: line.variant.sku, productNameSnapshot: line.product.name,
         variantSnapshot: { colorName: line.variant.colorName, colorHex: line.variant.colorHex, size: line.variant.size },
-        unitPriceTomans: line.unitPriceTomans, quantity: line.item.quantity, lineTotalTomans: line.lineTotalTomans,
+        unitPriceTomans: line.unitPriceTomans,
+        quantity: line.item.quantity, lineTotalTomans: line.lineTotalTomans,
       }).run();
       const reserved = tx.update(inventory).set({ reserved: sql`${inventory.reserved} + ${line.item.quantity}`, updatedAt: now })
         .where(and(eq(inventory.variantId, line.variant.id), sql`${inventory.onHand} - ${inventory.reserved} >= ${line.item.quantity}`)).run();

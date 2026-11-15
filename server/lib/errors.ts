@@ -15,6 +15,14 @@ export const errorHandler: ErrorRequestHandler = (err, req, res, _next) => {
   if (err instanceof multer.MulterError) {
     const tooLarge = err.code === 'LIMIT_FILE_SIZE';
     const isProductImage = req.path.startsWith('/api/v1/admin/products/');
+    const isInvoiceImage = req.path.startsWith('/api/v1/admin/purchase-invoices/');
+    if (isInvoiceImage) {
+      res.status(tooLarge ? 413 : 422).json({ error: {
+        code: tooLarge ? 'INVOICE_IMAGE_SIZE_INVALID' : 'UPLOAD_INVALID',
+        message: tooLarge ? 'حجم تصویر فاکتور باید حداکثر ۵ مگابایت باشد.' : 'فایل تصویر فاکتور معتبر نیست.',
+      } });
+      return;
+    }
     res.status(tooLarge ? 413 : 422).json({ error: { code: tooLarge ? (isProductImage ? 'PRODUCT_IMAGE_SIZE_INVALID' : 'RECEIPT_SIZE_INVALID') : 'UPLOAD_INVALID', message: tooLarge ? (isProductImage ? 'حجم هر تصویر باید حداکثر ۵ مگابایت باشد.' : 'حجم تصویر رسید باید حداکثر ۵ مگابایت باشد.') : (isProductImage ? 'فایل تصویر محصول معتبر نیست.' : 'فایل رسید معتبر نیست.') } });
     return;
   }

@@ -1,5 +1,5 @@
 #!/usr/bin/python3 -I
-"""One-time SHA-pinned migration release for the approved 0006/0007 schema change."""
+"""One-time SHA-pinned migration release for the approved apparel/accounting schema change."""
 
 from __future__ import annotations
 
@@ -25,9 +25,10 @@ import promote_frontend as frontend  # noqa: E402
 import promote_release as promotion  # noqa: E402
 
 
-BASELINE_SHA = "05e018567f9a7a037dee2fa78ed5436ac7bdefe8"
+BASELINE_SHA = "11f32a38ca0997904ad9052b12370ebb2cd035fb"
 APPROVED_SHA_FILE = Path("/run/shawhposh-migration-release.sha")
 ENTRYPOINT = Path("/usr/local/sbin/shawhposh-migrate-release")
+SUDOERS_RULE = Path("/etc/sudoers.d/ubuntu-shawhposh-migration-release")
 DATABASE_PATH = Path("/var/lib/shawhposh/shawhposh.sqlite")
 BACKUP_DIRECTORY = Path("/var/backups/shawhposh")
 BACKUP_SERVICE = "shawhposh-backup.service"
@@ -46,21 +47,17 @@ BASELINE_MIGRATIONS = (
     1791726079654,
     1791738236767,
 )
-TARGET_MIGRATIONS = BASELINE_MIGRATIONS + (1793656996858, 1793715179209)
+TARGET_MIGRATIONS = BASELINE_MIGRATIONS + (1793656996858, 1793715179209, 1794649574211)
 
 EXPECTED_MIGRATION_CHANGES = {
-    "server/db/migrations/0006_simple_black_panther.sql": "A",
-    "server/db/migrations/0007_correct_persian_catalog_copy.sql": "A",
-    "server/db/migrations/meta/0006_snapshot.json": "A",
-    "server/db/migrations/meta/0007_snapshot.json": "A",
+    "server/db/migrations/0008_steady_pyro.sql": "A",
+    "server/db/migrations/meta/0008_snapshot.json": "A",
     "server/db/migrations/meta/_journal.json": "M",
 }
 EXPECTED_CHANGED_FILE_SHA256 = {
-    "server/db/migrations/0006_simple_black_panther.sql": "ac889edc0ded0bc8ce0368aeab393ba111e05fabb33bef4f2c0fec26fb2b004f",
-    "server/db/migrations/0007_correct_persian_catalog_copy.sql": "dd2bac8b7693182f2ad8d5dce97b585a836a5cdfcde13aab4ccfd8d6dec8ed2b",
-    "server/db/migrations/meta/0006_snapshot.json": "fe3b465d214e6fd1508701bd860976bcae73b1d9974587dafb048cf0a320c545",
-    "server/db/migrations/meta/0007_snapshot.json": "e4d8251e907fa669147cea0b4acb0e39b8acc232812c126cfdb2ff44b0eb1b12",
-    "server/db/migrations/meta/_journal.json": "99c204b8b5e9b8449048e75b0704429f53dba29a3503ff83723f4b43f2ae4fe1",
+    "server/db/migrations/0008_steady_pyro.sql": "5ba0f0c6bc5273b9f78cbe668f19da23b089f5b9b55d2bd1e0b85ded38c779c4",
+    "server/db/migrations/meta/0008_snapshot.json": "c5c0e96b429d351c6115b200e1b9b4cf5b82cad86a802961b4b8a02a8256eba9",
+    "server/db/migrations/meta/_journal.json": "eb79935dc9a79b74e934cfcea55c1e14bb1afd983f38741263f729c51adf47d0",
 }
 
 EXPECTED_MIGRATION_TREE = frozenset(
@@ -73,8 +70,9 @@ EXPECTED_MIGRATION_TREE = frozenset(
         "0005_bale_invoice_recovery.sql",
         "0006_simple_black_panther.sql",
         "0007_correct_persian_catalog_copy.sql",
+        "0008_steady_pyro.sql",
     )]
-    + [f"server/db/migrations/meta/{index:04d}_snapshot.json" for index in range(8)]
+    + [f"server/db/migrations/meta/{index:04d}_snapshot.json" for index in range(9)]
     + ["server/db/migrations/meta/_journal.json"]
 )
 BACKUP_NAME = re.compile(r"shawhposh-\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}\.\d{3}Z\.sqlite\Z")
@@ -116,6 +114,16 @@ def _read_approved_sha(requested_sha: str) -> str:
     return approved_sha
 
 
+def _expected_sudoers_rule(approved_sha: str) -> str:
+    return f"ubuntu ALL=(root) NOPASSWD: {ENTRYPOINT} {approved_sha}\n"
+
+
+def _verify_temporary_sudoers_rule(approved_sha: str) -> None:
+    info = _safe_path(SUDOERS_RULE, expected_uid=0, expected_mode=0o440)
+    if info.st_gid != 0 or SUDOERS_RULE.read_text(encoding="ascii") != _expected_sudoers_rule(approved_sha):
+        raise deploy.DeployError("The temporary SHA-scoped sudoers rule is missing or altered.")
+
+
 def _cleanup_temporary_entrypoint(approved_sha: str) -> None:
     pin_info = _safe_path(APPROVED_SHA_FILE, expected_uid=0, expected_mode=0o400)
     if pin_info.st_gid != 0 or APPROVED_SHA_FILE.read_text(encoding="ascii") != f"{approved_sha}\n":
@@ -123,9 +131,13 @@ def _cleanup_temporary_entrypoint(approved_sha: str) -> None:
     entry_info = _safe_path(ENTRYPOINT, expected_uid=0, expected_mode=0o755)
     if entry_info.st_gid != 0:
         raise deploy.DeployError("The one-time entrypoint changed ownership before cleanup.")
-    ENTRYPOINT.unlink()
+    if ENTRYPOINT.read_bytes() != Path(__file__).read_bytes():
+        raise deploy.DeployError("The installed one-time entrypoint changed before cleanup.")
+    _verify_temporary_sudoers_rule(approved_sha)
     APPROVED_SHA_FILE.unlink()
-    _log("CLEANUP", "temporary_entrypoint=removed approved_sha_pin=removed")
+    ENTRYPOINT.unlink()
+    SUDOERS_RULE.unlink()
+    _log("CLEANUP", "temporary_entrypoint=removed approved_sha_pin=removed sudoers_rule=removed")
 
 
 def _verify_installed_entrypoint() -> None:
@@ -217,7 +229,7 @@ def _verify_git_migration_delta(mirror: Path, sha: str, env: dict[str, str]) -> 
             raise deploy.DeployError("Migration tree contains duplicate change metadata.")
         actual[name] = status
     if actual != EXPECTED_MIGRATION_CHANGES:
-        raise deploy.DeployError("Migration tree differs from the exact reviewed 0006/0007 allowlist.")
+        raise deploy.DeployError("Migration tree differs from the exact reviewed 0008 allowlist.")
 
     for name, expected_hash in EXPECTED_CHANGED_FILE_SHA256.items():
         content = deploy._require_success(
@@ -430,8 +442,8 @@ def _run_migration(sha: str, release: Path, stage_root: Path) -> None:
         details = deploy._safe_tail(result.stderr or result.stdout or "")
         raise deploy.DeployError(f"The approved migration command failed (exit {result.returncode}). {details}".strip())
     if _migration_history() != TARGET_MIGRATIONS:
-        raise deploy.DeployError("SQLite migration history does not match exactly migrations 0000–0007.")
-    _log("MIGRATIONS", f"result=verified sha={sha} applied=0006,0007 database_integrity=ok")
+        raise deploy.DeployError("SQLite migration history does not match exactly migrations 0000–0008.")
+    _log("MIGRATIONS", f"result=verified sha={sha} applied=0006,0007,0008 database_integrity=ok")
 
 
 def _writer_unit_states() -> tuple[bool, bool, bool]:
@@ -503,7 +515,7 @@ def migrate_release(sha: str, approved_sha: str) -> None:
         previous_api_sha = deploy._read_active_sha(root_fd)
         previous_web_sha = frontend._current_sha(web_root_fd, releases_root=deploy.WEB_RELEASES)
         if previous_api_sha != BASELINE_SHA or previous_web_sha != BASELINE_SHA:
-            raise deploy.DeployError("The one-time migration release only runs from the fixed 05e018 production pair.")
+            raise deploy.DeployError("The one-time migration release only runs from the fixed 11f32a production pair.")
         if not deploy._service_owned_by_runtime() or not deploy._health_matches(previous_api_sha):
             raise deploy.DeployError("The previous API is not healthy as the shawhposh service user.")
         if not deploy._website_health_matches(previous_web_sha, web_root_fd):
@@ -540,7 +552,7 @@ def migrate_release(sha: str, approved_sha: str) -> None:
         backup, backup_sha256 = _verify_fresh_backup(backup_names_before)
         if _migration_history(backup) != BASELINE_MIGRATIONS:
             raise deploy.DeployError("Fresh backup migration history changed during verification.")
-        _log("BACKUP", f"ready_before_migration=0006,0007 checksum={backup_sha256[:16]}")
+        _log("BACKUP", f"ready_before_migration=0006,0007,0008 checksum={backup_sha256[:16]}")
 
         _run_migration(sha, api_release, stage_root)
 
@@ -581,7 +593,7 @@ def migrate_release(sha: str, approved_sha: str) -> None:
             "COMPLETE",
             f"previous_api={previous_api_sha} previous_frontend={previous_web_sha} "
             f"promoted_api={sha} promoted_frontend={sha} backup={backup.name} "
-            "migration=0006,0007 api_health=passed website_health=passed rollback=not-needed",
+            "migration=0006,0007,0008 api_health=passed website_health=passed rollback=not-needed",
         )
     except Exception as exc:
         rollback_result = "not-needed"
@@ -693,6 +705,15 @@ def main(argv: list[str]) -> int:
         return 1
     if requester != "ubuntu":
         print("[MIGRATION RELEASE] Only ubuntu may request the one-time migration release.", file=sys.stderr)
+        return 1
+
+    if os.environ.get("SUDO_COMMAND") != f"{ENTRYPOINT} {sha}":
+        print("[MIGRATION RELEASE] The command was not invoked through the exact approved sudo command.", file=sys.stderr)
+        return 1
+    try:
+        _verify_temporary_sudoers_rule(sha)
+    except Exception as exc:
+        print(f"[MIGRATION RELEASE] {exc}", file=sys.stderr)
         return 1
 
     os.environ.clear()

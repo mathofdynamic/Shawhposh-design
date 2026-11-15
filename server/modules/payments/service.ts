@@ -7,7 +7,7 @@ import { config, isBalePaymentConfigured } from '../../config';
 import { db, sqlite } from '../../db/connection';
 import {
   balePaymentSessions, baleStartTokens, baleWebhookUpdates, inventory, inventoryReservations,
-  manualPaymentReceipts, orderEvents, orders, paymentAttempts, paymentEvents,
+  manualPaymentReceipts, orderEvents, orderItems, orders, paymentAttempts, paymentEvents, products,
   paymentMethodConfigs, stockMovements, users,
 } from '../../db/schema';
 import * as schema from '../../db/schema';
@@ -15,6 +15,11 @@ import { ApiError } from '../../lib/errors';
 
 const activeAttemptStatuses = ['created', 'awaiting_customer', 'pending_verification'] as const;
 type PaymentExecutor = typeof db | SQLiteTransaction<'sync', RunResult, typeof schema, ExtractTablesWithRelations<typeof schema>>;
+function snapshotMaterialCostsForSale(tx: PaymentExecutor, orderId: string) {
+  tx.update(orderItems).set({
+    materialCostUnitTomans: sql<number | null>`(select ${products.materialCostTomans} from ${products} where ${products.id} = ${orderItems.productId})`,
+  }).where(eq(orderItems.orderId, orderId)).run();
+}
 const idempotencySchema = z.string().trim().min(8).max(128).regex(/^[A-Za-z0-9._:-]+$/);
 const toDigits = (value: string) => value
   .replace(/[\u06f0-\u06f9]/g, digit => String(digit.charCodeAt(0) - 0x06f0))
@@ -485,6 +490,7 @@ export function approveCardPayment(attemptId: string, staffId: string, input: un
         reason: `Card payment verified for ${order.orderNumber}`, actorStaffId: staffId, createdAt: now }).run();
     }
     tx.update(manualPaymentReceipts).set({ reviewStatus: 'approved', reviewedByStaffId: staffId, reviewedAt: now, reviewNote: null }).where(eq(manualPaymentReceipts.id, receipt.id)).run();
+    snapshotMaterialCostsForSale(tx, order.id);
     tx.update(paymentAttempts).set({ status: 'verified', paidAt: now, updatedAt: now, failureCode: null, failureMessage: null }).where(eq(paymentAttempts.id, attempt.id)).run();
     tx.update(orders).set({ paymentStatus: 'paid', orderStatus: 'confirmed', updatedAt: now }).where(eq(orders.id, order.id)).run();
     addPaymentEvent(tx, { paymentAttemptId: attempt.id, eventType: 'manual_payment_approved', source: 'staff', metadata: { staffId, receiptId: receipt.id, amountTomans: attempt.amountTomans }, createdAt: now });
@@ -743,6 +749,7 @@ export function completeVerifiedBalePayment(input: {
         onHandBefore: before.onHand, onHandAfter: after.onHand, referenceType: 'order', referenceId: order!.id,
         reason: `Bale payment verified for ${order!.orderNumber}`, createdAt: now }).run();
     }
+    snapshotMaterialCostsForSale(tx, order!.id);
     tx.update(paymentAttempts).set({ status: 'verified', externalTransactionId: input.transactionId,
       externalProviderReference: input.providerReference, providerPayloadReference: input.payloadHash.slice(0, 16), paidAt: now,
       updatedAt: now, failureCode: null, failureMessage: null }).where(eq(paymentAttempts.id, attempt.id)).run();

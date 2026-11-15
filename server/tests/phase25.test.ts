@@ -17,7 +17,7 @@ migrate(db, { migrationsFolder: 'server/db/migrations' });
 const { app } = await import('../app');
 const { staffUsers } = await import('../db/schema');
 const { hashPassword } = await import('../modules/auth/service');
-const { saveCategory, saveProduct, catalogSnapshot } = await import('../modules/catalog/service');
+const { saveProduct, catalogSnapshot } = await import('../modules/catalog/service');
 
 type QuoteMethod = { id: string; code: string; name: string; description: string | null; priceTomans: number; totalTomans: number; estimatedMinDays: number | null; estimatedMaxDays: number | null };
 type QuoteItem = { cartItemId: string; productId: string; variantId: string; sku: string; productName: string; colorName: string; colorHex: string; size: string; quantity: number; unitPriceTomans: number; lineTotalTomans: number; availableQuantity: number };
@@ -42,8 +42,7 @@ const managerEmail = 'phase25-manager@example.invalid';
 await db.insert(staffUsers).values({ email: managerEmail, fullName: 'Phase 2.5 Manager', passwordHash: await hashPassword(password), role: 'store_manager' }).run();
 await db.insert(staffUsers).values({ email: 'phase25-inventory@example.invalid', fullName: 'Phase 2.5 Inventory', passwordHash: await hashPassword(password), role: 'inventory' }).run();
 await db.insert(staffUsers).values({ email: 'phase25-support@example.invalid', fullName: 'Phase 2.5 Support', passwordHash: await hashPassword(password), role: 'support' }).run();
-saveCategory({ nameFa: 'گروه ارسال آزمون', slug: 'phase25-test' });
-saveProduct({ name: 'پیراهن ارسال آزمون', slug: 'phase25-test-tee', category: 'phase25-test', basePriceTomans: 245000, status: 'active', variants: [{ sku: 'P25-TEST-M-BLK', colorName: 'مشکی', colorHex: '#111111', size: 'M' }] });
+saveProduct({ name: 'پیراهن ارسال آزمون', slug: 'phase25-test-tee', category: 'tshirt', basePriceTomans: 245000, status: 'active', variants: [{ sku: 'P25-TEST-M-BLK', colorName: 'مشکی', colorHex: '#111111', size: 'M' }] });
 
 const ownerAgent = request.agent(app);
 const managerAgent = request.agent(app);
@@ -91,7 +90,7 @@ test('store manager can activate and edit a method; public list omits inactive a
 
 test('quote and order use server totals, preserve shipping snapshots, and release reservations on cancel', async () => {
   await ownerAgent.post('/api/v1/admin/inventory/P25-TEST-M-BLK/adjustments').set('Origin', origin).send({ newQuantity: 5, reason: 'Phase 2.5 isolated shipping test setup' }).expect(200);
-  await customer.post('/api/v1/auth/register').set('Origin', origin).send({ fullName: 'Phase 2.5 Test Customer', email: 'phase25-customer@example.invalid', phone: '09121234569', password }).expect(201);
+  await customer.post('/api/v1/auth/register').set('Origin', origin).send({ fullName: 'Phase 2.5 Test Customer', email: 'phase25-customer@example.invalid', phone: '09121234569', gender: 'female', password }).expect(201);
   const address = await customer.post('/api/v1/account/addresses').set('Origin', origin).send({ title: 'آزمون', recipientName: 'گیرنده آزمون', phone: '09121234569', province: 'تهران', city: 'تهران', addressLine: 'خیابان نمونه، پلاک ۲۵', postalCode: '1234567891', isDefault: true }).expect(201);
   await customer.post('/api/v1/cart/items').set('Origin', origin).send({ variantId: variant.id, quantity: 1 }).expect(200);
 

@@ -34,13 +34,16 @@ export const updateAddressSchema = z.object({
 export const updateAccountSchema = z.object({
   fullName: z.string().trim().min(2).max(120).optional(),
   phone: z.string().trim().min(10).max(30).transform(normalizePhone).nullable().optional(),
+  gender: z.enum(['female', 'male']).nullable().optional(),
+  dateOfBirth: z.string().refine(value => /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(Date.parse(`${value}T00:00:00.000Z`)) && new Date(`${value}T00:00:00.000Z`).toISOString().slice(0, 10) === value, 'تاریخ تولد معتبر نیست.').refine(value => value <= new Date().toISOString().slice(0, 10), 'تاریخ تولد نمی‌تواند در آینده باشد.').nullable().optional(),
+  address: z.string().trim().max(500).nullable().optional(),
 }).refine(value => Object.keys(value).length > 0);
 
 export function accountProfile(userId: string) {
-  const user = db.select({ id: users.id, fullName: users.fullName, email: users.email, phone: users.phone, status: users.status, createdAt: users.createdAt, updatedAt: users.updatedAt })
+  const user = db.select({ id: users.id, fullName: users.fullName, email: users.email, phone: users.phone, gender: users.gender, dateOfBirth: users.dateOfBirth, address: users.address, status: users.status, createdAt: users.createdAt, updatedAt: users.updatedAt })
     .from(users).where(eq(users.id, userId)).get();
   if (!user) throw new ApiError(404, 'NOT_FOUND', 'حساب کاربری پیدا نشد.');
-  return { user: { id: user.id, name: user.fullName, email: user.email, phone: user.phone, status: user.status, createdAt: user.createdAt, updatedAt: user.updatedAt } };
+  return { user: { id: user.id, name: user.fullName, email: user.email, phone: user.phone, gender: user.gender, dateOfBirth: user.dateOfBirth, address: user.address, status: user.status, createdAt: user.createdAt, updatedAt: user.updatedAt } };
 }
 
 export function updateAccount(userId: string, input: unknown) {
@@ -52,10 +55,10 @@ export function updateAccount(userId: string, input: unknown) {
       throw new ApiError(422, 'IDENTITY_REQUIRED', 'حداقل یک ایمیل یا شماره تلفن باید برای ورود حفظ شود.');
     }
     return tx.update(users).set({ ...body, updatedAt: new Date() }).where(eq(users.id, userId))
-      .returning({ id: users.id, fullName: users.fullName, email: users.email, phone: users.phone, status: users.status, createdAt: users.createdAt, updatedAt: users.updatedAt }).get();
+      .returning({ id: users.id, fullName: users.fullName, email: users.email, phone: users.phone, gender: users.gender, dateOfBirth: users.dateOfBirth, address: users.address, status: users.status, createdAt: users.createdAt, updatedAt: users.updatedAt }).get();
   }, { behavior: 'immediate' });
   if (!updated) throw new ApiError(404, 'NOT_FOUND', 'حساب کاربری پیدا نشد.');
-  return { user: { id: updated.id, name: updated.fullName, email: updated.email, phone: updated.phone, status: updated.status, createdAt: updated.createdAt, updatedAt: updated.updatedAt } };
+  return { user: { id: updated.id, name: updated.fullName, email: updated.email, phone: updated.phone, gender: updated.gender, dateOfBirth: updated.dateOfBirth, address: updated.address, status: updated.status, createdAt: updated.createdAt, updatedAt: updated.updatedAt } };
 }
 
 export function listAddresses(userId: string) {

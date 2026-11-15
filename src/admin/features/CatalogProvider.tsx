@@ -78,7 +78,7 @@ export function useCatalogAdmin() {
     reload,
     getProducts: (filters?: { search?: string; status?: string; category?: string }) => snapshot.products.filter(product =>
       (!filters?.search || product.name.toLocaleLowerCase().includes(filters.search.toLocaleLowerCase())) &&
-      (!filters?.status || filters.status === 'all' || product.status === filters.status) &&
+      (!filters?.status || filters.status === 'all' || (filters.status === 'visible' ? product.status !== 'archived' : product.status === filters.status)) &&
       (!filters?.category || filters.category === 'all' || product.category === filters.category)),
     getProductById: (id: string) => snapshot.products.find(product => product.id === id),
     getVariants: () => snapshot.variants,

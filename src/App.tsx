@@ -505,7 +505,7 @@ export default function App() {
                 <p className={`text-xs mt-2 max-w-2xl leading-relaxed ${
                   isDark ? 'text-gray-400' : 'text-slate-600'
                 }`}>
-                  محصولات را بر پایه نوع پوشاک یا سبک طرح پیدا کنید.
+                  محصولات را بر پایه نوع پوشاک پیدا کنید.
                 </p>
               </motion.div>
 
@@ -532,7 +532,7 @@ export default function App() {
                     dir="rtl"
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
-                    placeholder="نام محصول، کد یا طرح"
+                    placeholder="نام محصول یا نوع پوشاک"
                     className={`w-full bg-transparent px-3 py-3.5 text-xs outline-none text-right ${
                       isDark ? 'text-white placeholder:text-stone-400' : 'text-slate-900 placeholder:text-slate-600'
                     }`}
@@ -540,17 +540,11 @@ export default function App() {
                 </div>
 
                 <div className="flex flex-1 flex-col gap-3">
-                  <div><p className="mb-2 text-[10px] text-stone-500">نوع پوشاک</p><div className="flex flex-wrap gap-2">
+                  <div><p className="mb-2 text-[10px] text-stone-500">دسته‌بندی پوشاک</p><div className="flex flex-wrap gap-2">
                     {[
-                      { id: 'all', label: 'همه پوشاک' }, { id: 'hoodie', label: 'هودی' }, { id: 'dors', label: 'دورس' },
-                      { id: 'tshirt', label: 'تیشرت' }, { id: 'sweatshirt', label: 'سویشرت' }, { id: 'halfzip', label: 'نیم‌زیپ' }, { id: 'pants', label: 'شلوار' },
-                    ].map(category => <button key={category.id} type="button" aria-pressed={selectedGarmentType === category.id} onClick={() => setSelectedGarmentType(category.id)} className={`inline-flex min-h-[44px] items-center justify-center rounded-lg px-3 py-2 text-[10px] font-semibold transition ${selectedGarmentType === category.id ? 'bg-[#ba8d3d] text-[#0e0d0c]' : isDark ? 'border border-white/5 bg-white/[0.03] text-stone-400 hover:text-white' : 'border border-slate-200 bg-white text-slate-600 hover:text-slate-900'}`}>{category.label}</button>)}
-                  </div></div>
-                  <div><p className="mb-2 text-[10px] text-stone-500">سبک طرح</p><div className="flex flex-wrap gap-2">
-                    {[
-                      { id: 'all', label: 'همه طرح‌ها' },
-                      ...catalogCategories.map(category => ({ id: category.slug, label: ({ calligraphy: 'کالیگرافی و نستعلیق', graphic: 'طرح‌های گرافیکی', minimalist: 'مینیمال ایرانی' } as Record<string, string>)[category.slug] || category.nameFa })),
-                    ].map(category => <button key={category.id} type="button" aria-pressed={selectedCategory === category.id} onClick={() => setSelectedCategory(category.id)} className={`inline-flex min-h-[44px] items-center justify-center rounded-lg px-3 py-2 text-[10px] font-semibold transition ${selectedCategory === category.id ? 'bg-[#ba8d3d] text-[#0e0d0c]' : isDark ? 'border border-white/5 bg-white/[0.03] text-stone-400 hover:text-white' : 'border border-slate-200 bg-white text-slate-600 hover:text-slate-900'}`}>{category.label}</button>)}
+                      { id: 'all', label: 'همه پوشاک' },
+                      ...catalogCategories.filter(category => category.status === 'active').map(category => ({ id: category.slug, label: category.nameFa })),
+                    ].map(category => <button key={category.id} type="button" aria-pressed={selectedCategory === category.id} onClick={() => { setSelectedCategory(category.id); setSelectedGarmentType('all'); }} className={`inline-flex min-h-[44px] items-center justify-center rounded-lg px-3 py-2 text-[10px] font-semibold transition ${selectedCategory === category.id ? 'bg-[#ba8d3d] text-[#0e0d0c]' : isDark ? 'border border-white/5 bg-white/[0.03] text-stone-400 hover:text-white' : 'border border-slate-200 bg-white text-slate-600 hover:text-slate-900'}`}>{category.label}</button>)}
                   </div></div>
                 </div>
 
@@ -603,7 +597,7 @@ export default function App() {
                 >
                   <Shirt className="mx-auto text-gray-500 stroke-1 mb-4" size={32} />
                   <h3 className="text-white text-base font-bold mb-1">{PRODUCTS.length === 0 ? 'هنوز محصولی در کاتالوگ ثبت نشده است' : selectedGarmentType === 'all' ? 'محصولی مطابق فیلترها پیدا نشد' : `محصولی از گروه «${garmentLabelByType[selectedGarmentType] ?? 'پوشاک'}» پیدا نشد`}</h3>
-                  <p className="text-gray-500 text-xs max-w-sm mx-auto leading-relaxed">عبارت جستجو، دسته پوشاک یا سبک طرح را تغییر دهید.</p>
+                  <p className="text-gray-500 text-xs max-w-sm mx-auto leading-relaxed">عبارت جستجو یا دسته پوشاک را تغییر دهید.</p>
                 </motion.div>
               ) : (
                 <motion.div 
@@ -747,31 +741,31 @@ export default function App() {
             <p className={`text-xs leading-relaxed max-w-sm transition-colors font-sans ${
               isDark ? 'text-gray-450 text-gray-400' : 'text-slate-600'
             }`}>
-              شهپوش خانه ایرانی تیشرت‌های گرافیکی اصیل و آتلیه شخصی‌سازی شماست. ما با پیوند میان نقوش خطاطی، کالیگرافی اصیل و هندسه خیابانی مدرن، جامه‌ای درخور اصالت شما می‌آفرینیم.
+              شهپوش خانه‌ای برای پوشاک ایرانی است؛ محصول‌ها بر اساس نوع لباس دسته‌بندی شده‌اند تا انتخاب تیشرت، هودی و دیگر مدل‌ها ساده باشد.
             </p>
             
           </div>
 
           {/* Catalog switches Columns 2 */}
           <div className="lg:col-span-2 space-y-4">
-            <h4 className="text-xs font-black tracking-wider text-[var(--text-accent)] border-r-2 border-[#ba8d3d]/40 pr-2">بایگانی مجموعه‌ها</h4>
+            <h4 className="text-xs font-black tracking-wider text-[var(--text-accent)] border-r-2 border-[#ba8d3d]/40 pr-2">دسته‌بندی پوشاک</h4>
             <ul className={`space-y-1 text-xs transition-colors [&_button]:min-h-11 [&_button]:w-full [&_button]:justify-start ${isDark ? 'text-gray-400' : 'text-slate-600'}`}>
               <li>
-                <button onClick={() => { setSelectedCategory('calligraphy'); setActiveTab('shop'); }} className={`transition-colors duration-300 cursor-pointer flex items-center gap-1.5 hover:translate-x-[-4px] ${isDark ? 'hover:text-white' : 'hover:text-[var(--text-accent)]'}`}>
+                <button onClick={() => { setSelectedCategory('tshirt'); setSelectedGarmentType('all'); setActiveTab('shop'); }} className={`transition-colors duration-300 cursor-pointer flex items-center gap-1.5 hover:translate-x-[-4px] ${isDark ? 'hover:text-white' : 'hover:text-[var(--text-accent)]'}`}>
                   <span className="w-1 h-1 rounded-full bg-[#ba8d3d]/60"></span>
-                  تیشرت‌های خوشنویسی
+                  تیشرت
                 </button>
               </li>
               <li>
-                <button onClick={() => { setSelectedCategory('graphic'); setActiveTab('shop'); }} className={`transition-colors duration-300 cursor-pointer flex items-center gap-1.5 hover:translate-x-[-4px] ${isDark ? 'hover:text-white' : 'hover:text-[var(--text-accent)]'}`}>
+                <button onClick={() => { setSelectedCategory('hoodie'); setSelectedGarmentType('all'); setActiveTab('shop'); }} className={`transition-colors duration-300 cursor-pointer flex items-center gap-1.5 hover:translate-x-[-4px] ${isDark ? 'hover:text-white' : 'hover:text-[var(--text-accent)]'}`}>
                   <span className="w-1 h-1 rounded-full bg-[#ba8d3d]/60"></span>
-                  طرح‌های گرافیکی
+                  هودی
                 </button>
               </li>
               <li>
-                <button onClick={() => { setSelectedCategory('minimalist'); setActiveTab('shop'); }} className={`transition-colors duration-300 cursor-pointer flex items-center gap-1.5 hover:translate-x-[-4px] ${isDark ? 'hover:text-white' : 'hover:text-[var(--text-accent)]'}`}>
+                <button onClick={() => { setSelectedCategory('all'); setSelectedGarmentType('all'); setActiveTab('shop'); }} className={`transition-colors duration-300 cursor-pointer flex items-center gap-1.5 hover:translate-x-[-4px] ${isDark ? 'hover:text-white' : 'hover:text-[var(--text-accent)]'}`}>
                   <span className="w-1 h-1 rounded-full bg-[#ba8d3d]/60"></span>
-                  تیشرت‌های منقش کوفی
+                  همهٔ پوشاک
                 </button>
               </li>
               <li>

@@ -25,8 +25,10 @@ app.use((req,res,next)=>{
   const isBaleWebhook = /^\/api\/v1\/payments\/bale\/webhook\/[^/]+$/.test(req.path);
   const isReceiptUpload = /^\/api\/v1\/payments\/[0-9a-f-]{36}\/receipt$/i.test(req.path);
   const isProductImageUpload = /^\/api\/v1\/admin\/products\/[0-9a-f-]{36}\/images$/i.test(req.path);
-  const isMultipartUpload = isReceiptUpload || isProductImageUpload;
+  const isInvoiceImageUpload = /^\/api\/v1\/admin\/purchase-invoices\/[0-9a-f-]{36}\/image$/i.test(req.path);
+  const isMultipartUpload = isReceiptUpload || isProductImageUpload || isInvoiceImageUpload;
   if(isMutation&&!isBaleWebhook&&req.get('origin')!==config.APP_ORIGIN)return next(new ApiError(403,'CSRF_REJECTED','مبدأ درخواست معتبر نیست.'));
+  if(isMutation&&isInvoiceImageUpload&&!req.is('multipart/form-data'))return next(new ApiError(415,'UNSUPPORTED_MEDIA_TYPE','تصویر فاکتور باید با قالب چندبخشی ارسال شود.'));
   if(isMutation&&isMultipartUpload&&!req.is('multipart/form-data'))return next(new ApiError(415,'UNSUPPORTED_MEDIA_TYPE',isProductImageUpload?'بارگذاری تصویر محصول باید با قالب چندبخشی انجام شود.':'ارسال تصویر رسید با قالب مجاز لازم است.'));
   if(isMutation&&!isMultipartUpload&&!req.is('application/json'))return next(new ApiError(415,'UNSUPPORTED_MEDIA_TYPE','درخواست JSON لازم است.'));
   const start=Date.now();res.on('finish',()=>console.log(JSON.stringify({method:req.method,status:res.statusCode,durationMs:Date.now()-start})));next();

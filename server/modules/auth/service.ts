@@ -19,9 +19,16 @@ export const hashPassword = (password: string) => argon2.hash(password, { type: 
 const tokenHash = (token: string) => createHash('sha256').update(token).digest('hex');
 const cookieName = (staff: boolean) => staff ? 'shawhposh_staff' : 'shawhposh_session';
 const cookieOptions = { httpOnly: true, secure: config.NODE_ENV === 'production', sameSite: 'lax' as const, path: '/' };
-export type Principal = { id: string; fullName: string; email: string | null; phone?: string | null; role?: string };
+export type Principal = {
+  id: string; fullName: string; email: string | null; phone?: string | null; role?: string;
+  gender?: 'female' | 'male' | null; dateOfBirth?: string | null; address?: string | null;
+};
 declare global { namespace Express { interface Request { principal?: Principal } } }
-export const safeUser = (user: Principal) => ({ id: user.id, name: user.fullName, email: user.email, phone: user.phone, ...(user.role ? { role: user.role } : {}) });
+export const safeUser = (user: Principal) => ({
+  id: user.id, name: user.fullName, email: user.email, phone: user.phone,
+  ...(user.gender ? { gender: user.gender } : {}), ...(user.dateOfBirth ? { dateOfBirth: user.dateOfBirth } : {}),
+  ...(user.address ? { address: user.address } : {}), ...(user.role ? { role: user.role } : {}),
+});
 export async function createSession(userId: string, staff: boolean, res: Response) {
   const token = randomBytes(32).toString('base64url');
   const expiresAt = new Date(Date.now() + (staff ? 12 * 3600 : 7 * 86400) * 1000);
@@ -53,10 +60,25 @@ export const allowRoles = (...roles: string[]): RequestHandler => (req, _res, ne
   if (!req.principal?.role || !roles.includes(req.principal.role)) return next(new ApiError(403, 'FORBIDDEN', 'دسترسی لازم را ندارید.'));
   next();
 };
-export const registrationSchema = z.object({ fullName: z.string().trim().min(2).max(120), email: z.string().trim().email().max(254).transform(normalizeEmail).optional(), phone: z.string().max(30).transform(normalizePhone).optional(), password: z.string().min(12).max(128) }).refine(v => v.email || v.phone);
+const isCalendarDate = (value: string) => {
+  const date = new Date(`${value}T00:00:00.000Z`);
+  return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value;
+};
+export const registrationSchema = z.object({
+  fullName: z.string().trim().min(2).max(120),
+  email: z.string().trim().email().max(254).transform(normalizeEmail).optional(),
+  phone: z.string().max(30).transform(normalizePhone).optional(),
+  gender: z.enum(['female', 'male']),
+  dateOfBirth: z.string().refine(isCalendarDate, 'تاریخ تولد معتبر نیست.').refine(value => value <= new Date().toISOString().slice(0, 10), 'تاریخ تولد نمی‌تواند در آینده باشد.').optional(),
+  address: z.string().trim().max(500).optional(),
+  password: z.string().min(12).max(128),
+}).refine(v => v.email || v.phone);
 export async function register(req: Request, res: Response) {
   const body = registrationSchema.parse(req.body);
-  const [user] = await db.insert(users).values({ fullName: body.fullName, email: body.email, phone: body.phone, passwordHash: await hashPassword(body.password) }).returning();
+  const [user] = await db.insert(users).values({
+    fullName: body.fullName, email: body.email, phone: body.phone, gender: body.gender,
+    dateOfBirth: body.dateOfBirth, address: body.address || null, passwordHash: await hashPassword(body.password),
+  }).returning();
   await createSession(user.id, false, res);
   res.status(201).json({ user: safeUser(user) });
 }

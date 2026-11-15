@@ -17,7 +17,7 @@ migrate(db, { migrationsFolder: 'server/db/migrations' });
 const { app } = await import('../app');
 const { staffUsers } = await import('../db/schema');
 const { hashPassword } = await import('../modules/auth/service');
-const { saveCategory, saveProduct, catalogSnapshot } = await import('../modules/catalog/service');
+const { saveProduct, catalogSnapshot } = await import('../modules/catalog/service');
 const { expireReservations, tehranDateStartUtc } = await import('../modules/orders/service');
 test('admin calendar-date boundaries resolve to Tehran midnight', () => {
   const boundary = tehranDateStartUtc('2026-10-03');
@@ -36,8 +36,7 @@ const ownerEmail = 'phase2-owner@example.invalid';
 const owner = await db.insert(staffUsers).values({ email: ownerEmail, fullName: 'Phase 2 Owner', passwordHash: await hashPassword(password), role: 'owner' }).returning().then(rows => rows[0]);
 const inventoryStaff = await db.insert(staffUsers).values({ email: 'phase2-inventory@example.invalid', fullName: 'Inventory Staff', passwordHash: await hashPassword(password), role: 'inventory' }).returning().then(rows => rows[0]);
 const supportStaff = await db.insert(staffUsers).values({ email: 'phase2-support@example.invalid', fullName: 'Support Staff', passwordHash: await hashPassword(password), role: 'support' }).returning().then(rows => rows[0]);
-saveCategory({ nameFa: 'گروه آزمون', slug: 'phase2-test' });
-saveProduct({ name: 'پیراهن آزمون', slug: 'phase2-test-tee', category: 'phase2-test', basePriceTomans: 245000, status: 'active', description: 'آزمون', variants: [{ sku: 'P2-TEST-M-BLK', colorName: 'مشکی', colorHex: '#111111', size: 'M' }, { sku: 'P2-TEST-L-BLK', colorName: 'مشکی', colorHex: '#111111', size: 'L' }] });
+saveProduct({ name: 'پیراهن آزمون', slug: 'phase2-test-tee', category: 'tshirt', basePriceTomans: 245000, status: 'active', description: 'آزمون', variants: [{ sku: 'P2-TEST-M-BLK', colorName: 'مشکی', colorHex: '#111111', size: 'M' }, { sku: 'P2-TEST-L-BLK', colorName: 'مشکی', colorHex: '#111111', size: 'L' }] });
 const ownerAgent = request.agent(app);
 await ownerAgent.post('/api/v1/admin/auth/login').set('Origin', origin).send({ identifier: ownerEmail, password }).expect(200);
 const shippingMethod = await ownerAgent.post('/api/v1/admin/shipping/methods').set('Origin', origin).send({
@@ -57,6 +56,7 @@ function registerCustomer(agent: ReturnType<typeof request.agent>, suffix: strin
     fullName: `مشتری ${suffix}`,
     email: `phase2-${suffix}@example.invalid`,
     phone: suffix === 'one' ? '09121234567' : suffix === 'two' ? '09121234568' : `091212345${suffix.length}9`,
+    gender: 'female',
     password,
   });
 }
@@ -112,7 +112,7 @@ test('customer account and addresses are private and persist in the database', a
 
 test('phone-only customer cannot clear their only login identity', async () => {
   const phoneOnly = request.agent(app);
-  await phoneOnly.post('/api/v1/auth/register').set('Origin', origin).send({ fullName: 'Phone Only', phone: '09121234569', password }).expect(201);
+  await phoneOnly.post('/api/v1/auth/register').set('Origin', origin).send({ fullName: 'Phone Only', phone: '09121234569', gender: 'male', password }).expect(201);
   const response = await phoneOnly.patch('/api/v1/account').set('Origin', origin).send({ phone: null }).expect(422);
   assert.equal(response.body.error.code, 'IDENTITY_REQUIRED');
   assert.equal((await phoneOnly.get('/api/v1/account').expect(200)).body.user.phone, '+989121234569');
