@@ -87,7 +87,7 @@ export function Table<T>({
 
   return (
     <div className="w-full min-w-0 overflow-hidden border border-white/10 rounded-xl bg-[#131211] shadow-sm">
-      {mobileScrollHint && <p className="border-b border-white/5 bg-white/[0.015] px-3 py-2 text-right text-[10px] text-stone-400">برای مشاهده همه ستون‌ها، جدول را به‌صورت افقی پیمایش کنید.</p>}
+      {mobileScrollHint && <p className="border-b border-white/5 bg-white/[0.015] px-3 py-2 text-right text-xs text-stone-400">برای مشاهده همه ستون‌ها، جدول را به‌صورت افقی پیمایش کنید.</p>}
       <div
         ref={scrollContainerRef}
         className="overflow-x-auto scrollbar-thin scrollbar-thumb-white/25 scrollbar-track-white/5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#ba8d3d]"
