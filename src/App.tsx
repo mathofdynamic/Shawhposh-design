@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { lazy, Suspense, useState, useEffect, useRef } from 'react';
 import { Search, Sliders, Filter, Eye, ArrowLeft, CheckCircle, Shirt, Settings, LoaderCircle } from 'lucide-react';
 import Navbar from './components/Navbar';
 import { DiscountedShowcase } from './components/DiscountedShowcase';
@@ -8,21 +8,24 @@ import ProductDetail from './components/ProductDetail';
 import PodDesigner from './components/PodDesigner';
 import Cart from './components/Cart';
 import Checkout from './components/Checkout';
+import CustomerAccount from './components/CustomerAccount';
+import Login from './components/Login';
 import { useCatalog } from './features/catalog/useCatalog';
 import { api, post, ApiClientError } from './api/client';
-import { StaffAuth } from './admin/features/StaffAuth';
-import { CatalogProvider } from './admin/features/CatalogProvider';
 import { Product, CartItem, User as UserType } from './types';
-import Login from './components/Login';
-import Signup from './components/Signup';
-import CustomerAccount from './components/CustomerAccount';
 import { motion, AnimatePresence, useReducedMotion } from 'motion/react';
-import { AdminRouterProvider } from './admin/router';
-import { AdminLayout } from './admin/AdminLayout';
-import { ToastProvider } from './admin/components/ui';
 import { addVariantToCart, cartItemsForStorefront, loadCart, migrateLegacyCart, removeCartLine, updateCartQuantity, type ServerCart } from './features/cart/api';
 import { resolveLegacyCartVariant } from './features/cart/legacy';
 import { createCheckoutOrder, loadCheckoutConfiguration, type CheckoutConfiguration, type CheckoutOrderInput } from './features/orders/api';
+
+const AdminApplication = lazy(() => import('./admin/AdminApplication'));
+const Signup = lazy(() => import('./components/Signup'));
+
+const RouteLoading = () => (
+  <div role="status" aria-label="Loading page" className="flex min-h-[40vh] items-center justify-center">
+    <span aria-hidden="true" className="h-6 w-6 animate-spin rounded-full border-2 border-current/20 border-t-[#ba8d3d] motion-reduce:animate-none" />
+  </div>
+);
 
 function readLegacyCart(): CartItem[] {
   try {
@@ -98,10 +101,18 @@ export default function App() {
   }, [activeTab]);
 
   // Theme State with localStorage integration
-  const [theme, setTheme] = useState<'dark' | 'light'>(() => {
-    const saved = localStorage.getItem('shahpoosh_theme');
-    return (saved as 'dark' | 'light') || 'dark';
+  const [themePreference, setThemePreference] = useState(() => {
+    try {
+      const saved = localStorage.getItem('shahpoosh_theme');
+      return saved === 'dark' || saved === 'light'
+        ? { theme: saved, explicit: true }
+        : { theme: 'light' as const, explicit: false };
+    } catch {
+      return { theme: 'light' as const, explicit: false };
+    }
   });
+  const theme = themePreference.theme;
+  const authTheme = themePreference.explicit ? theme : 'dark';
 
   // Customer identity comes only from the server-backed session.
   const [user, setUser] = useState<UserType | null>(null);
@@ -136,13 +147,15 @@ export default function App() {
 
   // Sync theme to document element - ensuring html.light is never active while admin environment is displayed
   useEffect(() => {
-    if (theme === 'light' && !isAdminView) {
+    if (theme === 'light' && !isAdminView && !(authPage && authTheme === 'dark')) {
       document.documentElement.classList.add('light');
     } else {
       document.documentElement.classList.remove('light');
     }
-    localStorage.setItem('shahpoosh_theme', theme);
-  }, [theme, isAdminView]);
+    if (themePreference.explicit) {
+      try { localStorage.setItem('shahpoosh_theme', theme); } catch { /* storage may be unavailable */ }
+    }
+  }, [theme, themePreference.explicit, isAdminView, authPage, authTheme]);
   
   const isDark = theme === 'dark';
 
@@ -391,18 +404,16 @@ export default function App() {
   // Isolated Admin Environment Gate
   if (isAdminView) {
     return (
-      <ToastProvider>
-        <AdminRouterProvider
-          onBackToStore={() => {
+      <Suspense fallback={<div className="min-h-screen bg-[#0d0c0b]"><RouteLoading /></div>}>
+        <AdminApplication
+          onExitToStore={() => {
             setActiveTab('home');
             window.history.pushState({}, '', '/');
             window.location.hash = '';
             window.scrollTo({ top: 0, behavior: prefersReducedMotion ? 'auto' : 'smooth' });
           }}
-        >
-          <StaffAuth><CatalogProvider><AdminLayout /></CatalogProvider></StaffAuth>
-        </AdminRouterProvider>
-      </ToastProvider>
+        />
+      </Suspense>
     );
   }
 
@@ -426,7 +437,10 @@ export default function App() {
         cart={cart}
         setCartOpen={setCartOpen}
         theme={theme}
-        onToggleTheme={() => setTheme(prev => prev === 'dark' ? 'light' : 'dark')}
+        onToggleTheme={() => setThemePreference(previous => ({
+          theme: previous.theme === 'dark' ? 'light' : 'dark',
+          explicit: true,
+        }))}
         user={user}
         onLoginClick={() => setAuthPage('login')}
         onLogout={handleLogout}
@@ -635,24 +649,24 @@ export default function App() {
 
         {activeTab === 'detail' && selectedProduct && (
           <ProductDetail
-              theme={theme}
-              product={selectedProduct}
-              onBack={() => {
-                setActiveTab('shop');
-                setSelectedProduct(null);
-              }}
-              onAddToCart={handleAddToCart}
-              onCustomize={handleCustomizeProduct}
+            theme={theme}
+            product={selectedProduct}
+            onBack={() => {
+              setActiveTab('shop');
+              setSelectedProduct(null);
+            }}
+            onAddToCart={handleAddToCart}
+            onCustomize={handleCustomizeProduct}
           />
         )}
 
         {activeTab==='detail'&&!selectedProduct&&<div role="status" className="p-12 text-center">این محصول دیگر در ویترین فعال نیست.<button onClick={()=>setActiveTab('shop')} className="block mx-auto mt-4 underline">بازگشت به محصولات</button></div>}
         {activeTab === 'designer' && (
           <div key={selectedProduct ? selectedProduct.id : 'new'} className="animate-fade-in animate-duration-500">
-            <PodDesigner 
+            <PodDesigner
               theme={theme}
               products={PRODUCTS}
-              initialProduct={selectedProduct} 
+              initialProduct={selectedProduct}
             />
           </div>
         )}
@@ -674,7 +688,7 @@ export default function App() {
 
         {activeTab === 'checkout' && (
           <div className="animate-fade-in animate-duration-500">
-            <Checkout 
+            <Checkout
               cart={cart}
               configuration={checkoutConfiguration}
               onBackToShop={() => setActiveTab('shop')}
@@ -856,8 +870,8 @@ export default function App() {
       </footer>
 
       {authPage === 'login' && (
-        <Login 
-          theme={theme}
+        <Login
+          theme={authTheme}
           onLogin={handleLogin}
           onClose={() => setAuthPage(null)}
           onNavigateToSignup={() => setAuthPage('signup')}
@@ -865,12 +879,14 @@ export default function App() {
       )}
 
       {authPage === 'signup' && (
-        <Signup 
-          theme={theme}
-          onLogin={handleLogin}
-          onClose={() => setAuthPage(null)}
-          onNavigateToLogin={() => setAuthPage('login')}
-        />
+        <Suspense fallback={<RouteLoading />}>
+          <Signup
+            theme={authTheme}
+            onLogin={handleLogin}
+            onClose={() => setAuthPage(null)}
+            onNavigateToLogin={() => setAuthPage('login')}
+          />
+        </Suspense>
       )}
     </div>
   );

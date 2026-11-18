@@ -5,6 +5,7 @@ import { z } from 'zod';
 import { db } from '../../db/connection';
 import { orderItems, orders, otherExpenses, paymentAttempts, products, purchaseInvoices } from '../../db/schema';
 import { ApiError, asyncRoute } from '../../lib/errors';
+import { tehranCalendarDate } from '../../lib/date';
 import { allowRoles } from '../auth/service';
 import { readInvoiceImage, removeInvoiceImage, storeInvoiceImage } from './accountingStorage';
 
@@ -67,7 +68,7 @@ adminAccountingRoutes.post('/purchase-invoices', manageAccounting, asyncRoute((r
   const input = invoiceInputSchema.parse(req.body);
   const invoiceCostTomans = input.purchaseUnitPriceTomans * input.quantity + input.deliveryCostTomans + input.printingCostTomans;
   if (!Number.isSafeInteger(invoiceCostTomans)) throw new ApiError(422, 'AMOUNT_TOO_LARGE', 'مبلغ فاکتور از حد مجاز بیشتر است.');
-  const invoiceDate = tehranDayNoon(input.invoiceDate ?? new Date().toISOString().slice(0, 10));
+  const invoiceDate = tehranDayNoon(input.invoiceDate ?? tehranCalendarDate());
   const invoice = db.transaction(tx => {
     const product = tx.select({ id: products.id, name: products.name }).from(products).where(eq(products.id, input.productId)).get();
     if (!product) throw new ApiError(422, 'PRODUCT_NOT_FOUND', 'محصول انتخاب‌شده در کاتالوگ پیدا نشد.');

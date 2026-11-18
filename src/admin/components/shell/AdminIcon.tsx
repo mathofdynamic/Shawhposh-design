@@ -1,5 +1,41 @@
 import React from 'react';
-import * as LucideIcons from 'lucide-react';
+import {
+  Activity,
+  Boxes,
+  Calculator,
+  CreditCard,
+  Folder,
+  FolderTree,
+  History,
+  Layers,
+  LayoutDashboard,
+  Package,
+  PackagePlus,
+  ReceiptText,
+  Settings,
+  ShoppingBag,
+  UserRound,
+  Users,
+  type LucideIcon,
+} from 'lucide-react';
+
+const icons: Record<string, LucideIcon> = {
+  Activity,
+  Boxes,
+  Calculator,
+  CreditCard,
+  FolderTree,
+  History,
+  Layers,
+  LayoutDashboard,
+  Package,
+  PackagePlus,
+  ReceiptText,
+  Settings,
+  ShoppingBag,
+  UserRound,
+  Users,
+};
 
 export interface AdminIconProps extends React.SVGProps<SVGSVGElement> {
   name: string;
@@ -8,6 +44,6 @@ export interface AdminIconProps extends React.SVGProps<SVGSVGElement> {
 }
 
 export const AdminIcon: React.FC<AdminIconProps> = ({ name, size = 18, className = '', ...props }) => {
-  const IconComponent = (LucideIcons as Record<string, any>)[name] || LucideIcons.Folder;
+  const IconComponent = icons[name] ?? Folder;
   return <IconComponent size={size} className={className} {...props} />;
 };

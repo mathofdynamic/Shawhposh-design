@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowLeft, Archive, Check, ImagePlus, Save, X } from 'lucide-react';
 import { AdminPageHeader } from '../../components/shell/AdminPageHeader';
 import { Button, useAppDialog, useToast } from '../../components/ui';
@@ -12,6 +12,17 @@ type FormState = Pick<AdminProduct, 'name' | 'category' | 'description' | 'baseP
   discountPercent: string;
 };
 
+const formFromProduct = (product: AdminProduct): FormState => ({
+  name: product.name,
+  category: product.category,
+  description: product.description,
+  basePriceTomans: product.basePriceTomans,
+  discountPercent: product.discountPercent ? String(product.discountPercent) : '',
+  status: product.status,
+  isCustomizable: product.isCustomizable,
+  featured: product.featured,
+});
+
 const fieldClass = 'mt-1 block min-h-11 w-full rounded-lg border border-white/35 bg-[#10100f] px-3 py-2.5 text-sm text-stone-100 outline-none transition focus:border-[#ba8d3d] focus:ring-2 focus:ring-[#ba8d3d]/20';
 const garmentCategorySlugs = new Set(['tshirt', 'hoodie', 'dors', 'sweatshirt', 'halfzip', 'pants']);
 
@@ -24,20 +35,10 @@ export const ProductEditor: React.FC<ProductEditorProps> = ({ productId, onBack 
   const current = useMemo(() => isNew ? undefined : getProductById(productId), [getProductById, isNew, productId]);
   const garmentCategories = state.categories.filter(category => category.status === 'active' && garmentCategorySlugs.has(category.slug));
   const currentCategory = current ? state.categories.find(category => category.slug === current.category) : undefined;
-  const productCategoryChoices = currentCategory && !garmentCategories.some(category => category.id === currentCategory.id)
-    ? [currentCategory, ...garmentCategories]
-    : garmentCategories;
+  const currentCategoryIsSelectable = garmentCategories.some(category => category.slug === current?.category);
+  const initializedProductId = useRef(current?.id);
   const [savedId, setSavedId] = useState('');
-  const [form, setForm] = useState<FormState>(() => current ? {
-    name: current.name,
-    category: current.category,
-    description: current.description,
-    basePriceTomans: current.basePriceTomans,
-    discountPercent: current.discountPercent ? String(current.discountPercent) : '',
-    status: current.status,
-    isCustomizable: current.isCustomizable,
-    featured: current.featured,
-  } : {
+  const [form, setForm] = useState<FormState>(() => current ? formFromProduct(current) : {
     name: '', category: garmentCategories[0]?.slug ?? '',
     description: '', basePriceTomans: 0, discountPercent: '', status: 'active', isCustomizable: false, featured: false,
   });
@@ -47,6 +48,16 @@ export const ProductEditor: React.FC<ProductEditorProps> = ({ productId, onBack 
   const [previewUrls, setPreviewUrls] = useState<string[]>([]);
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (!current || initializedProductId.current === current.id) return;
+    initializedProductId.current = current.id;
+    setForm(formFromProduct(current));
+    setKeptImages(current.images ?? []);
+    setImagesChanged(false);
+    setNewImages([]);
+    setError('');
+  }, [current]);
 
   useEffect(() => {
     const urls = newImages.map(file => URL.createObjectURL(file));
@@ -144,10 +155,13 @@ export const ProductEditor: React.FC<ProductEditorProps> = ({ productId, onBack 
     {!current && !isNew ? <div role="alert" className="rounded-xl border border-amber-500/30 bg-amber-500/5 p-5 text-amber-200">این محصول در فهرست فعلی وجود ندارد.</div> : <form onSubmit={(event) => void save(event)} className="space-y-6 rounded-2xl border border-white/10 bg-[#141211] p-5 md:p-7">
       <div className="grid gap-3 md:grid-cols-2 md:gap-4">
         <label className="text-sm">نام محصول<input required maxLength={200} disabled={saving} value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} className={fieldClass}/></label>
-        <label className="text-sm">دسته‌بندی پوشاک<select required disabled={saving} value={form.category} onChange={(event) => setForm({ ...form, category: event.target.value })} className={fieldClass}>{productCategoryChoices.map((category) => <option key={category.id} value={category.slug}>{category.nameFa}{category.status !== 'active' ? ' (بایگانی‌شده)' : !garmentCategorySlugs.has(category.slug) ? ' (فقط برای این محصول)' : ''}</option>)}</select></label>
+        <label className="text-sm">دسته‌بندی پوشاک<select required disabled={saving} value={form.category} onChange={(event) => setForm({ ...form, category: event.target.value })} className={fieldClass}>
+          {current && !currentCategoryIsSelectable && <option value={current.category} disabled>{currentCategory?.nameFa ?? current.category} (فقط برای محصول فعلی)</option>}
+          {garmentCategories.map(category => <option key={category.id} value={category.slug}>{category.nameFa}</option>)}
+        </select></label>
         <label className="text-sm">قیمت پایه (تومان)<input required disabled={saving} type="number" min="0" max="2000000000" step="1" value={form.basePriceTomans} onChange={(event) => setForm({ ...form, basePriceTomans: Number(event.target.value) })} className={fieldClass}/></label>
         <label className="text-sm">تخفیف (درصد)<input disabled={saving} type="number" min="1" max="90" step="1" inputMode="numeric" value={form.discountPercent} onChange={(event) => setForm({ ...form, discountPercent: event.target.value })} placeholder="بدون تخفیف" className={fieldClass}/><span className="mt-1 block text-xs text-stone-400">قیمت نهایی در فروشگاه به‌صورت خودکار محاسبه می‌شود.</span></label>
-        <label className="text-sm">وضعیت فروش<select disabled={saving} value={form.status} onChange={(event) => setForm({ ...form, status: event.target.value as FormState['status'] })} className={fieldClass}><option value="draft">پیش‌نویس</option><option value="active">فعال</option><option value="archived">بایگانی‌شده</option></select></label>
+        <label className="text-sm">وضعیت عرضه<select disabled={saving} value={form.status} onChange={(event) => setForm({ ...form, status: event.target.value as FormState['status'] })} className={fieldClass}><option value="draft">پیش‌نویس</option><option value="active">عرضه فعال</option><option value="archived">بایگانی‌شده</option></select></label>
       </div>
       <label className="block text-sm">توضیحات<textarea disabled={saving} maxLength={20000} rows={5} value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} className={`${fieldClass} leading-6`}/></label>
 

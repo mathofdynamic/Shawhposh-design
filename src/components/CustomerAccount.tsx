@@ -7,6 +7,7 @@ import type { User } from '../types';
 import { ConfirmDialog } from '../admin/components/ui';
 import { CustomerOrderPayment } from './CustomerOrderPayment';
 import { persianOrderStatus } from '../lib/persian-labels';
+import { tehranCalendarDate } from '../lib/tehran-date';
 
 
 interface CustomerAccountProps {
@@ -143,7 +144,7 @@ export default function CustomerAccount({ theme, user, onBack, onUserUpdated }: 
                 <label className={fieldLabel}>شماره همراه<input type="tel" inputMode="tel" value={phone} onChange={event => setPhone(event.target.value)} placeholder="0912…" className={inputClass} /></label>
                 <label className={fieldLabel}>ایمیل<input readOnly value={profile?.email ?? ''} className={`${inputClass} opacity-70`} /></label>
                 <label className={fieldLabel}>جنسیت<select value={gender} onChange={event => setGender(event.target.value as 'female' | 'male' | '')} className={inputClass}><option value="">انتخاب نشده</option><option value="female">خانم</option><option value="male">آقا</option></select></label>
-                <label className={fieldLabel}>تاریخ تولد<input type="date" max={new Date().toISOString().slice(0, 10)} value={dateOfBirth} onChange={event => setDateOfBirth(event.target.value)} className={inputClass} /></label>
+                <label className={fieldLabel}>تاریخ تولد<input type="date" max={tehranCalendarDate()} value={dateOfBirth} onChange={event => setDateOfBirth(event.target.value)} className={inputClass} /></label>
                 <label className={`${fieldLabel} sm:col-span-2`}>نشانی (اختیاری)<textarea maxLength={500} rows={2} value={profileAddress} onChange={event => setProfileAddress(event.target.value)} className={`${inputClass} resize-y`} /></label>
               </div>
               <div className="mt-5 flex justify-end"><button disabled={saving} className="inline-flex items-center gap-2 rounded-full bg-[#ba8d3d] px-5 py-3 text-xs font-bold text-[#0e0d0c] transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"><Save size={14} /> ذخیره اطلاعات</button></div>

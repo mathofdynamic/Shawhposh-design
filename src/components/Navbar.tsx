@@ -195,7 +195,7 @@ export default function Navbar({
         </div>
 
         {/* Cart & Utility Area */}
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 max-[360px]:gap-1">
           <div className="flex items-center gap-1">
             {/* Admin Desk Link Button */}
             {onAdminClick && (
@@ -216,7 +216,7 @@ export default function Navbar({
             {/* Theme Toggle Button */}
             <button
               onClick={onToggleTheme}
-              className={`min-h-11 min-w-11 p-2.5 rounded-xl transition-all duration-300 flex items-center justify-center relative cursor-pointer active:scale-90 ${
+              className={`min-h-[44px] min-w-[44px] p-2 rounded-xl transition-all duration-300 flex items-center justify-center relative cursor-pointer active:scale-90 ${
                 isDark 
                   ? 'hover:bg-white/5 text-gray-400 hover:text-[#eed29d]' 
                     : 'hover:bg-black/5 text-slate-600 hover:text-[var(--text-accent)]'
@@ -225,16 +225,16 @@ export default function Navbar({
               aria-label="تغییر پوسته"
             >
               {isDark ? (
-                <Sun size={17} className="stroke-1.5 duration-500 hover:rotate-45 transition-transform" />
+                <Sun size={17} className="stroke-1.5 storefront-theme-icon storefront-theme-icon--sun transition-transform duration-150 motion-reduce:transition-none" />
               ) : (
-                <Moon size={17} className="stroke-1.5 duration-500 hover:scale-110 transition-transform" />
+                <Moon size={17} className="stroke-1.5 storefront-theme-icon storefront-theme-icon--moon transition-transform duration-150 motion-reduce:transition-none" />
               )}
             </button>
 
             {/* Cart Icon Widget */}
             <button
               onClick={() => setCartOpen(true)}
-              className={`min-h-11 min-w-11 p-2.5 rounded-xl transition-all duration-300 relative cursor-pointer active:scale-90 ${
+              className={`min-h-[44px] min-w-[44px] p-2 rounded-xl transition-all duration-300 relative cursor-pointer active:scale-90 ${
                 isDark 
                   ? 'hover:bg-white/5 text-gray-400 hover:text-[#eed29d]' 
                     : 'hover:bg-black/5 text-slate-600 hover:text-[var(--text-accent)]'
@@ -331,6 +331,7 @@ export default function Navbar({
             ) : (
               <button
                 onClick={onLoginClick}
+                data-auth-trigger
                 className={`hidden sm:flex items-center gap-2.5 pr-4 pl-1.5 py-1 rounded-full text-xs font-semibold cursor-pointer hover:scale-[1.02] active:scale-[0.98] transition-all duration-300 group whitespace-nowrap shrink-0 ${
                   isDark 
                     ? 'bg-gradient-to-r from-[#ba8d3d] to-[#e4bc71] hover:from-[#ba8d3d] hover:to-[#ba8d3d] text-[#0e0d0c] shadow-[0_4px_16px_rgba(186,141,61,0.15)]' 
@@ -348,10 +349,11 @@ export default function Navbar({
           {/* Mobile Menu Toggle */}
           <button
             ref={mobileMenuToggleRef}
+            data-auth-trigger
             onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
             aria-expanded={mobileMenuOpen}
             aria-controls="mobile-navigation-menu"
-            className={`min-h-11 min-w-11 p-2.5 rounded-xl lg:hidden cursor-pointer transition-colors duration-300 ${mobileMenuOpen ? 'invisible pointer-events-none' : ''} ${
+            className={`min-h-[44px] min-w-[44px] p-2 rounded-xl lg:hidden cursor-pointer transition-colors duration-300 ${mobileMenuOpen ? 'invisible pointer-events-none' : ''} ${
               isDark 
                 ? 'hover:bg-white/5 text-gray-400 hover:text-white' 
                 : 'hover:bg-black/5 text-slate-600 hover:text-slate-950'
@@ -381,7 +383,7 @@ export default function Navbar({
             onClick={event => {
               if (event.target === event.currentTarget) setMobileMenuOpen(false);
             }}
-            className={`fixed inset-0 top-[76px] left-0 right-0 z-40 p-6 flex flex-col gap-4 pointer-events-auto lg:hidden ${
+            className={`fixed inset-0 top-[76px] left-0 right-0 z-40 overflow-y-auto overscroll-contain p-6 flex flex-col gap-4 pointer-events-auto lg:hidden ${
               isDark ? 'bg-black/95 backdrop-blur-sm' : 'bg-white/95 backdrop-blur-sm border-t border-slate-200'
             }`}
           >
@@ -490,6 +492,7 @@ export default function Navbar({
                 </div>
               ) : (
                 <button
+                  data-auth-trigger
                   onClick={() => {
                     restoreMobileMenuFocus.current = false;
                     onLoginClick();

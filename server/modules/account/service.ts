@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { db } from '../../db/connection';
 import { customerAddresses, manualPaymentReceipts, orderEvents, orderItems, orders, paymentAttempts, users } from '../../db/schema';
 import { ApiError } from '../../lib/errors';
+import { isCalendarDate, tehranCalendarDate } from '../../lib/date';
 import { normalizePhone } from '../auth/service';
 
 const normalizeDigits = (value: string) => value
@@ -35,7 +36,7 @@ export const updateAccountSchema = z.object({
   fullName: z.string().trim().min(2).max(120).optional(),
   phone: z.string().trim().min(10).max(30).transform(normalizePhone).nullable().optional(),
   gender: z.enum(['female', 'male']).nullable().optional(),
-  dateOfBirth: z.string().refine(value => /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(Date.parse(`${value}T00:00:00.000Z`)) && new Date(`${value}T00:00:00.000Z`).toISOString().slice(0, 10) === value, 'تاریخ تولد معتبر نیست.').refine(value => value <= new Date().toISOString().slice(0, 10), 'تاریخ تولد نمی‌تواند در آینده باشد.').nullable().optional(),
+  dateOfBirth: z.string().refine(isCalendarDate, 'تاریخ تولد معتبر نیست.').refine(value => value <= tehranCalendarDate(), 'تاریخ تولد نمی‌تواند در آینده باشد.').nullable().optional(),
   address: z.string().trim().max(500).nullable().optional(),
 }).refine(value => Object.keys(value).length > 0);
 

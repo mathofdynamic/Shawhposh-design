@@ -30,6 +30,31 @@ WHERE `material_cost_tomans` IS NULL
 		WHERE `product_id` = `products`.`id` AND `quantity` > 0
 	);
 --> statement-breakpoint
+WITH verified_paid_orders AS (
+	SELECT `orders`.`id` AS `order_id`, MIN(`payment_attempts`.`paid_at`) AS `paid_at`
+	FROM `orders`
+	INNER JOIN `payment_attempts` ON `payment_attempts`.`order_id` = `orders`.`id`
+	WHERE `orders`.`payment_status` = 'paid'
+		AND `orders`.`order_status` <> 'cancelled'
+		AND `payment_attempts`.`status` = 'verified'
+	GROUP BY `orders`.`id`
+)
+UPDATE `order_items`
+SET `material_cost_unit_tomans` = (
+	SELECT CAST(ROUND(
+		SUM(`purchase_invoices`.`purchase_unit_price_tomans` * `purchase_invoices`.`quantity`
+			+ `purchase_invoices`.`delivery_cost_tomans` + `purchase_invoices`.`printing_cost_tomans`) * 1.0
+		/ SUM(`purchase_invoices`.`quantity`)
+	) AS INTEGER)
+	FROM `purchase_invoices`
+	INNER JOIN verified_paid_orders ON verified_paid_orders.`order_id` = `order_items`.`order_id`
+	WHERE `purchase_invoices`.`product_id` = `order_items`.`product_id`
+		AND `purchase_invoices`.`quantity` > 0
+		AND date(`purchase_invoices`.`invoice_date` / 1000, 'unixepoch') <= date(verified_paid_orders.`paid_at` / 1000, 'unixepoch', '+3 hours', '+30 minutes')
+)
+WHERE `order_items`.`material_cost_unit_tomans` IS NULL
+	AND `order_items`.`order_id` IN (SELECT `order_id` FROM verified_paid_orders);
+--> statement-breakpoint
 ALTER TABLE `purchase_invoices` ADD `invoice_image_storage_key` text;--> statement-breakpoint
 ALTER TABLE `users` ADD `gender` text;--> statement-breakpoint
 ALTER TABLE `users` ADD `date_of_birth` text;--> statement-breakpoint

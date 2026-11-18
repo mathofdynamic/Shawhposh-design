@@ -32,6 +32,7 @@ export interface TableProps<T> {
   maxHeight?: string;
   ariaLabel?: string;
   mobileScrollHint?: boolean;
+  emptyTextClassName?: string;
 }
 
 export function Table<T>({
@@ -52,6 +53,7 @@ export function Table<T>({
   maxHeight,
   ariaLabel = 'جدول داده‌های سامانه',
   mobileScrollHint = false,
+  emptyTextClassName = 'text-gray-500',
 }: TableProps<T>) {
   const scrollContainerRef = React.useRef<HTMLDivElement>(null);
   const safeColumns = columns || [];
@@ -172,7 +174,7 @@ export function Table<T>({
               <tr>
                 <td
                   colSpan={safeColumns.length + (onSelectAll ? 1 : 0)}
-                  className="py-12 text-center text-gray-500 text-xs md:text-sm font-sans"
+                  className={`py-12 text-center ${emptyTextClassName} text-xs md:text-sm font-sans`}
                 >
                   <span className="ml-auto mr-0 block w-full text-right md:mx-auto md:text-center" style={{ maxWidth: 'calc(100vw - 2rem)' }}>
                     {emptyMessage}

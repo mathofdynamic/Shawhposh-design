@@ -45,7 +45,7 @@ export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       {/* Toast viewport: Bottom-left on RTL screens */}
       <div
         aria-live="polite"
-        className="fixed bottom-5 left-5 z-50 flex flex-col gap-2.5 max-w-sm w-full pointer-events-none"
+        className="fixed bottom-[calc(4.5rem_+_env(safe-area-inset-bottom))] left-5 z-50 flex flex-col gap-2.5 max-w-sm w-full pointer-events-none lg:bottom-5"
       >
         {toasts.map((toast) => {
           const typeIcons: Record<ToastType, React.ReactNode> = {
@@ -72,7 +72,7 @@ export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ childre
                 type="button"
                 onClick={() => removeToast(toast.id)}
                 aria-label="بستن اعلان"
-                className="text-gray-500 hover:text-white transition-colors cursor-pointer"
+                className="inline-flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-lg text-gray-500 transition-colors hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#ba8d3d] cursor-pointer"
               >
                 <X size={14} />
               </button>

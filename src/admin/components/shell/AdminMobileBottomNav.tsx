@@ -3,7 +3,7 @@ import { LayoutDashboard, ShoppingBag, Users, Box, Menu } from 'lucide-react';
 import { useAdminRouter } from '../../router';
 
 export interface AdminMobileBottomNavProps {
-  onOpenMenu: () => void;
+  onOpenMenu: (trigger: HTMLButtonElement) => void;
 }
 
 export const AdminMobileBottomNav: React.FC<AdminMobileBottomNavProps> = ({ onOpenMenu }) => {
@@ -53,7 +53,7 @@ export const AdminMobileBottomNav: React.FC<AdminMobileBottomNavProps> = ({ onOp
             type="button"
             onClick={() => navigate(item.path)}
             aria-current={isActive ? 'page' : undefined}
-            className={`flex flex-col items-center justify-center gap-1 flex-1 py-1 transition-colors cursor-pointer ${
+            className={`flex min-h-11 flex-col items-center justify-center gap-1 flex-1 py-1 transition-colors cursor-pointer ${
               isActive ? 'text-[#eed29d]' : 'text-stone-400 hover:text-stone-200'
             }`}
           >
@@ -66,8 +66,8 @@ export const AdminMobileBottomNav: React.FC<AdminMobileBottomNavProps> = ({ onOp
       {/* Menu / Drawer Toggle Button */}
       <button
         type="button"
-        onClick={onOpenMenu}
-        className="flex flex-col items-center justify-center gap-1 flex-1 py-1 text-stone-400 hover:text-stone-200 transition-colors cursor-pointer"
+        onClick={event => onOpenMenu(event.currentTarget)}
+        className="flex min-h-11 flex-col items-center justify-center gap-1 flex-1 py-1 text-stone-400 hover:text-stone-200 transition-colors cursor-pointer"
         aria-label="نمایش تمام بخش‌های منو"
       >
         <Menu size={18} />

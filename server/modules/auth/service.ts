@@ -7,6 +7,7 @@ import { db } from '../../db/connection';
 import { sessions, users, staffUsers } from '../../db/schema';
 import { config } from '../../config';
 import { ApiError, asyncRoute } from '../../lib/errors';
+import { isCalendarDate, tehranCalendarDate } from '../../lib/date';
 
 export const normalizeEmail = (value: string) => value.trim().toLowerCase();
 export function normalizePhone(value: string) {
@@ -60,16 +61,12 @@ export const allowRoles = (...roles: string[]): RequestHandler => (req, _res, ne
   if (!req.principal?.role || !roles.includes(req.principal.role)) return next(new ApiError(403, 'FORBIDDEN', 'دسترسی لازم را ندارید.'));
   next();
 };
-const isCalendarDate = (value: string) => {
-  const date = new Date(`${value}T00:00:00.000Z`);
-  return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value;
-};
 export const registrationSchema = z.object({
   fullName: z.string().trim().min(2).max(120),
   email: z.string().trim().email().max(254).transform(normalizeEmail).optional(),
   phone: z.string().max(30).transform(normalizePhone).optional(),
   gender: z.enum(['female', 'male']),
-  dateOfBirth: z.string().refine(isCalendarDate, 'تاریخ تولد معتبر نیست.').refine(value => value <= new Date().toISOString().slice(0, 10), 'تاریخ تولد نمی‌تواند در آینده باشد.').optional(),
+  dateOfBirth: z.string().refine(isCalendarDate, 'تاریخ تولد معتبر نیست.').refine(value => value <= tehranCalendarDate(), 'تاریخ تولد نمی‌تواند در آینده باشد.').optional(),
   address: z.string().trim().max(500).optional(),
   password: z.string().min(12).max(128),
 }).refine(v => v.email || v.phone);

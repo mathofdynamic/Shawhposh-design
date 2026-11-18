@@ -46,8 +46,10 @@ BASELINE_MIGRATIONS = (
     1791286100663,
     1791726079654,
     1791738236767,
+    1793656996858,
+    1793715179209,
 )
-TARGET_MIGRATIONS = BASELINE_MIGRATIONS + (1793656996858, 1793715179209, 1794649574211)
+TARGET_MIGRATIONS = BASELINE_MIGRATIONS + (1794649574211,)
 
 EXPECTED_MIGRATION_CHANGES = {
     "server/db/migrations/0008_steady_pyro.sql": "A",
@@ -55,7 +57,7 @@ EXPECTED_MIGRATION_CHANGES = {
     "server/db/migrations/meta/_journal.json": "M",
 }
 EXPECTED_CHANGED_FILE_SHA256 = {
-    "server/db/migrations/0008_steady_pyro.sql": "5ba0f0c6bc5273b9f78cbe668f19da23b089f5b9b55d2bd1e0b85ded38c779c4",
+    "server/db/migrations/0008_steady_pyro.sql": "86601a9d1849206aae6d281710cfad8fa58be915b6e52949ab691f1d92cb2adf",
     "server/db/migrations/meta/0008_snapshot.json": "c5c0e96b429d351c6115b200e1b9b4cf5b82cad86a802961b4b8a02a8256eba9",
     "server/db/migrations/meta/_journal.json": "eb79935dc9a79b74e934cfcea55c1e14bb1afd983f38741263f729c51adf47d0",
 }
@@ -389,13 +391,13 @@ def _verify_fresh_backup(before_names: set[str]) -> tuple[Path, str]:
     if age < -10 or age > FRESH_BACKUP_MAX_AGE_SECONDS or info.st_size <= 0:
         raise deploy.DeployError("The new database backup is empty or outside the fresh-backup time window.")
     if _migration_history(backup) != BASELINE_MIGRATIONS:
-        raise deploy.DeployError("The verified backup does not contain exactly the six baseline migrations.")
+        raise deploy.DeployError("The verified backup does not contain exactly migrations 0000–0007.")
     digest = hashlib.sha256()
     with backup.open("rb") as stream:
         for block in iter(lambda: stream.read(1024 * 1024), b""):
             digest.update(block)
     checksum = digest.hexdigest()
-    _log("BACKUP", f"result=verified path={backup.name} age_seconds={int(age)} integrity=ok migration_count=6 sha256={checksum}")
+    _log("BACKUP", f"result=verified path={backup.name} age_seconds={int(age)} integrity=ok migration_count=8 sha256={checksum}")
     return backup, checksum
 
 
@@ -443,7 +445,7 @@ def _run_migration(sha: str, release: Path, stage_root: Path) -> None:
         raise deploy.DeployError(f"The approved migration command failed (exit {result.returncode}). {details}".strip())
     if _migration_history() != TARGET_MIGRATIONS:
         raise deploy.DeployError("SQLite migration history does not match exactly migrations 0000–0008.")
-    _log("MIGRATIONS", f"result=verified sha={sha} applied=0006,0007,0008 database_integrity=ok")
+    _log("MIGRATIONS", f"result=verified sha={sha} applied=0008 database_integrity=ok")
 
 
 def _writer_unit_states() -> tuple[bool, bool, bool]:
@@ -521,9 +523,9 @@ def migrate_release(sha: str, approved_sha: str) -> None:
         if not deploy._website_health_matches(previous_web_sha, web_root_fd):
             raise deploy.DeployError("The previous frontend is not served correctly by Nginx.")
         if _migration_history() != BASELINE_MIGRATIONS:
-            raise deploy.DeployError("Production database history differs from the six-migration baseline.")
+            raise deploy.DeployError("Production database history differs from the verified migrations 0000–0007 baseline.")
         commerce_snapshot = deploy._read_commerce_snapshots()
-        _log("PRECHECK", f"api={previous_api_sha} frontend={previous_web_sha} api_health=passed database_history=0000-0005")
+        _log("PRECHECK", f"api={previous_api_sha} frontend={previous_web_sha} api_health=passed database_history=0000-0007")
 
         run_id = uuid.uuid4().hex
         workspace = deploy._create_workspace(run_id, build_uid, build_gid)
@@ -552,7 +554,7 @@ def migrate_release(sha: str, approved_sha: str) -> None:
         backup, backup_sha256 = _verify_fresh_backup(backup_names_before)
         if _migration_history(backup) != BASELINE_MIGRATIONS:
             raise deploy.DeployError("Fresh backup migration history changed during verification.")
-        _log("BACKUP", f"ready_before_migration=0006,0007,0008 checksum={backup_sha256[:16]}")
+        _log("BACKUP", f"ready_before_migration=0008 checksum={backup_sha256[:16]}")
 
         _run_migration(sha, api_release, stage_root)
 
@@ -593,7 +595,7 @@ def migrate_release(sha: str, approved_sha: str) -> None:
             "COMPLETE",
             f"previous_api={previous_api_sha} previous_frontend={previous_web_sha} "
             f"promoted_api={sha} promoted_frontend={sha} backup={backup.name} "
-            "migration=0006,0007,0008 api_health=passed website_health=passed rollback=not-needed",
+            "migration=0008 api_health=passed website_health=passed rollback=not-needed",
         )
     except Exception as exc:
         rollback_result = "not-needed"

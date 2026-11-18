@@ -1,4 +1,4 @@
-import React, { useLayoutEffect, useRef, useState } from 'react';
+import React, { Suspense, useLayoutEffect, useRef, useState } from 'react';
 import { useStaff } from './features/StaffAuth';
 import { useAdminRouter } from './router';
 import { AdminSidebar } from './components/shell/AdminSidebar';
@@ -11,6 +11,7 @@ export const AdminLayout: React.FC = () => {
   const { goBackToStore, activeRoute, currentPath } = useAdminRouter();
   const staffSession = useStaff();
   const contentScrollRef = useRef<HTMLDivElement>(null);
+  const mobileDrawerTriggerRef = useRef<HTMLButtonElement | null>(null);
   const [isMobileDrawerOpen, setIsMobileDrawerOpen] = useState(false);
   const [isCompact, setIsCompact] = useState(() => {
     try { return localStorage.getItem('SHAWHPOSH_ADMIN_SIDEBAR_COMPACT') === 'true'; }
@@ -33,6 +34,11 @@ export const AdminLayout: React.FC = () => {
   });
 
   const width = activeRoute?.layoutWidth === 'wide' ? 'max-w-[1580px]' : activeRoute?.layoutWidth === 'narrow' ? 'max-w-4xl' : 'max-w-6xl';
+  const openMobileDrawer = (trigger: HTMLButtonElement) => {
+    mobileDrawerTriggerRef.current = trigger;
+    setIsMobileDrawerOpen(true);
+  };
+  const closeMobileDrawer = () => setIsMobileDrawerOpen(false);
 
   return (
     <div className="h-dvh min-h-screen overflow-x-hidden bg-[#0d0c0b] font-sans text-stone-100 antialiased" dir="rtl">
@@ -41,14 +47,16 @@ export const AdminLayout: React.FC = () => {
           <AdminSidebar currentRole={role} isCompact={isCompact} onToggleCompact={toggleCompact} />
         </aside>
         <div ref={contentScrollRef} data-admin-scroll-root className="mb-[calc(3.5rem+env(safe-area-inset-bottom))] flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto lg:mb-0">
-          <AdminHeader onOpenMobileMenu={() => setIsMobileDrawerOpen(true)} />
+          <AdminHeader onOpenMobileMenu={openMobileDrawer} />
           <main className={`mx-auto w-full flex-1 p-4 pb-6 sm:p-6 sm:pb-6 lg:p-8 lg:pb-8 ${width}`}>
-            <AdminPageDispatcher />
+            <Suspense fallback={<div role="status" aria-label="Loading admin page" className="flex min-h-[12rem] items-center justify-center"><span aria-hidden="true" className="h-6 w-6 animate-spin rounded-full border-2 border-white/15 border-t-[#ba8d3d] motion-reduce:animate-none" /></div>}>
+              <AdminPageDispatcher />
+            </Suspense>
           </main>
         </div>
       </div>
-      <AdminMobileDrawer isOpen={isMobileDrawerOpen} onClose={() => setIsMobileDrawerOpen(false)} currentRole={role} />
-      <AdminMobileBottomNav onOpenMenu={() => setIsMobileDrawerOpen(true)} />
+      <AdminMobileDrawer isOpen={isMobileDrawerOpen} onClose={closeMobileDrawer} currentRole={role} triggerRef={mobileDrawerTriggerRef} />
+      <AdminMobileBottomNav onOpenMenu={openMobileDrawer} />
     </div>
   );
 };

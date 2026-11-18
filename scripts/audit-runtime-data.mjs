@@ -75,7 +75,7 @@ try {
     'DEMO_CLOCK',
     'ReviewScrollTicker',
     'NotificationsPopover',
-    'PaymentsPage',
+    // PaymentsPage is an established production route, not a prototype module.
     'RefundsPage',
     'SuppliersPage',
     'MediaAssetsPage',

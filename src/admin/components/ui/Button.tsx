@@ -30,7 +30,7 @@ export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
   ) => {
     // Base styles: clear focus ring, responsive touch-target, zero novelty styling
     const baseClasses =
-      'inline-flex items-center justify-center gap-2 font-medium tracking-normal transition-all duration-150 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed select-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#ba8d3d] focus-visible:ring-offset-1 focus-visible:ring-offset-[#0e0d0c] motion-reduce:transition-none';
+      'inline-flex items-center justify-center gap-2 font-medium tracking-normal transition-[background-color,border-color,color,opacity,transform,box-shadow] duration-150 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed select-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#ba8d3d] focus-visible:ring-offset-1 focus-visible:ring-offset-[#0e0d0c] motion-reduce:transition-none';
 
     const sizeClasses: Record<ButtonSize, string> = {
       sm: 'px-3 py-1.5 text-xs rounded-lg min-h-[32px]',
@@ -121,7 +121,7 @@ export const IconButton = React.forwardRef<HTMLButtonElement, IconButtonProps>(
         disabled={disabled || isLoading}
         aria-label={ariaLabel}
         title={ariaLabel}
-        className={`inline-flex items-center justify-center transition-all duration-150 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#ba8d3d] focus-visible:ring-offset-1 focus-visible:ring-offset-[#0e0d0c] ${sizeClasses[size]} ${variantClasses[variant]} ${className}`}
+        className={`inline-flex items-center justify-center transition-[background-color,border-color,color,opacity,transform,box-shadow] duration-150 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#ba8d3d] focus-visible:ring-offset-1 focus-visible:ring-offset-[#0e0d0c] ${sizeClasses[size]} ${variantClasses[variant]} ${className}`}
         {...props}
       >
         {isLoading ? <Loader2 className="w-4 h-4 animate-spin text-current" /> : children}

@@ -1,21 +1,22 @@
-import React from 'react';
+import React, { lazy } from 'react';
 import { useAdminRouter } from '../router';
-import { DashboardPage } from './overview/DashboardPage';
-import { OrdersPage } from './sales/OrdersPage';
-import { OrderDetailPage } from './sales/OrderDetailPage';
-import { PaymentsPage } from './sales/PaymentsPage';
-import { AccountingPage } from './sales/AccountingPage';
-import { PaymentDetailPage } from './sales/PaymentDetailPage';
-import { ProductsPage } from './catalog/ProductsPage';
-import { ProductEditor } from './catalog/ProductEditor';
-import { VariantsPage } from './catalog/VariantsPage';
-import { InventoryPage } from './catalog/InventoryPage';
-import { CategoriesPage } from './catalog/CategoriesPage';
-import { StockMovementsPage } from './catalog/StockMovementsPage';
-import { CustomerDirectoryPage } from './customers/CustomerDirectoryPage';
-import { CustomerProfilesPage } from './customers/CustomerProfilesPage';
-import { SettingsPage } from './system/SettingsPage';
-import { HealthPage } from './system/HealthPage';
+
+const DashboardPage = lazy(() => import('./overview/DashboardPage').then(module => ({ default: module.DashboardPage })));
+const OrdersPage = lazy(() => import('./sales/OrdersPage').then(module => ({ default: module.OrdersPage })));
+const OrderDetailPage = lazy(() => import('./sales/OrderDetailPage').then(module => ({ default: module.OrderDetailPage })));
+const PaymentsPage = lazy(() => import('./sales/PaymentsPage').then(module => ({ default: module.PaymentsPage })));
+const AccountingPage = lazy(() => import('./sales/AccountingPage').then(module => ({ default: module.AccountingPage })));
+const PaymentDetailPage = lazy(() => import('./sales/PaymentDetailPage').then(module => ({ default: module.PaymentDetailPage })));
+const ProductsPage = lazy(() => import('./catalog/ProductsPage').then(module => ({ default: module.ProductsPage })));
+const ProductEditor = lazy(() => import('./catalog/ProductEditor').then(module => ({ default: module.ProductEditor })));
+const VariantsPage = lazy(() => import('./catalog/VariantsPage').then(module => ({ default: module.VariantsPage })));
+const InventoryPage = lazy(() => import('./catalog/InventoryPage').then(module => ({ default: module.InventoryPage })));
+const CategoriesPage = lazy(() => import('./catalog/CategoriesPage').then(module => ({ default: module.CategoriesPage })));
+const StockMovementsPage = lazy(() => import('./catalog/StockMovementsPage').then(module => ({ default: module.StockMovementsPage })));
+const CustomerDirectoryPage = lazy(() => import('./customers/CustomerDirectoryPage').then(module => ({ default: module.CustomerDirectoryPage })));
+const CustomerProfilesPage = lazy(() => import('./customers/CustomerProfilesPage').then(module => ({ default: module.CustomerProfilesPage })));
+const SettingsPage = lazy(() => import('./system/SettingsPage').then(module => ({ default: module.SettingsPage })));
+const HealthPage = lazy(() => import('./system/HealthPage').then(module => ({ default: module.HealthPage })));
 
 export const AdminPageDispatcher: React.FC = () => {
   const { activeRoute, params } = useAdminRouter();

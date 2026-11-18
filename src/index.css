@@ -582,3 +582,40 @@ html.light .bg-\[\#2d2925\] * {
     scroll-behavior: auto !important;
   }
 }
+
+@media (pointer: coarse) {
+  .product-row-action {
+    min-width: 44px;
+    min-height: 44px;
+  }
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .storefront-theme-icon--sun:hover {
+    transform: rotate(45deg);
+  }
+
+  .storefront-theme-icon--moon:hover {
+    transform: scale(1.1);
+  }
+
+  .product-id-copy-button:hover {
+    background-color: rgb(255 255 255 / 0.05);
+    color: #ffffff;
+  }
+
+  .product-row-action--edit:hover {
+    background-color: rgb(255 255 255 / 0.1);
+    color: #eed29d;
+  }
+
+  .product-row-action--copy:hover {
+    background-color: rgb(255 255 255 / 0.1);
+    color: #ffffff;
+  }
+
+  .product-row-action--delete:hover {
+    background-color: rgb(239 68 68 / 0.1);
+    color: #f87171;
+  }
+}

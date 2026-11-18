@@ -13,6 +13,7 @@ import {
   AlertTriangle,
   Layers,
   ArrowUpDown,
+  RefreshCw,
   FileSpreadsheet,
   AlertCircle,
   Copy,
@@ -43,18 +44,21 @@ export const ProductsPage: React.FC = () => {
     state,
     getProducts,
     getCategories,
+    reload,
     bulkUpdateProductStatus,
     deleteProduct,
     createProduct,
     importProductsCsv,
   } = useCatalogAdmin();
-  const { addToast } = useToast();
+  const { showToast } = useToast();
   const { confirm: confirmDialog } = useAppDialog();
 
   const categories = getCategories().filter(category => category.status === 'active');
 
   // Navigation to editor
   const [editingProductId, setEditingProductId] = useState<string | null>(null);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [refreshNotice, setRefreshNotice] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
   // Search & Filters
   const [search, setSearch] = useState('');
@@ -129,6 +133,9 @@ export const ProductsPage: React.FC = () => {
     (currentPage - 1) * pageSize,
     currentPage * pageSize
   );
+  const currentPageProductIds = paginatedProducts.map(product => product.id);
+  const isCurrentPageFullySelected = currentPageProductIds.length > 0
+    && currentPageProductIds.every(id => selectedProductIds.includes(id));
 
   // If in editor view, render ProductEditor
   if (editingProductId !== null) {
@@ -142,18 +149,46 @@ export const ProductsPage: React.FC = () => {
 
   // Bulk Selection Handlers
   const handleToggleSelectAll = () => {
-    if (selectedProductIds.length === paginatedProducts.length) {
-      setSelectedProductIds([]);
-    } else {
-      setSelectedProductIds(paginatedProducts.map((p) => p.id));
-    }
+    if (currentPageProductIds.length === 0) return;
+    setSelectedProductIds(selected => isCurrentPageFullySelected
+      ? selected.filter(id => !currentPageProductIds.includes(id))
+      : [...new Set([...selected, ...currentPageProductIds])]);
   };
 
   const handleToggleSelectProduct = (id: string) => {
-    if (selectedProductIds.includes(id)) {
-      setSelectedProductIds(selectedProductIds.filter((pId) => pId !== id));
-    } else {
-      setSelectedProductIds([...selectedProductIds, id]);
+    setSelectedProductIds(selected => selected.includes(id)
+      ? selected.filter(productId => productId !== id)
+      : [...selected, id]);
+  };
+
+  const handleCopyProductId = async (product: AdminProduct) => {
+    try {
+      await navigator.clipboard.writeText(product.id);
+      showToast({
+        title: 'شناسه محصول کپی شد',
+        message: `شناسه کامل «${product.name}» در کلیپ‌بورد قرار گرفت.`,
+        type: 'success',
+      });
+    } catch {
+      showToast({
+        title: 'کپی شناسه انجام نشد',
+        message: 'اجازه دسترسی به کلیپ‌بورد را بررسی کنید و دوباره تلاش کنید.',
+        type: 'error',
+      });
+    }
+  };
+
+  const handleRefresh = async () => {
+    if (isRefreshing) return;
+    setIsRefreshing(true);
+    setRefreshNotice(null);
+    try {
+      await reload();
+      setRefreshNotice({ type: 'success', message: 'فهرست محصولات به‌روز شد.' });
+    } catch {
+      setRefreshNotice({ type: 'error', message: 'به‌روزرسانی فهرست محصولات انجام نشد. اتصال را بررسی کنید و دوباره تلاش کنید.' });
+    } finally {
+      setIsRefreshing(false);
     }
   };
 
@@ -182,15 +217,15 @@ export const ProductsPage: React.FC = () => {
 
     const res = await deleteProduct(p.id);
     if (!res.success) {
-      addToast({
+      showToast({
         title: 'بایگانی محصول انجام نشد',
-        description: res.error || 'امکان بایگانی این محصول وجود ندارد.',
+        message: res.error || 'امکان بایگانی این محصول وجود ندارد.',
         type: 'error',
       });
     } else {
-      addToast({
+      showToast({
         title: 'محصول بایگانی شد',
-        description: `محصول «${p.name}» از فروشگاه پنهان شد و سوابق آن باقی ماند.`,
+        message: `محصول «${p.name}» از فروشگاه پنهان شد و سوابق آن باقی ماند.`,
         type: 'success',
       });
     }
@@ -221,10 +256,10 @@ export const ProductsPage: React.FC = () => {
       isLive: false,
       variants: duplicatedVariants,
     });
-    if(!result.success){addToast({title:'خطا در ایجاد رونوشت',description:result.error,type:'error'});return;}
-    addToast({
+    if(!result.success){showToast({title:'خطا در ایجاد رونوشت',message:result.error,type:'error'});return;}
+    showToast({
       title: 'محصول کپی شد',
-      description: `نسخه کپی از محصول «${p.name}» با شناسه ${newId} در وضعیت پیش‌نویس ایجاد شد.`,
+      message: `نسخه کپی از محصول «${p.name}» با شناسه ${newId} در وضعیت پیش‌نویس ایجاد شد.`,
       type: 'info',
     });
   };
@@ -319,9 +354,11 @@ export const ProductsPage: React.FC = () => {
         <button
           type="button"
           onClick={handleToggleSelectAll}
-          className="text-stone-400 hover:text-white"
+          aria-label="انتخاب همه محصولات این صفحه"
+          aria-pressed={isCurrentPageFullySelected}
+          className="inline-flex h-11 w-11 items-center justify-center rounded-lg text-stone-400 hover:text-white"
         >
-          {selectedProductIds.length === paginatedProducts.length && paginatedProducts.length > 0 ? (
+          {isCurrentPageFullySelected ? (
             <CheckSquare size={15} className="text-[#eed29d]" />
           ) : (
             <Square size={15} />
@@ -332,7 +369,9 @@ export const ProductsPage: React.FC = () => {
         <button
           type="button"
           onClick={() => handleToggleSelectProduct(row.id)}
-          className="text-stone-400 hover:text-white"
+          aria-label={`انتخاب محصول ${row.name}`}
+          aria-pressed={selectedProductIds.includes(row.id)}
+          className="inline-flex h-11 w-11 items-center justify-center rounded-lg text-stone-400 hover:text-white"
         >
           {selectedProductIds.includes(row.id) ? (
             <CheckSquare size={15} className="text-[#eed29d]" />
@@ -346,16 +385,26 @@ export const ProductsPage: React.FC = () => {
       key: 'product',
       header: 'پوشاک / فرم پایه',
       render: (row) => (
-        <div className="flex items-center gap-3">
+        <div className="flex min-w-0 items-center gap-3">
           <div className="w-11 h-11 rounded-xl overflow-hidden bg-black border border-white/10 flex-shrink-0 relative">
             {row.primaryImage || row.images?.[0] ? <img src={row.primaryImage || row.images[0]} alt={row.name} className="h-full w-full object-cover" /> : <Shirt size={20} aria-hidden="true" className="absolute inset-0 m-auto text-stone-500" />}
           </div>
-          <div>
-            <div className="font-bold text-white text-xs">{row.name}</div>
-            <div className="flex w-max flex-nowrap items-center gap-2 mt-0.5 whitespace-nowrap">
-              <span className="shrink-0 font-mono text-[10px] text-[#eed29d]">{row.id}</span>
-              <span className="shrink-0 text-[10px] text-stone-500">•</span>
-              <span className="shrink-0 font-mono text-[10px] text-stone-400">{row.skuPrefix}</span>
+          <div className="min-w-0 max-w-full">
+            <div className="break-words font-bold text-white text-xs">{row.name}</div>
+            <div className="mt-0.5 flex min-w-0 max-w-full flex-col items-start gap-0.5">
+              <div className="flex min-w-0 items-center gap-1">
+                <span className="whitespace-nowrap font-mono text-xs text-[#eed29d]" title={row.id}>{row.id.slice(0, 8)}…</span>
+                <button
+                  type="button"
+                  onClick={() => void handleCopyProductId(row)}
+                  aria-label={`کپی شناسه کامل ${row.id} برای ${row.name}`}
+                  title={`کپی شناسه کامل: ${row.id}`}
+                  className="product-id-copy-button inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-stone-400 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#ba8d3d] active:scale-95"
+                >
+                  <Copy size={13} aria-hidden="true" />
+                </button>
+              </div>
+              <span className="whitespace-nowrap font-mono text-xs text-stone-400">{row.skuPrefix}</span>
             </div>
           </div>
         </div>
@@ -421,7 +470,7 @@ export const ProductsPage: React.FC = () => {
                 </span>
               )}
             </div>
-            <div className="text-[10px] text-stone-500 font-fanum">
+            <div className="text-[10px] text-stone-400 font-fanum">
               فیزیکی: {toFaDigits(onHand)} | رزرو: {toFaDigits(reserved)}
             </div>
           </div>
@@ -449,7 +498,7 @@ export const ProductsPage: React.FC = () => {
           <button
             onClick={() => setEditingProductId(row.id)}
             aria-label={`ویرایش ${row.name}`}
-            className="inline-flex h-11 w-11 items-center justify-center rounded-lg bg-white/5 text-stone-400 transition-colors hover:bg-white/10 hover:text-[#eed29d] sm:h-8 sm:w-8"
+            className="inline-flex h-11 w-11 items-center justify-center rounded-lg bg-white/5 text-stone-400 transition-[color,background-color,transform] duration-100 active:scale-95 product-row-action product-row-action--edit sm:h-8 sm:w-8"
             title="ویرایش محصول"
           >
             <Edit size={13} />
@@ -457,7 +506,7 @@ export const ProductsPage: React.FC = () => {
           <button
             onClick={() => handleDuplicateProduct(row)}
             aria-label={`ایجاد نسخه از ${row.name}`}
-            className="inline-flex h-11 w-11 items-center justify-center rounded-lg bg-white/5 text-stone-400 transition-colors hover:bg-white/10 hover:text-white sm:h-8 sm:w-8"
+            className="inline-flex h-11 w-11 items-center justify-center rounded-lg bg-white/5 text-stone-400 transition-[color,background-color,transform] duration-100 active:scale-95 product-row-action product-row-action--copy sm:h-8 sm:w-8"
             title="ایجاد نسخهٔ جدید"
           >
             <Copy size={13} />
@@ -465,7 +514,7 @@ export const ProductsPage: React.FC = () => {
           <button
             onClick={() => handleDeleteProduct(row)}
             aria-label={`بایگانی ${row.name}`}
-            className="inline-flex h-11 w-11 items-center justify-center rounded-lg bg-white/5 text-stone-400 transition-colors hover:bg-red-500/10 hover:text-red-400 sm:h-8 sm:w-8"
+            className="inline-flex h-11 w-11 items-center justify-center rounded-lg bg-white/5 text-stone-400 transition-[color,background-color,transform] duration-100 active:scale-95 product-row-action product-row-action--delete sm:h-8 sm:w-8"
             title="بایگانی محصول"
           >
             <Trash2 size={13} />
@@ -479,7 +528,7 @@ export const ProductsPage: React.FC = () => {
     <div className="space-y-6">
       <AdminPageHeader
         title="محصولات پایه و فرم‌های لباس"
-        description="محصولات، تنوع‌ها، تصویرها و وضعیت فروش کاتالوگ را مدیریت کنید."
+        description="محصولات، تنوع‌ها، تصویرها و وضعیت عرضه کاتالوگ را مدیریت کنید."
         actions={
           <div className="flex items-center gap-2">
             <Button variant="outline" size="sm" onClick={() => setIsImportModalOpen(true)}>
@@ -594,6 +643,7 @@ export const ProductsPage: React.FC = () => {
         <div className="flex items-center gap-2 flex-wrap">
           {/* Category */}
           <select
+            aria-label="فیلتر دسته‌بندی محصولات"
             value={categoryFilter}
             onChange={(e) => {
               setCategoryFilter(e.target.value);
@@ -611,6 +661,7 @@ export const ProductsPage: React.FC = () => {
 
           {/* Status */}
           <select
+            aria-label="فیلتر وضعیت انتشار محصولات"
             value={statusFilter}
             onChange={(e) => {
               setStatusFilter(e.target.value);
@@ -627,6 +678,7 @@ export const ProductsPage: React.FC = () => {
 
           {/* Type */}
           <select
+            aria-label="فیلتر نوع پوشاک"
             value={typeFilter}
             onChange={(e) => {
               setTypeFilter(e.target.value);
@@ -642,6 +694,7 @@ export const ProductsPage: React.FC = () => {
           {/* Low Stock Toggle */}
           <button
             type="button"
+            aria-pressed={lowStockOnly}
             onClick={() => {
               setLowStockOnly(!lowStockOnly);
               setCurrentPage(1);
@@ -658,9 +711,10 @@ export const ProductsPage: React.FC = () => {
 
           {/* Sort By */}
           <select
+            aria-label="مرتب‌سازی محصولات"
             value={sortBy}
             onChange={(e) => setSortBy(e.target.value as any)}
-            className="bg-[#131211] border border-white/10 rounded-xl px-3 py-2 text-xs text-stone-300 focus:border-[#eed29d] focus:outline-none"
+            className="min-h-11 bg-[#131211] border border-white/10 rounded-xl px-3 py-2 text-xs text-stone-300 focus:border-[#eed29d] focus:outline-none"
           >
             <option value="updated">مرتب‌سازی: آخرین تغییرات</option>
             <option value="priceAsc">قیمت: کم به زیاد</option>
@@ -669,31 +723,49 @@ export const ProductsPage: React.FC = () => {
             <option value="stockAsc">کمترین موجودی</option>
             <option value="name">نام الفبایی</option>
           </select>
+
+          <button
+            type="button"
+            onClick={() => void handleRefresh()}
+            disabled={isRefreshing}
+            aria-label={isRefreshing ? 'در حال به‌روزرسانی فهرست محصولات' : 'به‌روزرسانی فهرست محصولات'}
+            aria-busy={isRefreshing}
+            title="به‌روزرسانی فهرست محصولات"
+            className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-[#131211] text-stone-300 transition-[color,background-color,transform] duration-100 hover:bg-white/10 hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#eed29d] active:scale-95 disabled:cursor-wait disabled:opacity-60"
+          >
+            <RefreshCw size={16} aria-hidden="true" className={isRefreshing ? 'animate-spin motion-reduce:animate-none' : ''} />
+          </button>
         </div>
       </div>
+
+      {refreshNotice && (
+        <p
+          role={refreshNotice.type === 'error' ? 'alert' : 'status'}
+          className={`rounded-xl border px-4 py-3 text-sm ${refreshNotice.type === 'error'
+            ? 'border-rose-400/20 bg-rose-500/10 text-rose-200'
+            : 'border-emerald-400/20 bg-emerald-500/10 text-emerald-200'}`}
+        >
+          {refreshNotice.message}
+        </p>
+      )}
 
       {/* Table */}
       <Table
         data={paginatedProducts}
         columns={columns}
         keyExtractor={(p) => p.id}
+        ariaLabel="فهرست محصولات"
         mobileScrollHint
       />
 
       {/* Pagination Bar */}
-      <div className="flex justify-between items-center text-xs text-stone-400">
-        <span>
-          نمایش {toFaDigits((currentPage - 1) * pageSize + 1)} تا{' '}
-          {toFaDigits(Math.min(currentPage * pageSize, filteredProducts.length))} از {toFaDigits(filteredProducts.length)} محصول
-        </span>
-        <Pagination
-          currentPage={currentPage}
-          totalPages={totalPages}
-          totalItems={filteredProducts.length}
-          pageSize={pageSize}
-          onPageChange={setCurrentPage}
-        />
-      </div>
+      <Pagination
+        currentPage={currentPage}
+        totalPages={totalPages}
+        totalItems={filteredProducts.length}
+        pageSize={pageSize}
+        onPageChange={setCurrentPage}
+      />
 
       {/* Import CSV Modal */}
       {isImportModalOpen && (
